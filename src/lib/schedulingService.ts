@@ -374,6 +374,16 @@ export const schedulingService = {
       })
       .eq('id', eventId);
     if (stageErr) throw stageErr;
+
+    // 4. Registrar en la bitácora de auditoría
+    const dateSummary = slots.map((s, idx) => `Opt #${idx + 1}: ${s.slotDate} (${s.startTime.slice(0, 5)}-${s.endTime.slice(0, 5)})`).join(', ');
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'carrier_rep',
+      contact_target_name: 'Carrier Representative',
+      channel: 'email',
+      notes: `📅 Carrier offered ${slots.length} proposed dates: ${dateSummary}. Forwarded to PA for review.`
+    });
   },
 
   // 6.2 PA escoge 2 de las fechas propuestas y avanza a Etapa 3: Insured Selection
@@ -409,6 +419,15 @@ export const schedulingService = {
       })
       .eq('id', eventId);
     if (stageErr) throw stageErr;
+
+    // Registrar en la bitácora de auditoría
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'pa',
+      contact_target_name: 'Public Adjuster',
+      channel: 'call_answered',
+      notes: `⚖️ PA reviewed and approved 2 options for the client. Advanced to Stage 3 (Client Choice).`
+    });
   },
 
   // 6.3 Insured escoge 1 fecha y se bloquea la cita definitiva en Etapa 4: Confirmed
@@ -445,6 +464,20 @@ export const schedulingService = {
       })
       .eq('id', eventId);
     if (stageErr) throw stageErr;
+
+    // Registrar en la bitácora de auditoría
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'insured',
+      contact_target_name: 'Insured / Client',
+      channel: 'whatsapp',
+      notes: `✓ Client selected appointment date: ${finalDetails.date} (${finalDetails.startTime.slice(0, 5)} - ${finalDetails.endTime.slice(0, 5)}). Inspection locked & scheduled.`
+    });
+
+    // Enviar invitaciones de calendario automáticamente de forma asíncrona (sin bloquear el flujo)
+    supabase.functions.invoke('send-calendar-invite', {
+      body: { eventId }
+    }).catch(err => console.error("Error triggering calendar invite edge function:", err));
   },
 
   // 6.4 Resetear / Cancelar el Flujo de Coordinación y regresar a Etapa 1

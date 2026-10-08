@@ -26,7 +26,9 @@ export type ContactChannel =
   | 'voicemail' 
   | 'whatsapp' 
   | 'sms' 
-  | 'email';
+  | 'email'
+  | 'system_reset'
+  | 'other';
 
 export interface PublicAdjuster {
   id: string;
@@ -124,7 +126,7 @@ export interface EventParticipant {
 export interface CoordinationLog {
   id: string;
   eventId: string;
-  contactTarget: 'insured' | 'carrier_rep' | 'pa' | 'external_actor';
+  contactTarget: 'insured' | 'carrier_rep' | 'pa' | 'external_actor' | 'internal';
   contactTargetName?: string;
   channel: ContactChannel;
   notes?: string;

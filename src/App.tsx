@@ -18,7 +18,8 @@ import {
   Clock,
   Settings,
   Pencil,
-  RotateCcw
+  RotateCcw,
+  History
 } from 'lucide-react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
@@ -27,6 +28,7 @@ import { ClaimDetailView } from './components/ClaimDetailView';
 import { RecordCarrierSlotsModal } from './components/RecordCarrierSlotsModal';
 import { SlaSettingsModal } from './components/SlaSettingsModal';
 import { ResetCoordinationModal } from './components/ResetCoordinationModal';
+import { EventHistoryModal } from './components/EventHistoryModal';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from './lib/slaUtils';
 import { appSettingsService } from './lib/appSettingsService';
 import type { 
@@ -191,6 +193,7 @@ export function App() {
   };
 
   const [eventToReset, setEventToReset] = useState<CoordinationEvent | null>(null);
+  const [historyEventTarget, setHistoryEventTarget] = useState<CoordinationEvent | null>(null);
 
   const handleConfirmReset = async (options: { cancelledBy?: string; cancellationReason?: string }) => {
     if (!eventToReset) return;
@@ -240,7 +243,29 @@ export function App() {
     },
   ];
 
+  const isEventPastAndConfirmed = (e: CoordinationEvent) => {
+    if (e.coordinationStage !== '4_confirmed') return false;
+    if (!e.finalDate) return false;
+    
+    // Parse finalDate
+    const [year, month, day] = e.finalDate.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    
+    // Parse finalEndTime if available
+    if (e.finalEndTime) {
+      const [hours, minutes] = e.finalEndTime.split(':').map(Number);
+      dateObj.setHours(hours, minutes, 0, 0);
+    } else {
+      dateObj.setHours(23, 59, 59, 999);
+    }
+    
+    // Compare with current time
+    return dateObj.getTime() < new Date().getTime();
+  };
+
   const filteredEvents = events.filter(e => {
+    if (isEventPastAndConfirmed(e)) return false;
+
     const q = searchQuery.toLowerCase();
     const matchesQuery = (
       e.eventType.toLowerCase().includes(q) ||
@@ -473,42 +498,14 @@ export function App() {
             {/* Grid of 4 Stages */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {stages.map((stage) => {
-                let stageEvents: CoordinationEvent[] = [];
-                if (stage.key === '1_awaiting_carrier_slots') {
-                  // Stage 1: All claims/events start here; keep in history once advanced
-                  stageEvents = filteredEvents;
-                } else if (stage.key === '2_pa_review') {
-                  // Stage 2: Claims that have reached or passed PA review
-                  stageEvents = filteredEvents.filter(e => 
-                    e.coordinationStage === '2_pa_review' || 
-                    e.coordinationStage === '3_insured_selection' || 
-                    e.coordinationStage === '4_confirmed'
-                  );
-                } else if (stage.key === '3_insured_selection') {
-                  // Stage 3: Claims that have reached or passed Insured Selection
-                  stageEvents = filteredEvents.filter(e => 
-                    e.coordinationStage === '3_insured_selection' || 
-                    e.coordinationStage === '4_confirmed'
-                  );
-                } else if (stage.key === '4_confirmed') {
-                  // Stage 4: Confirmed scheduled appointments
-                  stageEvents = filteredEvents.filter(e => e.coordinationStage === '4_confirmed');
-                }
+                const stageEvents = filteredEvents
+                  .filter(e => e.coordinationStage === stage.key)
+                  .sort((a, b) => (a.claim?.claimNumber || '').localeCompare(b.claim?.claimNumber || ''));
 
-                // Sort: active events in this stage on top, then historical completed events
-                stageEvents = [...stageEvents].sort((a, b) => {
-                  const aActive = a.coordinationStage === stage.key ? 0 : 1;
-                  const bActive = b.coordinationStage === stage.key ? 0 : 1;
-                  if (aActive !== bActive) return aActive - bActive;
-                  return (a.claim?.claimNumber || '').localeCompare(b.claim?.claimNumber || '');
-                });
-
-                // Active vs Historical counts
-                const activeCount = stageEvents.filter(e => e.coordinationStage === stage.key).length;
-                const historicalCount = stageEvents.filter(e => e.coordinationStage !== stage.key).length;
+                const activeCount = stageEvents.length;
 
                 // Overdue alert count only considers events actively pending in this stage
-                const stageStalledCount = stageEvents.filter(e => e.coordinationStage === stage.key && getEventSlaStatus(e, slaConfig).isStalled).length;
+                const stageStalledCount = stageEvents.filter(e => getEventSlaStatus(e, slaConfig).isStalled).length;
 
                 return (
                   <div 
@@ -535,14 +532,6 @@ export function App() {
                         >
                           {activeCount}
                         </span>
-                        {historicalCount > 0 && (
-                          <span 
-                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200"
-                            title={`${historicalCount} claims completed through this stage (visible as history)`}
-                          >
-                            {historicalCount} hist
-                          </span>
-                        )}
                       </div>
                     </div>
 
@@ -622,6 +611,19 @@ export function App() {
                                           ✓ Confirmed
                                         </span>
                                       )}
+
+                                      {/* View Event History & Audit Log */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setHistoryEventTarget(evt);
+                                        }}
+                                        className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-tealBrand-700 hover:bg-tealBrand-50 border border-transparent hover:border-tealBrand-200 transition-colors"
+                                        title={`View event history & audit logs (${evt.logs?.length || 0} entries)`}
+                                      >
+                                        <History className="w-3 h-3" />
+                                      </button>
 
                                       {/* Reset / Cancel Flow button */}
                                       <button
@@ -1365,6 +1367,16 @@ export function App() {
           isOpen={Boolean(eventToReset)}
           onClose={() => setEventToReset(null)}
           onConfirm={handleConfirmReset}
+        />
+      )}
+
+      {/* Event History & Audit Log Modal */}
+      {historyEventTarget && (
+        <EventHistoryModal
+          event={historyEventTarget}
+          isOpen={Boolean(historyEventTarget)}
+          onClose={() => setHistoryEventTarget(null)}
+          onLogAdded={loadData}
         />
       )}
     </div>

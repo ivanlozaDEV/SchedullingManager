@@ -24,11 +24,13 @@ import {
   Users,
   Send,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  History
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { RecordCarrierSlotsModal } from './RecordCarrierSlotsModal';
 import { ResetCoordinationModal } from './ResetCoordinationModal';
+import { EventHistoryModal } from './EventHistoryModal';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from '../lib/slaUtils';
 import { appSettingsService } from '../lib/appSettingsService';
 import type { 
@@ -310,6 +312,7 @@ export function ClaimDetailView({
   // Funnel Flow States
   const [recordingSlotsEvent, setRecordingSlotsEvent] = useState<CoordinationEvent | null>(null);
   const [eventToReset, setEventToReset] = useState<CoordinationEvent | null>(null);
+  const [historyEventTarget, setHistoryEventTarget] = useState<CoordinationEvent | null>(null);
   const [paSelectedSlotIds, setPaSelectedSlotIds] = useState<Record<string, string[]>>({});
   const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
   const [insuredConfirmingSlotId, setInsuredConfirmingSlotId] = useState<string | null>(null);
@@ -1933,6 +1936,15 @@ export function ClaimDetailView({
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
+                          onClick={() => setHistoryEventTarget(evt)}
+                          title="View complete event history and audit logs"
+                          className="text-xs font-semibold text-slate-700 hover:text-tealBrand-800 bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 shadow-2xs"
+                        >
+                          <History className="w-3 h-3 text-tealBrand-600" />
+                          <span>History ({evt.logs?.length || 0})</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setEventToReset(evt)}
                           title="Reset or cancel coordination flow back to Stage 1"
                           className="text-xs font-semibold text-rose-700 hover:text-rose-900 bg-white hover:bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 shadow-2xs"
@@ -2295,6 +2307,33 @@ export function ClaimDetailView({
                         {evt.gateCode && <span>Gate: <strong>{evt.gateCode}</strong></span>}
                         {evt.lockboxCode && <span>Lockbox: <strong>{evt.lockboxCode}</strong></span>}
                         {evt.accessInstructions && <span>Notes: <em>{evt.accessInstructions}</em></span>}
+                      </div>
+                    )}
+
+                    {/* Activity & Cancellation / Reset History Logs */}
+                    {evt.logs && evt.logs.length > 0 && (
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-2">
+                        <span className="font-bold text-slate-700 block text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                          <span>📋 Activity & Cancellation Logs</span>
+                          <span className="bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full font-mono text-[10px]">
+                            {evt.logs.length}
+                          </span>
+                        </span>
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                          {evt.logs.map((log) => (
+                            <div key={log.id} className="text-xs bg-white p-2.5 rounded-lg border border-slate-200 text-slate-700 flex items-start justify-between gap-3 shadow-2xs">
+                              <div className="space-y-0.5">
+                                <p className="font-semibold text-slate-900 leading-snug">{log.notes}</p>
+                                {log.contactTargetName && (
+                                  <span className="text-[10px] text-slate-500 block">Party / Actor: <strong>{log.contactTargetName}</strong></span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono shrink-0 whitespace-nowrap">
+                                {new Date(log.createdAt).toLocaleDateString()} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -3003,6 +3042,19 @@ export function ClaimDetailView({
           isOpen={Boolean(eventToReset)}
           onClose={() => setEventToReset(null)}
           onConfirm={handleConfirmReset}
+        />
+      )}
+
+      {/* EVENT HISTORY & AUDIT LOG MODAL */}
+      {historyEventTarget && (
+        <EventHistoryModal
+          event={historyEventTarget}
+          isOpen={Boolean(historyEventTarget)}
+          onClose={() => setHistoryEventTarget(null)}
+          onLogAdded={async () => {
+            await onClaimUpdated();
+            onEventCreated();
+          }}
         />
       )}
 
