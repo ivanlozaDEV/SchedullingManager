@@ -19,7 +19,10 @@ import {
   Settings,
   Pencil,
   RotateCcw,
-  History
+  History,
+  LayoutList,
+  LayoutGrid,
+  Filter
 } from 'lucide-react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
@@ -53,6 +56,8 @@ export function App() {
   const [isSlaSettingsOpen, setIsSlaSettingsOpen] = useState(false);
   const [slaConfig, setSlaConfig] = useState<SlaConfig>(getSlaConfig());
   const [viewMode, setViewMode] = useState<'funnel' | 'claims'>('funnel');
+  const [claimsEventFilter, setClaimsEventFilter] = useState<'all' | 'unassigned' | 'assigned'>('all');
+  const [claimsLayoutMode, setClaimsLayoutMode] = useState<'list' | 'grid'>('list');
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [claimToEdit, setClaimToEdit] = useState<Claim | null>(null);
   const [filterStalledOnly, setFilterStalledOnly] = useState(false);
@@ -286,7 +291,15 @@ export function App() {
   const criticalEventsCount = events.filter(e => getEventSlaStatus(e, slaConfig).alertLevel === 'critical').length;
   const warningEventsCount = events.filter(e => getEventSlaStatus(e, slaConfig).alertLevel === 'warning').length;
 
+  const unassignedClaimsCount = claims.filter(c => !events.some(e => e.claimId === c.id)).length;
+
   const filteredClaims = claims.filter(c => {
+    // 1. Filtrar por estado de asignación de evento
+    const hasEvent = events.some(e => e.claimId === c.id);
+    if (claimsEventFilter === 'unassigned' && hasEvent) return false;
+    if (claimsEventFilter === 'assigned' && !hasEvent) return false;
+
+    // 2. Filtrar por búsqueda de texto
     const q = searchQuery.toLowerCase();
     return (
       c.claimNumber.toLowerCase().includes(q) ||
@@ -402,6 +415,14 @@ export function App() {
             >
               <FolderOpen className="w-3.5 h-3.5" />
               <span>All Claims ({claims.length})</span>
+              {unassignedClaimsCount > 0 && (
+                <span 
+                  className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full border border-amber-300"
+                  title={`${unassignedClaimsCount} claims sin evento asignado`}
+                >
+                  {unassignedClaimsCount} sin evento
+                </span>
+              )}
             </button>
           </div>
 
@@ -1188,34 +1209,296 @@ export function App() {
         {/* ======================================================== */}
         {viewMode === 'claims' && (
           <div className="space-y-4">
+            {/* Claims Toolbar: Filtros de eventos y Switch de diseño Lista/Tarjetas */}
+            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+              {/* Filtros por asignación de evento */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  Filtrar:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setClaimsEventFilter('all')}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${
+                    claimsEventFilter === 'all'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Todos ({claims.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClaimsEventFilter('unassigned')}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border flex items-center gap-1.5 transition-all ${
+                    claimsEventFilter === 'unassigned'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : unassignedClaimsCount > 0
+                        ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <AlertTriangle className={`w-3.5 h-3.5 ${claimsEventFilter === 'unassigned' ? 'text-white' : 'text-amber-600'}`} />
+                  <span>Sin evento asignado ({unassignedClaimsCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClaimsEventFilter('assigned')}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${
+                    claimsEventFilter === 'assigned'
+                      ? 'bg-tealBrand-700 text-white border-tealBrand-700 shadow-xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Con evento activo ({claims.length - unassignedClaimsCount})
+                </button>
+              </div>
+
+              {/* Botones de Vista: Lista vs Tarjetas */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 self-end md:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setClaimsLayoutMode('list')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    claimsLayoutMode === 'list'
+                      ? 'bg-white text-maroon-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Vista de Lista compacta"
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                  <span>Lista</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClaimsLayoutMode('grid')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    claimsLayoutMode === 'grid'
+                      ? 'bg-white text-maroon-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Vista de Tarjetas en cuadrícula"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Tarjetas</span>
+                </button>
+              </div>
+            </div>
+
             {filteredClaims.length === 0 ? (
               <div className="bg-white border border-slate-200 rounded-xl p-12 text-center space-y-3">
                 <FolderOpen className="w-12 h-12 text-slate-300 mx-auto" />
-                <h3 className="text-sm font-bold text-slate-900">No claims found</h3>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {claimsEventFilter === 'unassigned' ? '¡Excelente! Todos los claims tienen evento asignado' : 'No claims found'}
+                </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  {searchQuery ? `No claims matching "${searchQuery}"` : 'No claims have been entered into the system yet.'}
+                  {searchQuery 
+                    ? `No claims matching "${searchQuery}"` 
+                    : claimsEventFilter === 'unassigned'
+                      ? 'No hay ningún claim pendiente de programar o inspeccionar.'
+                      : 'No claims have been entered into the system yet.'}
                 </p>
-                <button
-                  onClick={() => {
-                    setClaimToEdit(null);
-                    setIsNewClaimOpen(true);
-                  }}
-                  className="inline-flex items-center gap-2 bg-maroon-800 hover:bg-maroon-900 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Enter First Claim</span>
-                </button>
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  {claimsEventFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setClaimsEventFilter('all')}
+                      className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition-colors border border-slate-300"
+                    >
+                      Mostrar Todos los Claims
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClaimToEdit(null);
+                      setIsNewClaimOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 bg-maroon-800 hover:bg-maroon-900 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Enter New Claim</span>
+                  </button>
+                </div>
+              </div>
+            ) : claimsLayoutMode === 'list' ? (
+              /* ======================================================== */
+              /* TABLA / LISTA DE CLAIMS */
+              /* ======================================================== */
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th className="py-3 px-4">Claim / Aseguradora</th>
+                        <th className="py-3 px-4">Asegurado (Cliente)</th>
+                        <th className="py-3 px-4">Propiedad & Pérdida</th>
+                        <th className="py-3 px-4">Public Adjuster</th>
+                        <th className="py-3 px-4">Estado de Evento</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {filteredClaims.map((claim) => {
+                        const assignedPa = pas.find(p => p.id === claim.publicAdjusterId);
+                        const relatedEvents = events.filter(e => e.claimId === claim.id);
+                        const hasEvents = relatedEvents.length > 0;
+
+                        return (
+                          <tr 
+                            key={claim.id}
+                            className={`hover:bg-slate-50/80 transition-colors ${
+                              !hasEvents ? 'bg-amber-50/20' : ''
+                            }`}
+                          >
+                            {/* Claim & Carrier */}
+                            <td className="py-3 px-4 align-top">
+                              <span className="font-mono font-bold text-maroon-800 text-xs">
+                                {claim.claimNumber}
+                              </span>
+                              <div className="font-semibold text-slate-900 mt-0.5">
+                                {claim.carrier}
+                              </div>
+                              {claim.policyNumber && (
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  Pol: {claim.policyNumber}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Insured Client */}
+                            <td className="py-3 px-4 align-top">
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-maroon-800 shrink-0" />
+                                <span>{claim.insured?.name || 'Cliente sin nombre'}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-600 mt-1">
+                                📞 {claim.insured?.phone || 'No phone'}
+                              </div>
+                              {claim.insured?.email && (
+                                <div className="text-[11px] text-slate-500 mt-0.5 truncate max-w-[200px]" title={claim.insured.email}>
+                                  ✉️ {claim.insured.email}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Property & Loss */}
+                            <td className="py-3 px-4 align-top">
+                              <div className="flex items-start gap-1 text-[11px] text-slate-700 max-w-[260px]">
+                                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                                <span className="line-clamp-2">
+                                  {claim.propertyAddress}{claim.city ? `, ${claim.city}` : ''}{claim.state ? `, ${claim.state}` : ''}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                                <span className="text-slate-700 font-semibold">{claim.typeOfLoss}</span>
+                                {claim.dateOfLoss && ` · Pérdida: ${claim.dateOfLoss}`}
+                              </div>
+                            </td>
+
+                            {/* Public Adjuster */}
+                            <td className="py-3 px-4 align-top">
+                              {assignedPa ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span 
+                                    className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                    style={{ backgroundColor: assignedPa.colorCode }}
+                                  />
+                                  <span className="font-semibold text-slate-800 text-[11px]">
+                                    {assignedPa.name}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">No asignado</span>
+                              )}
+                            </td>
+
+                            {/* Event Status */}
+                            <td className="py-3 px-4 align-top">
+                              {hasEvents ? (
+                                <div className="space-y-1.5">
+                                  {relatedEvents.map(ev => (
+                                    <div key={ev.id} className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                                        <Check className="w-3 h-3 text-emerald-600" />
+                                        {ev.eventType}
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 capitalize">
+                                        ({ev.coordinationStage.replace(/^[0-9]+_/, '').replace(/_/g, ' ')})
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-2xs">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                  <span>Sin evento asignado</span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="py-3 px-4 align-top text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {!hasEvents ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedClaim(claim)}
+                                    className="inline-flex items-center gap-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg shadow-xs transition-colors"
+                                    title="Abrir claim para crear inspección / evento"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Asignar Evento</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setViewMode('funnel');
+                                      setSearchQuery(claim.claimNumber);
+                                    }}
+                                    className="p-1.5 text-tealBrand-700 hover:text-tealBrand-900 bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-200 rounded-lg transition-colors"
+                                    title="Ver evento en el Funnel"
+                                  >
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedClaim(claim)}
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-maroon-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-3 py-1.5 rounded-lg transition-colors"
+                                >
+                                  <span>Ver Claim</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : (
+              /* ======================================================== */
+              /* CUADRÍCULA DE TARJETAS (GRID) */
+              /* ======================================================== */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredClaims.map((claim) => {
                   const assignedPa = pas.find(p => p.id === claim.publicAdjusterId);
-                  const relatedEvent = events.find(e => e.claimId === claim.id);
+                  const relatedEvents = events.filter(e => e.claimId === claim.id);
+                  const hasEvents = relatedEvents.length > 0;
+                  const firstEvent = relatedEvents[0];
 
                   return (
                     <div 
                       key={claim.id}
-                      className="bg-white border border-slate-200 hover:border-maroon-700 rounded-xl p-4 space-y-3.5 shadow-xs transition-colors flex flex-col justify-between"
+                      className={`bg-white border rounded-xl p-4 space-y-3.5 shadow-xs transition-colors flex flex-col justify-between ${
+                        !hasEvents 
+                          ? 'border-amber-300 hover:border-amber-500 bg-amber-50/10' 
+                          : 'border-slate-200 hover:border-maroon-700'
+                      }`}
                     >
                       <div className="space-y-3">
                         {/* Header: Claim Number & Status Badge */}
@@ -1270,6 +1553,26 @@ export function App() {
                           </div>
                         </div>
 
+                        {/* Event status indicator */}
+                        {!hasEvents ? (
+                          <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-xs text-amber-900 font-semibold">
+                            <span className="flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              Sin evento asignado
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="p-2 bg-emerald-50/60 border border-emerald-200 rounded-lg flex items-center justify-between text-[11px] text-emerald-800">
+                            <span className="flex items-center gap-1 font-semibold">
+                              <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                              {firstEvent.eventType}
+                            </span>
+                            <span className="text-[10px] text-slate-500 capitalize">
+                              {firstEvent.coordinationStage.replace(/^[0-9]+_/, '').replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                        )}
+
                         {/* Public Adjuster */}
                         {assignedPa && (
                           <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 text-xs">
@@ -1286,14 +1589,25 @@ export function App() {
 
                       {/* Footer Actions */}
                       <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedClaim(claim)}
-                          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800 hover:text-maroon-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 py-2 rounded-lg transition-colors"
-                        >
-                          <span>Claim View & Events</span>
-                        </button>
-                        {relatedEvent && (
+                        {!hasEvents ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedClaim(claim)}
+                            className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 py-2 rounded-lg transition-colors shadow-xs"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Asignar Evento</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedClaim(claim)}
+                            className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800 hover:text-maroon-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 py-2 rounded-lg transition-colors"
+                          >
+                            <span>Claim View & Events</span>
+                          </button>
+                        )}
+                        {hasEvents && (
                           <button
                             type="button"
                             onClick={() => {
