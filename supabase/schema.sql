@@ -281,3 +281,23 @@ CREATE POLICY "Allow public all event_participants" ON public.event_participants
 
 DROP POLICY IF EXISTS "Allow public all coordination_logs" ON public.coordination_logs;
 CREATE POLICY "Allow public all coordination_logs" ON public.coordination_logs FOR ALL USING (true);
+
+-- ==============================================================================
+-- 9. GLOBAL APP SETTINGS (CONFIGURACIONES GLOBALES MULTI-DISPOSITIVO)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.app_settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public all app_settings" ON public.app_settings;
+CREATE POLICY "Allow public all app_settings" ON public.app_settings FOR ALL USING (true);
+
+CREATE OR REPLACE TRIGGER set_updated_at_app_settings 
+BEFORE UPDATE ON public.app_settings 
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+

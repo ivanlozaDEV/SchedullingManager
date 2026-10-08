@@ -12,12 +12,23 @@ import {
   FolderOpen,
   MapPin,
   User,
-  ArrowRight
+  ArrowRight,
+  Calendar,
+  AlertTriangle,
+  Clock,
+  Settings,
+  Pencil,
+  RotateCcw
 } from 'lucide-react';
 import { isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
 import { NewClaimModal } from './components/NewClaimModal';
 import { ClaimDetailView } from './components/ClaimDetailView';
+import { RecordCarrierSlotsModal } from './components/RecordCarrierSlotsModal';
+import { SlaSettingsModal } from './components/SlaSettingsModal';
+import { ResetCoordinationModal } from './components/ResetCoordinationModal';
+import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from './lib/slaUtils';
+import { appSettingsService } from './lib/appSettingsService';
 import type { 
   CoordinationEvent, 
   PublicAdjuster, 
@@ -37,9 +48,39 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isNewClaimOpen, setIsNewClaimOpen] = useState(false);
+  const [isSlaSettingsOpen, setIsSlaSettingsOpen] = useState(false);
+  const [slaConfig, setSlaConfig] = useState<SlaConfig>(getSlaConfig());
   const [viewMode, setViewMode] = useState<'funnel' | 'claims'>('funnel');
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [claimToEdit, setClaimToEdit] = useState<Claim | null>(null);
+  const [filterStalledOnly, setFilterStalledOnly] = useState(false);
+
+  // Sync SLA config changes from settings modal and Supabase database across all devices
+  useEffect(() => {
+    // 1. Fetch latest database settings on load
+    appSettingsService.getSlaConfig().then((fresh) => {
+      setSlaConfig(fresh);
+    });
+
+    // 2. Real-time subscription across all connected computers
+    const unsubRealtime = appSettingsService.subscribeToChanges((key, val) => {
+      if (key === 'sla_config') {
+        setSlaConfig(val);
+      }
+    });
+
+    // 3. Local window updates
+    const handleConfigChange = (e: any) => {
+      if (e.detail) setSlaConfig(e.detail);
+      else setSlaConfig(getSlaConfig());
+    };
+    window.addEventListener('sla_config_updated', handleConfigChange);
+
+    return () => {
+      window.removeEventListener('sla_config_updated', handleConfigChange);
+      unsubRealtime();
+    };
+  }, []);
 
   // Load live data from Supabase
   const loadData = async () => {
@@ -57,7 +98,9 @@ export function App() {
       if (dbPas.length > 0) setPas(dbPas);
       if (dbReps.length > 0) setCarrierReps(dbReps);
       if (dbExternals.length > 0) setExternalActors(dbExternals);
+
       setEvents(dbEvents);
+
       setClaims(dbClaims);
       return dbClaims;
     } catch (err) {
@@ -94,12 +137,79 @@ export function App() {
     setTimeout(() => setCopiedId(null), 2500);
   };
 
+  // Funnel Flow States for Kanban View
+  const [recordingSlotsEvent, setRecordingSlotsEvent] = useState<CoordinationEvent | null>(null);
+  const [paSelectedSlotIds, setPaSelectedSlotIds] = useState<Record<string, string[]>>({});
+  const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
+  const [insuredConfirmingSlotId, setInsuredConfirmingSlotId] = useState<string | null>(null);
+
+  const handleTogglePaSlot = (eventId: string, slotId: string) => {
+    const current = paSelectedSlotIds[eventId] || [];
+    if (current.includes(slotId)) {
+      setPaSelectedSlotIds({
+        ...paSelectedSlotIds,
+        [eventId]: current.filter((id) => id !== slotId),
+      });
+    } else {
+      if (current.length >= 2) return;
+      setPaSelectedSlotIds({
+        ...paSelectedSlotIds,
+        [eventId]: [...current, slotId],
+      });
+    }
+  };
+
+  const handlePaConfirmSlots = async (evt: CoordinationEvent) => {
+    const selected = paSelectedSlotIds[evt.id] || [];
+    if (selected.length !== 2) return;
+    const allSlotIds = (evt.slots || []).map((s) => s.id);
+    setPaConfirmingEventId(evt.id);
+    try {
+      await schedulingService.paSelectSlots(evt.id, selected, allSlotIds);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to confirm PA slots:', err);
+    } finally {
+      setPaConfirmingEventId(null);
+    }
+  };
+
+  const handleInsuredConfirmSlot = async (evt: CoordinationEvent, slot: any) => {
+    setInsuredConfirmingSlotId(slot.id);
+    try {
+      await schedulingService.insuredConfirmSlot(evt.id, slot.id, {
+        date: slot.slotDate,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      });
+      await loadData();
+    } catch (err) {
+      console.error('Failed to lock insured slot:', err);
+    } finally {
+      setInsuredConfirmingSlotId(null);
+    }
+  };
+
+  const [eventToReset, setEventToReset] = useState<CoordinationEvent | null>(null);
+
+  const handleConfirmReset = async (options: { cancelledBy?: string; cancellationReason?: string }) => {
+    if (!eventToReset) return;
+    try {
+      await schedulingService.resetCoordinationEvent(eventToReset.id, options);
+      await loadData();
+      setEventToReset(null);
+    } catch (err: any) {
+      console.error('Failed to reset event:', err);
+      alert('Failed to reset event: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   // Pipeline Stages in English with solid colors
   const stages: { key: CoordinationStage; title: string; desc: string; badgeBg: string; badgeText: string; headerBorder: string }[] = [
     { 
       key: '1_awaiting_carrier_slots', 
-      title: '1. Awaiting Dates', 
-      desc: 'Carrier has not proposed slots yet', 
+      title: '1. Carrier Dates', 
+      desc: 'Carrier offers 3 dates', 
       badgeBg: 'bg-amber-100', 
       badgeText: 'text-amber-800',
       headerBorder: 'border-amber-400'
@@ -107,15 +217,15 @@ export function App() {
     { 
       key: '2_pa_review', 
       title: '2. PA Review', 
-      desc: 'Carrier offered dates, PA must filter', 
+      desc: 'PA picks 2 of 3 dates', 
       badgeBg: 'bg-tealBrand-100', 
       badgeText: 'text-tealBrand-800',
       headerBorder: 'border-tealBrand-500'
     },
     { 
       key: '3_insured_selection', 
-      title: '3. Insured Choice', 
-      desc: 'PA filtered, insured chooses 1 option', 
+      title: '3. Client Choice', 
+      desc: 'Insured picks 1 of 2 dates', 
       badgeBg: 'bg-maroon-100', 
       badgeText: 'text-maroon-800',
       headerBorder: 'border-maroon-700'
@@ -123,7 +233,7 @@ export function App() {
     { 
       key: '4_confirmed', 
       title: '4. Confirmed', 
-      desc: 'Event locked with final date & time', 
+      desc: 'Event locked & scheduled', 
       badgeBg: 'bg-emerald-100', 
       badgeText: 'text-emerald-800',
       headerBorder: 'border-emerald-500'
@@ -132,14 +242,24 @@ export function App() {
 
   const filteredEvents = events.filter(e => {
     const q = searchQuery.toLowerCase();
-    return (
+    const matchesQuery = (
       e.eventType.toLowerCase().includes(q) ||
       e.location.toLowerCase().includes(q) ||
       (e.claim?.claimNumber.toLowerCase().includes(q) ?? false) ||
       (e.claim?.insured?.name.toLowerCase().includes(q) ?? false) ||
       (e.claim?.carrier.toLowerCase().includes(q) ?? false)
     );
+    if (!matchesQuery) return false;
+    if (filterStalledOnly) {
+      const sla = getEventSlaStatus(e, slaConfig);
+      return sla.isStalled;
+    }
+    return true;
   });
+
+  const totalStalledEvents = events.filter(e => getEventSlaStatus(e, slaConfig).isStalled).length;
+  const criticalEventsCount = events.filter(e => getEventSlaStatus(e, slaConfig).alertLevel === 'critical').length;
+  const warningEventsCount = events.filter(e => getEventSlaStatus(e, slaConfig).alertLevel === 'warning').length;
 
   const filteredClaims = claims.filter(c => {
     const q = searchQuery.toLowerCase();
@@ -181,6 +301,15 @@ export function App() {
               className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 transition-colors"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-maroon-800' : ''}`} />
+            </button>
+
+            <button
+              onClick={() => setIsSlaSettingsOpen(true)}
+              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-2xs"
+              title="Configure SLA warning and critical bottleneck hours"
+            >
+              <Settings className="w-3.5 h-3.5 text-slate-600" />
+              <span>SLA Settings</span>
             </button>
 
             <button 
@@ -268,149 +397,787 @@ export function App() {
         {/* VIEW 1: INSPECTION COORDINATION FUNNEL (KANBAN) */}
         {/* ======================================================== */}
         {viewMode === 'funnel' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {stages.map((stage) => {
-              const stageEvents = filteredEvents.filter(e => e.coordinationStage === stage.key);
-              return (
-                <div 
-                  key={stage.key} 
-                  className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-col space-y-3 shadow-xs"
-                >
-                  {/* Column Header */}
-                  <div className={`flex items-center justify-between border-b pb-2.5 border-slate-200 border-t-2 ${stage.headerBorder} pt-2`}>
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">{stage.title}</h3>
-                      <p className="text-[11px] text-slate-500 truncate max-w-[170px]">{stage.desc}</p>
-                    </div>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${stage.badgeBg} ${stage.badgeText}`}>
-                      {stageEvents.length}
+          <div className="space-y-4">
+            {/* SLA Aging & Reminder Notification Bar */}
+            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${
+                  criticalEventsCount > 0
+                    ? 'bg-red-100 text-red-700'
+                    : warningEventsCount > 0
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  {criticalEventsCount > 0 ? (
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                  ) : warningEventsCount > 0 ? (
+                    <Clock className="w-5 h-5 text-amber-600" />
+                  ) : (
+                    <Clock className="w-5 h-5 text-emerald-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-slate-900">
+                      Funnel SLA & Aging Reminder System
                     </span>
-                  </div>
-
-                  {/* Cards List */}
-                  <div className="space-y-3 flex-1 overflow-y-auto">
-                    {stageEvents.length === 0 ? (
-                      <div className="p-6 rounded-lg border border-dashed border-slate-200 text-center text-xs text-slate-400 bg-slate-50">
-                        No events in this stage
-                      </div>
-                    ) : (
-                      stageEvents.map((evt) => {
-                        const paParticipant = evt.participants?.find(p => p.participantType === 'public_adjuster');
-                        const carrierParticipant = evt.participants?.find(p => p.participantType === 'carrier_representative');
-                        const externalParticipant = evt.participants?.find(p => p.participantType === 'external_actor');
-                        const messageText = generateInsuredMessage(evt);
-
-                        return (
-                          <div 
-                            key={evt.id} 
-                            className="bg-white border border-slate-300 hover:border-maroon-700 rounded-xl p-3.5 space-y-3 shadow-xs transition-colors"
-                          >
-                            {/* Top: Claim # & Carrier */}
-                            <div>
-                              <div className="flex items-center justify-between gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (evt.claim) {
-                                      const full = claims.find(c => c.id === evt.claimId) || evt.claim;
-                                      setSelectedClaim(full);
-                                    }
-                                  }}
-                                  className="text-[11px] font-mono text-maroon-800 font-bold hover:underline cursor-pointer text-left"
-                                  title="Click to view full claim details & all events"
-                                >
-                                  {evt.claim?.claimNumber}
-                                </button>
-                                <span className="text-[10px] px-2 py-0.5 rounded bg-tealBrand-50 text-tealBrand-800 font-semibold border border-tealBrand-200 truncate max-w-[130px]">
-                                  {evt.claim?.carrier}
-                                </span>
-                              </div>
-                              <h4 className="text-xs font-bold text-slate-900 mt-1.5 leading-snug">{evt.eventType}</h4>
-                            </div>
-
-                            {/* Insured Info & General Availability */}
-                            {evt.claim?.insured && (
-                              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs space-y-1">
-                                <div className="flex items-center justify-between text-slate-800">
-                                  <span className="font-semibold">{evt.claim.insured.name}</span>
-                                  {evt.claim.insured.phone && (
-                                    <a href={`tel:${evt.claim.insured.phone}`} className="text-tealBrand-600 hover:text-tealBrand-800 flex items-center gap-1 font-mono text-[11px]">
-                                      <Phone className="w-3 h-3" />
-                                      <span>{evt.claim.insured.phone}</span>
-                                    </a>
-                                  )}
-                                </div>
-                                <p className="text-[11px] text-slate-600 leading-tight">
-                                  📅 <strong>Availability:</strong> {evt.claim.insured.generalAvailability || 'Not recorded'}
-                                </p>
-                              </div>
-                            )}
-
-                            {/* Location */}
-                            <div className="text-[11px] text-slate-500 flex items-start space-x-1.5">
-                              <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400 mt-0.5" />
-                              <span className="line-clamp-2 leading-relaxed">{evt.location}</span>
-                            </div>
-
-                            {/* Actors Badges */}
-                            <div className="flex flex-wrap gap-1.5 pt-1 border-t border-slate-100">
-                              {paParticipant?.publicAdjuster ? (
-                                <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1.5 border border-slate-200">
-                                  <span 
-                                    className="w-2 h-2 rounded-full shrink-0" 
-                                    style={{ backgroundColor: paParticipant.publicAdjuster.colorCode }}
-                                  />
-                                  <span>PA: {paParticipant.publicAdjuster.name}</span>
-                                </span>
-                              ) : (
-                                <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-medium">
-                                  No PA assigned
-                                </span>
-                              )}
-
-                              {carrierParticipant?.carrierRep && (
-                                <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium border border-slate-200">
-                                  Rep: {carrierParticipant.carrierRep.name}
-                                </span>
-                              )}
-
-                              {externalParticipant?.externalActor && (
-                                <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium border border-slate-200">
-                                  Ext: {externalParticipant.externalActor.name}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Message Generator & Actions */}
-                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                              <button
-                                onClick={() => copyToClipboard(messageText, evt.id)}
-                                className="flex-1 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 py-1.5 px-2 rounded-lg transition-colors"
-                              >
-                                {copiedId === evt.id ? <Check className="w-3.5 h-3.5 text-tealBrand-700" /> : <Copy className="w-3.5 h-3.5" />}
-                                <span>{copiedId === evt.id ? 'Copied!' : 'Copy Message'}</span>
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  const phone = evt.claim?.insured?.phone?.replace(/\D/g, '');
-                                  if (phone) window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(messageText)}`, '_blank');
-                                }}
-                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 transition-colors"
-                                title="Open WhatsApp directly"
-                              >
-                                <Send className="w-3.5 h-3.5 text-tealBrand-700" />
-                              </button>
-                            </div>
-
-                          </div>
-                        );
-                      })
+                    {criticalEventsCount > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200">
+                        🚨 {criticalEventsCount} Stalled Bottlenecks
+                      </span>
+                    )}
+                    {warningEventsCount > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                        ⚠️ {warningEventsCount} Follow-up Needed
+                      </span>
+                    )}
+                    {totalStalledEvents === 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        ✓ All Active Funnels on Track
+                      </span>
                     )}
                   </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Timers run continuously upon claim intake. When actors do not respond, call directly via Nextiva or select manual options.
+                  </p>
                 </div>
-              );
-            })}
+              </div>
+
+              {/* Filter & Configure SLA Buttons */}
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsSlaSettingsOpen(true)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1.5 shadow-2xs"
+                  title="Adjust SLA warning and bottleneck thresholds"
+                >
+                  <Settings className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Configure SLA</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterStalledOnly(!filterStalledOnly)}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 shadow-xs ${
+                    filterStalledOnly
+                      ? 'bg-amber-700 text-white border-amber-700'
+                      : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-300'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>{filterStalledOnly ? 'Showing Stalled Only' : `Filter Bottlenecks (${totalStalledEvents})`}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Grid of 4 Stages */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {stages.map((stage) => {
+                let stageEvents: CoordinationEvent[] = [];
+                if (stage.key === '1_awaiting_carrier_slots') {
+                  // Stage 1: All claims/events start here; keep in history once advanced
+                  stageEvents = filteredEvents;
+                } else if (stage.key === '2_pa_review') {
+                  // Stage 2: Claims that have reached or passed PA review
+                  stageEvents = filteredEvents.filter(e => 
+                    e.coordinationStage === '2_pa_review' || 
+                    e.coordinationStage === '3_insured_selection' || 
+                    e.coordinationStage === '4_confirmed'
+                  );
+                } else if (stage.key === '3_insured_selection') {
+                  // Stage 3: Claims that have reached or passed Insured Selection
+                  stageEvents = filteredEvents.filter(e => 
+                    e.coordinationStage === '3_insured_selection' || 
+                    e.coordinationStage === '4_confirmed'
+                  );
+                } else if (stage.key === '4_confirmed') {
+                  // Stage 4: Confirmed scheduled appointments
+                  stageEvents = filteredEvents.filter(e => e.coordinationStage === '4_confirmed');
+                }
+
+                // Sort: active events in this stage on top, then historical completed events
+                stageEvents = [...stageEvents].sort((a, b) => {
+                  const aActive = a.coordinationStage === stage.key ? 0 : 1;
+                  const bActive = b.coordinationStage === stage.key ? 0 : 1;
+                  if (aActive !== bActive) return aActive - bActive;
+                  return (a.claim?.claimNumber || '').localeCompare(b.claim?.claimNumber || '');
+                });
+
+                // Active vs Historical counts
+                const activeCount = stageEvents.filter(e => e.coordinationStage === stage.key).length;
+                const historicalCount = stageEvents.filter(e => e.coordinationStage !== stage.key).length;
+
+                // Overdue alert count only considers events actively pending in this stage
+                const stageStalledCount = stageEvents.filter(e => e.coordinationStage === stage.key && getEventSlaStatus(e, slaConfig).isStalled).length;
+
+                return (
+                  <div 
+                    key={stage.key} 
+                    className="bg-white border border-slate-200 rounded-xl p-3.5 flex flex-col space-y-3 shadow-xs"
+                  >
+                    {/* Column Header */}
+                    <div className={`flex items-center justify-between border-b pb-2.5 border-slate-200 border-t-2 ${stage.headerBorder} pt-2`}>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">{stage.title}</h3>
+                          {stageStalledCount > 0 && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-red-100 text-red-800 border border-red-200" title={`${stageStalledCount} overdue in this stage`}>
+                              ⚠️ {stageStalledCount}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 truncate max-w-[170px]">{stage.desc}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span 
+                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${stage.badgeBg} ${stage.badgeText}`}
+                          title={`${activeCount} active tasks in this stage`}
+                        >
+                          {activeCount}
+                        </span>
+                        {historicalCount > 0 && (
+                          <span 
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200"
+                            title={`${historicalCount} claims completed through this stage (visible as history)`}
+                          >
+                            {historicalCount} hist
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Cards List */}
+                    <div className="space-y-3 flex-1 overflow-y-auto">
+                      {stageEvents.length === 0 ? (
+                        <div className="p-6 rounded-lg border border-dashed border-slate-200 text-center text-xs text-slate-400 bg-slate-50">
+                          No events in this stage
+                        </div>
+                      ) : (
+                        stageEvents.map((evt) => {
+                          const paParticipant = evt.participants?.find(p => p.participantType === 'public_adjuster');
+                          const carrierParticipant = evt.participants?.find(p => p.participantType === 'carrier_representative');
+                          const externalParticipant = evt.participants?.find(p => p.participantType === 'external_actor');
+                          const adjusterPhone = carrierParticipant?.carrierRep?.phone;
+                          const paPhone = paParticipant?.publicAdjuster?.phone;
+                          const insuredPhone = evt.claim?.insured?.phone;
+                          const sla = getEventSlaStatus(evt, slaConfig);
+                          const messageText = generateInsuredMessage(evt);
+                          const isHistorical = evt.coordinationStage !== stage.key;
+
+                          return (
+                            <div 
+                              key={`${stage.key}-${evt.id}`} 
+                              className={`border rounded-xl p-3.5 flex flex-col justify-between h-[570px] min-h-[570px] shadow-xs transition-colors ${
+                                isHistorical
+                                  ? 'bg-slate-50/75 border-slate-200 hover:bg-white hover:border-slate-300'
+                                  : sla.alertLevel === 'critical'
+                                  ? 'bg-white border-red-400 border-l-4 border-l-red-600 hover:border-red-500'
+                                  : sla.alertLevel === 'warning'
+                                  ? 'bg-white border-amber-400 border-l-4 border-l-amber-500 hover:border-amber-500'
+                                  : 'bg-white border-slate-300 hover:border-maroon-700'
+                              }`}
+                            >
+                              {/* 1. TOP METADATA BLOCK (Aligned across columns) */}
+                              <div className="space-y-2.5">
+                                {/* Claim #, Carrier & SLA / Historical Badge */}
+                                <div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (evt.claim) {
+                                          const full = claims.find(c => c.id === evt.claimId) || evt.claim;
+                                          setSelectedClaim(full);
+                                        }
+                                      }}
+                                      className="text-[11px] font-mono text-maroon-800 font-bold hover:underline cursor-pointer text-left"
+                                      title="Click to view full claim details & all events"
+                                    >
+                                      {evt.claim?.claimNumber}
+                                    </button>
+
+                                    <div className="flex items-center gap-1">
+                                      {/* Status Badge: Muted/off badge for historical completed stages, SLA timer for active */}
+                                      {isHistorical ? (
+                                        <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-200/80 text-slate-700 border border-slate-300 flex items-center gap-1" title="Completed step in history">
+                                          ✓ {stage.key === '1_awaiting_carrier_slots' ? 'Dates Offered' : stage.key === '2_pa_review' ? 'PA Approved' : 'Client Chosen'}
+                                        </span>
+                                      ) : sla.alertLevel === 'critical' ? (
+                                        <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-red-100 text-red-800 border border-red-200 flex items-center gap-1 shadow-2xs">
+                                          <AlertTriangle className="w-3 h-3 text-red-600" />
+                                          <span>STALLED: {sla.timeLabel}</span>
+                                        </span>
+                                      ) : sla.alertLevel === 'warning' ? (
+                                        <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                          <Clock className="w-3 h-3 text-amber-600" />
+                                          <span>OVERDUE: {sla.timeLabel}</span>
+                                        </span>
+                                      ) : evt.coordinationStage !== '4_confirmed' ? (
+                                        <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1" title="Time elapsed in this stage">
+                                          <Clock className="w-3 h-3 text-slate-400" />
+                                          <span>⏱️ {sla.timeLabel}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                          ✓ Confirmed
+                                        </span>
+                                      )}
+
+                                      {/* Reset / Cancel Flow button */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEventToReset(evt);
+                                        }}
+                                        className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
+                                        title="Reset flow / Cancel (returns to Stage 1)"
+                                      >
+                                        <RotateCcw className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between mt-1">
+                                    <h4 className="text-xs font-bold text-slate-900 leading-snug">{evt.eventType}</h4>
+                                    <span className="text-[10px] px-2 py-0.5 rounded bg-tealBrand-50 text-tealBrand-800 font-semibold border border-tealBrand-200 truncate max-w-[130px]">
+                                      {evt.claim?.carrier}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Visual Bottleneck Alert Box if Stalled or Warning (Only when actively in this stage) */}
+                                {!isHistorical && sla.isStalled && (
+                                  <div className={`p-2 rounded-lg border text-xs space-y-1 ${
+                                    sla.alertLevel === 'critical'
+                                      ? 'bg-red-50 border-red-200 text-red-950'
+                                      : 'bg-amber-50 border-amber-200 text-amber-950'
+                                  }`}>
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                      <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${sla.alertLevel === 'critical' ? 'text-red-600' : 'text-amber-600'}`} />
+                                      <span className="line-clamp-1">{sla.alertMessage}</span>
+                                    </div>
+                                    <p className="text-[11px] opacity-90 leading-tight">
+                                      💡 {sla.actionRecommendation}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Insured Info & General Availability */}
+                                {evt.claim?.insured && (
+                                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs space-y-1 min-h-[58px]">
+                                    <div className="flex items-center justify-between text-slate-800">
+                                      <span className="font-semibold">{evt.claim.insured.name}</span>
+                                      {evt.claim.insured.phone && (
+                                        <a 
+                                          href={getNextivaTelUri(evt.claim.insured.phone) || `tel:${evt.claim.insured.phone}`} 
+                                          className="text-tealBrand-600 hover:text-tealBrand-800 flex items-center gap-1 font-mono text-[11px]"
+                                          title="Click to call via Nextiva"
+                                        >
+                                          <Phone className="w-3 h-3" />
+                                          <span>{formatPhoneNumber(evt.claim.insured.phone)}</span>
+                                        </a>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 leading-tight line-clamp-1">
+                                      📅 <strong>Availability:</strong> {evt.claim.insured.generalAvailability || 'Not recorded'}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Location */}
+                                <div className="text-[11px] text-slate-500 flex items-start space-x-1.5 h-7">
+                                  <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400 mt-0.5" />
+                                  <span className="line-clamp-2 leading-relaxed">{evt.location}</span>
+                                </div>
+
+                                {/* Actors Badges */}
+                                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-slate-100 min-h-[26px]">
+                                  {paParticipant?.publicAdjuster ? (
+                                    <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1.5 border border-slate-200">
+                                      <span 
+                                        className="w-2 h-2 rounded-full shrink-0" 
+                                        style={{ backgroundColor: paParticipant.publicAdjuster.colorCode }}
+                                      />
+                                      <span>PA: {paParticipant.publicAdjuster.name}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-medium">
+                                      No PA assigned
+                                    </span>
+                                  )}
+
+                                  {carrierParticipant?.carrierRep && (
+                                    <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium border border-slate-200">
+                                      Rep: {carrierParticipant.carrierRep.name}
+                                    </span>
+                                  )}
+
+                                  {externalParticipant?.externalActor && (
+                                    <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium border border-slate-200">
+                                      Ext: {externalParticipant.externalActor.name}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 2. WORKFLOW & ACTIONS BLOCK (Equally Sized Across Columns) */}
+                              <div className="pt-2.5 border-t border-slate-100 flex flex-col justify-between flex-1 mt-2">
+                                {/* Stage 1: Awaiting Carrier Slots OR Historical Dates */}
+                                {stage.key === '1_awaiting_carrier_slots' && (
+                                  <div className="flex flex-col justify-between flex-1">
+                                    {isHistorical || (evt.slots && evt.slots.length > 0) ? (
+                                      <>
+                                        <div className="space-y-2">
+                                          {/* Slot Header */}
+                                          <div className="flex items-center justify-between text-[11px] min-h-[22px]">
+                                            <span className="font-bold text-slate-700">Carrier Offered 3 Dates:</span>
+                                            <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                                              isHistorical 
+                                                ? 'text-slate-600 bg-slate-100 border-slate-300' 
+                                                : 'text-tealBrand-800 bg-tealBrand-50 border-tealBrand-200'
+                                            }`}>
+                                              {isHistorical ? '✓ Passed' : '3 / 3'}
+                                            </span>
+                                          </div>
+
+                                          {/* 3 Slots (Standardized min-h-[46px]) */}
+                                          <div className="space-y-1.5 min-h-[150px]">
+                                            {(evt.slots || []).map((s, idx) => (
+                                              <div 
+                                                key={s.id || idx} 
+                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between min-h-[46px] ${
+                                                  isHistorical ? 'border-slate-200 bg-white/70 text-slate-700' : 'border-slate-200 bg-slate-50 text-slate-800'
+                                                }`}
+                                              >
+                                                <div>
+                                                  <span className="font-semibold block">📅 {s.slotDate}</span>
+                                                  <span className="text-slate-500 font-mono text-[10px] block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-tealBrand-700 bg-tealBrand-50 px-2 py-0.5 rounded border border-tealBrand-200">
+                                                  Opt #{idx + 1}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {/* Action Buttons Pinned at Bottom */}
+                                        <div className="space-y-1.5 pt-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => setRecordingSlotsEvent(evt)}
+                                            className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 h-9 ${
+                                              isHistorical
+                                                ? 'bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 shadow-2xs font-semibold'
+                                                : 'bg-tealBrand-800 hover:bg-tealBrand-900 text-white shadow-xs'
+                                            }`}
+                                            title="Click to modify or edit the dates provided by the carrier"
+                                          >
+                                            <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                                            <span>Modify Carrier Dates</span>
+                                          </button>
+
+                                          {adjusterPhone ? (
+                                            <a
+                                              href={getNextivaTelUri(adjusterPhone) || '#'}
+                                              className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
+                                              title={`Call adjuster ${formatPhoneNumber(adjusterPhone)} via Nextiva`}
+                                            >
+                                              <Phone className="w-3.5 h-3.5 text-tealBrand-800" />
+                                              <span>Call Adjuster (Nextiva)</span>
+                                            </a>
+                                          ) : (
+                                            <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic">
+                                              No adjuster phone on file
+                                            </div>
+                                          )}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div className="space-y-2">
+                                          {/* Slot Header */}
+                                          <div className="flex items-center justify-between text-[11px] min-h-[22px]">
+                                            <span className="font-bold text-amber-800">Awaiting Carrier Dates</span>
+                                            <span className="font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                              0 / 3
+                                            </span>
+                                          </div>
+
+                                          {/* 3 Placeholder slots (Standardized min-h-[46px]) */}
+                                          <div className="space-y-1.5 min-h-[150px]">
+                                            {[1, 2, 3].map((optNum) => (
+                                              <div 
+                                                key={optNum} 
+                                                className="p-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/30 text-xs flex items-center justify-between min-h-[46px]"
+                                              >
+                                                <div>
+                                                  <span className="font-medium text-amber-900 block">Option #{optNum}</span>
+                                                  <span className="text-[10px] text-amber-600 block">Pending date from carrier</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-amber-700 bg-white px-2 py-0.5 rounded border border-amber-200">
+                                                  Pending
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {/* Action Buttons Pinned at Bottom */}
+                                        <div className="space-y-1.5 pt-3">
+                                          <button
+                                            type="button"
+                                            onClick={() => setRecordingSlotsEvent(evt)}
+                                            className="w-full bg-maroon-800 hover:bg-maroon-900 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs h-9"
+                                          >
+                                            <Calendar className="w-3.5 h-3.5" />
+                                            <span>+ Record 3 Dates Offered</span>
+                                          </button>
+
+                                          {adjusterPhone ? (
+                                            <a
+                                              href={getNextivaTelUri(adjusterPhone) || '#'}
+                                              className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
+                                              title={`Call adjuster ${formatPhoneNumber(adjusterPhone)} via Nextiva`}
+                                            >
+                                              <Phone className="w-3.5 h-3.5 text-maroon-800" />
+                                              <span>Call Adjuster (Nextiva)</span>
+                                            </a>
+                                          ) : (
+                                            <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic">
+                                              No adjuster phone on file
+                                            </div>
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Stage 2: PA Review (Pick 2 of 3) */}
+                                {stage.key === '2_pa_review' && (
+                                  <div className="flex flex-col justify-between flex-1">
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between text-[11px] min-h-[22px]">
+                                        <span className="font-bold text-slate-700">
+                                          {isHistorical ? 'PA Selected 2 Options:' : 'PA: Select 2 options'}
+                                        </span>
+                                        <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                                          isHistorical 
+                                            ? 'text-slate-600 bg-slate-100 border-slate-300' 
+                                            : 'text-tealBrand-800 bg-tealBrand-50 border-tealBrand-200'
+                                        }`}>
+                                          {isHistorical ? '✓ 2 / 2' : `${(paSelectedSlotIds[evt.id] || []).length} / 2`}
+                                        </span>
+                                      </div>
+
+                                      <div className="space-y-1.5 min-h-[150px]">
+                                        {isHistorical ? (
+                                          (evt.slots || []).map((s) => {
+                                            const isApproved = s.status === 'pa_accepted' || s.status === 'insured_chosen';
+                                            return (
+                                              <div
+                                                key={s.id}
+                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between min-h-[46px] ${
+                                                  isApproved
+                                                    ? 'bg-tealBrand-50/40 border-tealBrand-300 text-tealBrand-950 font-semibold'
+                                                    : 'bg-white/50 border-slate-200 text-slate-400 opacity-60'
+                                                }`}
+                                              >
+                                                <div>
+                                                  <span className="block font-semibold">📅 {s.slotDate}</span>
+                                                  <span className="text-[10px] font-mono block opacity-80">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                </div>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                                  isApproved ? 'bg-white text-tealBrand-800 border-tealBrand-200' : 'bg-slate-100 text-slate-400 border-slate-200'
+                                                }`}>
+                                                  {isApproved ? '✓ PA Picked' : 'Excluded'}
+                                                </span>
+                                              </div>
+                                            );
+                                          })
+                                        ) : (
+                                          (evt.slots || []).map((s) => {
+                                            const isSelected = (paSelectedSlotIds[evt.id] || []).includes(s.id);
+                                            return (
+                                              <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => handleTogglePaSlot(evt.id, s.id)}
+                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between transition-all min-h-[46px] ${
+                                                  isSelected
+                                                    ? 'bg-tealBrand-50 border-tealBrand-600 text-tealBrand-950 font-bold'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                                                }`}
+                                              >
+                                                <div>
+                                                  <span className="block font-semibold">📅 {s.slotDate}</span>
+                                                  <span className="text-[10px] text-slate-500 block font-mono">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                </div>
+                                                <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] font-bold ${
+                                                  isSelected ? 'bg-tealBrand-800 border-tealBrand-800 text-white' : 'border-slate-300 bg-white'
+                                                }`}>
+                                                  {isSelected ? '✓' : ''}
+                                                </span>
+                                              </button>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-1.5 pt-3">
+                                      {isHistorical ? (
+                                        <div className="h-9 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
+                                          <Check className="w-3.5 h-3.5 text-tealBrand-700" />
+                                          <span>Forwarded to Client ✓</span>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={(paSelectedSlotIds[evt.id] || []).length !== 2 || paConfirmingEventId === evt.id}
+                                          onClick={() => handlePaConfirmSlots(evt)}
+                                          className="w-full bg-tealBrand-800 hover:bg-tealBrand-900 disabled:opacity-40 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors shadow-xs h-9 flex items-center justify-center gap-1.5"
+                                        >
+                                          <span>{paConfirmingEventId === evt.id ? 'Saving...' : 'Confirm 2 & Send to Client ➔'}</span>
+                                        </button>
+                                      )}
+
+                                      <div className="flex items-center gap-1.5 h-8">
+                                        <button
+                                          type="button"
+                                          onClick={() => setRecordingSlotsEvent(evt)}
+                                          className="flex-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
+                                          title="Modify or update the 3 dates offered by the carrier"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                                          <span>Modify Dates</span>
+                                        </button>
+
+                                        {paPhone ? (
+                                          <a
+                                            href={getNextivaTelUri(paPhone) || '#'}
+                                            className="flex-1 bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
+                                            title={`Call PA ${formatPhoneNumber(paPhone)} via Nextiva`}
+                                          >
+                                            <Phone className="w-3.5 h-3.5 text-tealBrand-700" />
+                                            <span>Call PA</span>
+                                          </a>
+                                        ) : (
+                                          <div className="flex-1 h-8 flex items-center justify-center text-[10px] text-slate-400 italic">
+                                            No PA phone
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Stage 3: Insured Selection (Pick 1 of 2) */}
+                                {stage.key === '3_insured_selection' && (
+                                  <div className="flex flex-col justify-between flex-1">
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between text-[11px] min-h-[22px]">
+                                        <span className="font-bold text-slate-700">
+                                          {isHistorical ? 'Client Selected Option:' : 'Client must pick 1 option:'}
+                                        </span>
+                                        <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                                          isHistorical 
+                                            ? 'text-emerald-800 bg-emerald-50 border-emerald-200' 
+                                            : 'text-purple-800 bg-purple-50 border-purple-200'
+                                        }`}>
+                                          {isHistorical ? '✓ Confirmed' : '1 of 2'}
+                                        </span>
+                                      </div>
+
+                                      <div className="space-y-1.5 min-h-[150px]">
+                                        {isHistorical ? (
+                                          (evt.slots || []).map((s) => {
+                                            const isChosen = s.slotDate === evt.finalDate || s.status === 'insured_chosen';
+                                            return (
+                                              <div
+                                                key={s.id}
+                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1 min-h-[46px] ${
+                                                  isChosen
+                                                    ? 'border-emerald-400 bg-emerald-50/70 text-emerald-950 font-bold'
+                                                    : 'border-slate-200 bg-white/50 text-slate-400 opacity-60'
+                                                }`}
+                                              >
+                                                <div>
+                                                  <span className="block font-semibold">📅 {s.slotDate}</span>
+                                                  <span className="text-[10px] font-mono block opacity-80">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                </div>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                                  isChosen ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-100 text-slate-400 border-slate-200'
+                                                }`}>
+                                                  {isChosen ? '✓ Client Picked' : 'Not chosen'}
+                                                </span>
+                                              </div>
+                                            );
+                                          })
+                                        ) : (
+                                          <>
+                                            {(evt.slots || [])
+                                              .filter((s) => s.status === 'pa_accepted' || s.status === 'proposed')
+                                              .map((s) => (
+                                                <div
+                                                  key={s.id}
+                                                  className="p-2 rounded-lg border border-tealBrand-300 bg-tealBrand-50/70 text-xs flex items-center justify-between gap-1 min-h-[46px]"
+                                                >
+                                                  <div>
+                                                    <span className="font-bold text-slate-900 block">📅 {s.slotDate}</span>
+                                                    <span className="text-[10px] text-slate-600 font-mono block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                  </div>
+                                                  <button
+                                                    type="button"
+                                                    disabled={insuredConfirmingSlotId === s.id}
+                                                    onClick={() => handleInsuredConfirmSlot(evt, s)}
+                                                    className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-xs shrink-0"
+                                                  >
+                                                    {insuredConfirmingSlotId === s.id ? '...' : 'Client Picked ➔'}
+                                                  </button>
+                                                </div>
+                                              ))}
+
+                                            {(evt.slots || [])
+                                              .filter((s) => s.status === 'pa_rejected' || s.status === 'discarded')
+                                              .map((s) => (
+                                                <div
+                                                  key={s.id}
+                                                  className="p-2 rounded-lg border border-slate-200 bg-slate-50/50 text-xs flex items-center justify-between gap-1 min-h-[46px] opacity-60"
+                                                  title="Option was not selected by PA"
+                                                >
+                                                  <div>
+                                                    <span className="font-medium text-slate-500 block">📅 {s.slotDate}</span>
+                                                    <span className="text-[10px] text-slate-400 font-mono block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                  </div>
+                                                  <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                    Not chosen by PA
+                                                  </span>
+                                                </div>
+                                              ))}
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-1.5 pt-3">
+                                      {isHistorical ? (
+                                        <div className="h-9 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
+                                          <Check className="w-3.5 h-3.5 text-emerald-700" />
+                                          <span>Client Confirmed & Locked ✓</span>
+                                        </div>
+                                      ) : (
+                                        insuredPhone ? (
+                                          <a
+                                            href={getNextivaTelUri(insuredPhone) || '#'}
+                                            className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-9"
+                                            title={`Call Insured ${formatPhoneNumber(insuredPhone)} via Nextiva`}
+                                          >
+                                            <Phone className="w-3.5 h-3.5 text-tealBrand-700" />
+                                            <span>Call Insured (Nextiva)</span>
+                                          </a>
+                                        ) : (
+                                          <div className="h-9 flex items-center justify-center text-[10px] text-slate-400 italic">
+                                            No client phone on file
+                                          </div>
+                                        )
+                                      )}
+
+                                      {/* Message Generator & Actions */}
+                                      <div className="flex items-center gap-1.5 h-8">
+                                        {isHistorical && insuredPhone ? (
+                                          <a
+                                            href={getNextivaTelUri(insuredPhone) || '#'}
+                                            className="w-full bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
+                                            title={`Call Insured ${formatPhoneNumber(insuredPhone)} via Nextiva`}
+                                          >
+                                            <Phone className="w-3.5 h-3.5 text-slate-500" />
+                                            <span>Call Insured (Nextiva)</span>
+                                          </a>
+                                        ) : (
+                                          <>
+                                            <button
+                                              onClick={() => copyToClipboard(messageText, evt.id)}
+                                              className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 py-1 px-2 rounded-lg transition-colors h-8"
+                                            >
+                                              {copiedId === evt.id ? <Check className="w-3.5 h-3.5 text-tealBrand-700" /> : <Copy className="w-3.5 h-3.5" />}
+                                              <span>{copiedId === evt.id ? 'Copied!' : 'Copy Msg'}</span>
+                                            </button>
+
+                                            <button
+                                              onClick={() => {
+                                                const phone = evt.claim?.insured?.phone?.replace(/\D/g, '');
+                                                if (phone) window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(messageText)}`, '_blank');
+                                              }}
+                                              className="h-8 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 transition-colors flex items-center justify-center"
+                                              title="Open WhatsApp directly"
+                                            >
+                                              <Send className="w-3.5 h-3.5 text-tealBrand-700" />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Stage 4: Confirmed */}
+                                {stage.key === '4_confirmed' && (
+                                  <div className="flex flex-col justify-between flex-1">
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between text-[11px] min-h-[22px]">
+                                        <span className="font-bold text-emerald-800">Inspection Scheduled</span>
+                                        <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                          ✓ Locked
+                                        </span>
+                                      </div>
+
+                                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1 min-h-[150px] flex flex-col justify-center">
+                                        <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
+                                          <Check className="w-4 h-4 text-emerald-600" />
+                                          <span>Confirmed Appointment</span>
+                                        </div>
+                                        <p className="text-[12px] text-emerald-800 font-bold pl-5.5">
+                                          📅 {evt.finalDate}
+                                        </p>
+                                        <p className="text-[11px] text-slate-600 font-mono pl-5.5">
+                                          ⏰ {evt.finalStartTime?.slice(0, 5)} - {evt.finalEndTime?.slice(0, 5)}
+                                        </p>
+                                        <p className="text-[10px] text-emerald-700 pl-5.5 pt-1 font-medium">
+                                          All parties locked & verified
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-1.5 pt-3">
+                                      <div className="h-9 w-full bg-emerald-700 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 shadow-xs">
+                                        <Check className="w-4 h-4" />
+                                        <span>Inspection Scheduled ✓</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEventToReset(evt)}
+                                        className="w-full h-8 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                        title="Cancel inspection and reset flow back to Stage 1"
+                                      >
+                                        <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+                                        <span>Cancel / Reset Flow</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -568,6 +1335,38 @@ export function App() {
           }
         }}
       />
+
+      {/* Record Carrier Proposed Dates Modal (Funnel Step 1) */}
+      {recordingSlotsEvent && (
+        <RecordCarrierSlotsModal
+          isOpen={Boolean(recordingSlotsEvent)}
+          onClose={() => setRecordingSlotsEvent(null)}
+          event={recordingSlotsEvent}
+          claim={
+            claims.find((c) => c.id === recordingSlotsEvent.claimId) ||
+            recordingSlotsEvent.claim ||
+            ({ claimNumber: 'Unknown', carrier: 'Carrier' } as any)
+          }
+          onSaved={loadData}
+        />
+      )}
+
+      {/* SLA Thresholds Settings Modal */}
+      <SlaSettingsModal
+        isOpen={isSlaSettingsOpen}
+        onClose={() => setIsSlaSettingsOpen(false)}
+        onSaved={(newCfg) => setSlaConfig(newCfg)}
+      />
+
+      {/* Reset Coordination Flow Modal */}
+      {eventToReset && (
+        <ResetCoordinationModal
+          event={eventToReset}
+          isOpen={Boolean(eventToReset)}
+          onClose={() => setEventToReset(null)}
+          onConfirm={handleConfirmReset}
+        />
+      )}
     </div>
   );
 }

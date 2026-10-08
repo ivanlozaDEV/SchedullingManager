@@ -12,6 +12,7 @@ import {
   Scale
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
+import { appSettingsService } from '../lib/appSettingsService';
 import type { Insured, PublicAdjuster, CarrierRepresentative, ExternalActor, Claim } from '../types';
 
 const DEFAULT_CARRIERS = [
@@ -189,7 +190,8 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
       schedulingService.getCarrierReps(),
       schedulingService.getExternalActors(),
       schedulingService.getUniqueCarriers(),
-    ]).then(([insureds, pas, reps, externals, dbCarriers]) => {
+      appSettingsService.getCustomCarriers(),
+    ]).then(([insureds, pas, reps, externals, dbCarriers, customDbCarriers]) => {
       setExistingInsureds(insureds);
       setExistingPas(pas);
       setExistingCarrierReps(reps);
@@ -212,7 +214,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
         }
       }
 
-      const mergedCarriers = Array.from(new Set([...DEFAULT_CARRIERS, ...savedCarriers, ...dbCarriers, claimToEdit?.carrier].filter(Boolean)))
+      const mergedCarriers = Array.from(new Set([...DEFAULT_CARRIERS, ...customDbCarriers, ...savedCarriers, ...dbCarriers, claimToEdit?.carrier].filter(Boolean)))
         .sort((a, b) => (a as string).localeCompare(b as string)) as string[];
       setAvailableCarriers(mergedCarriers);
     }).catch(console.error);
@@ -276,10 +278,11 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
           throw new Error('Please enter the name of the insurance carrier');
         }
         finalCarrier = trimmed;
-        // Permanently persist new carrier
+        // Permanently persist new carrier to database and local cache
         const updated = Array.from(new Set([...availableCarriers, finalCarrier])).sort((a, b) => a.localeCompare(b));
         setAvailableCarriers(updated);
         setCarrier(finalCarrier);
+        appSettingsService.addCustomCarrier(finalCarrier).catch(console.warn);
         try {
           const currentSaved = JSON.parse(localStorage.getItem(STORAGE_KEY_CARRIERS) || '[]');
           localStorage.setItem(STORAGE_KEY_CARRIERS, JSON.stringify(Array.from(new Set([...currentSaved, finalCarrier]))));
@@ -523,6 +526,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                                   setAvailableCarriers(updated);
                                   setCarrier(trimmed);
                                   setIsCustomCarrier(false);
+                                  appSettingsService.addCustomCarrier(trimmed).catch(console.warn);
                                   try {
                                     const currentSaved = JSON.parse(localStorage.getItem(STORAGE_KEY_CARRIERS) || '[]');
                                     localStorage.setItem(STORAGE_KEY_CARRIERS, JSON.stringify(Array.from(new Set([...currentSaved, trimmed]))));

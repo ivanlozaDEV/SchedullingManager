@@ -345,6 +345,159 @@ export const schedulingService = {
     if (error) throw error;
   },
 
+  // 6.1 Registrar fechas propuestas por el carrier (habitualmente 3) y avanzar a Etapa 2: PA Review
+  async recordCarrierSlots(
+    eventId: string, 
+    slots: Array<{ slotDate: string; startTime: string; endTime: string }>
+  ) {
+    if (!isSupabaseConfigured) return;
+    // 1. Eliminar slots previos si existieran
+    await supabase.from('event_slots').delete().eq('event_id', eventId);
+    
+    // 2. Insertar los nuevos slots propuestos
+    const insertData = slots.map((s) => ({
+      event_id: eventId,
+      slot_date: s.slotDate,
+      start_time: s.startTime,
+      end_time: s.endTime,
+      status: 'proposed' as const,
+    }));
+    const { error: insertErr } = await supabase.from('event_slots').insert(insertData);
+    if (insertErr) throw insertErr;
+
+    // 3. Avanzar evento a Etapa 2: PA Review
+    const { error: stageErr } = await supabase
+      .from('events')
+      .update({ 
+        coordination_stage: '2_pa_review',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId);
+    if (stageErr) throw stageErr;
+  },
+
+  // 6.2 PA escoge 2 de las fechas propuestas y avanza a Etapa 3: Insured Selection
+  async paSelectSlots(
+    eventId: string,
+    acceptedSlotIds: string[],
+    allSlotIds: string[]
+  ) {
+    if (!isSupabaseConfigured) return;
+    // Marcar aceptados
+    const { error: acceptErr } = await supabase
+      .from('event_slots')
+      .update({ status: 'pa_accepted' })
+      .in('id', acceptedSlotIds);
+    if (acceptErr) throw acceptErr;
+
+    // Marcar rechazados los que no se escogieron
+    const rejectedSlotIds = allSlotIds.filter((id) => !acceptedSlotIds.includes(id));
+    if (rejectedSlotIds.length > 0) {
+      const { error: rejectErr } = await supabase
+        .from('event_slots')
+        .update({ status: 'pa_rejected' })
+        .in('id', rejectedSlotIds);
+      if (rejectErr) throw rejectErr;
+    }
+
+    // Avanzar evento a Etapa 3: Insured Selection
+    const { error: stageErr } = await supabase
+      .from('events')
+      .update({ 
+        coordination_stage: '3_insured_selection',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId);
+    if (stageErr) throw stageErr;
+  },
+
+  // 6.3 Insured escoge 1 fecha y se bloquea la cita definitiva en Etapa 4: Confirmed
+  async insuredConfirmSlot(
+    eventId: string,
+    chosenSlotId: string,
+    finalDetails: { date: string; startTime: string; endTime: string }
+  ) {
+    if (!isSupabaseConfigured) return;
+    // Marcar el slot ganador
+    const { error: chooseErr } = await supabase
+      .from('event_slots')
+      .update({ status: 'insured_chosen' })
+      .eq('id', chosenSlotId);
+    if (chooseErr) throw chooseErr;
+
+    // Marcar los demás como discarded
+    await supabase
+      .from('event_slots')
+      .update({ status: 'discarded' })
+      .eq('event_id', eventId)
+      .neq('id', chosenSlotId);
+
+    // Confirmar y fijar la cita definitiva en el evento
+    const { error: stageErr } = await supabase
+      .from('events')
+      .update({
+        coordination_stage: '4_confirmed',
+        status: 'scheduled',
+        final_date: finalDetails.date,
+        final_start_time: finalDetails.startTime,
+        final_end_time: finalDetails.endTime,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId);
+    if (stageErr) throw stageErr;
+  },
+
+  // 6.4 Resetear / Cancelar el Flujo de Coordinación y regresar a Etapa 1
+  async resetCoordinationEvent(
+    eventId: string,
+    options?: {
+      cancelledBy?: string;
+      cancellationReason?: string;
+    }
+  ) {
+    if (!isSupabaseConfigured) return;
+
+    // 1. Resetear el evento a la etapa 1 y estado 'in_coordination'
+    const { error: eventErr } = await supabase
+      .from('events')
+      .update({
+        coordination_stage: '1_awaiting_carrier_slots',
+        status: 'in_coordination',
+        final_date: null,
+        final_start_time: null,
+        final_end_time: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId);
+    if (eventErr) throw eventErr;
+
+    // 2. Eliminar slots previos para permitir registrar 3 nuevas fechas
+    const { error: slotsErr } = await supabase
+      .from('event_slots')
+      .delete()
+      .eq('event_id', eventId);
+    if (slotsErr) throw slotsErr;
+
+    // 3. Registrar en la bitácora la cancelación y motivo (si se especificó)
+    const cancelledBy = options?.cancelledBy || 'General';
+    const reason = options?.cancellationReason?.trim();
+    const logNotes = [
+      '🔄 Coordination flow reset back to Stage 1 (Awaiting Carrier Dates).',
+      options?.cancelledBy ? `Cancelled by: ${options.cancelledBy}.` : '',
+      reason ? `Reason: ${reason}` : 'No reason provided.'
+    ].filter(Boolean).join(' ');
+
+    await supabase
+      .from('coordination_logs')
+      .insert({
+        event_id: eventId,
+        contact_target: 'internal',
+        contact_target_name: cancelledBy,
+        channel: 'system_reset',
+        notes: logNotes
+      });
+  },
+
   // 7. Avanzar Etapa del Evento o Confirmar
   async updateEventStage(
     eventId: string, 
@@ -843,6 +996,13 @@ export const schedulingService = {
     }
 
     return newEvent;
+  },
+
+  // 13.9 Eliminar Evento de Coordinación
+  async deleteEvent(eventId: string) {
+    if (!isSupabaseConfigured) return;
+    const { error } = await supabase.from('events').delete().eq('id', eventId);
+    if (error) throw error;
   },
 
   // 14. Get Unique Carriers from existing database records
