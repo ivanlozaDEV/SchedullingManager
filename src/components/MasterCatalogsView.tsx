@@ -16,7 +16,8 @@ import {
   Phone,
   Mail,
   RefreshCw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Award
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { appSettingsService } from '../lib/appSettingsService';
@@ -29,13 +30,23 @@ import type {
   CoordinationEvent
 } from '../types';
 
-type CatalogCategory =
+export type CatalogCategory =
   | 'pas'
   | 'carrier_reps'
   | 'external_actors'
   | 'carriers'
   | 'event_types'
-  | 'insureds';
+  | 'insureds'
+  | 'roles';
+
+export function formatPaRole(role?: string): string {
+  if (!role) return 'Public Adjuster';
+  if (role === 'adjuster') return 'Public Adjuster';
+  if (role === 'senior_adjuster') return 'Senior Public Adjuster';
+  if (role === 'director') return 'Managing Director';
+  if (role === 'apprentice') return 'Assistant / Apprentice';
+  return role.replace(/_/g, ' ');
+}
 
 interface MasterCatalogsViewProps {
   claims: Claim[];
@@ -56,25 +67,6 @@ const PRESET_COLORS = [
   '#0d9488', // Teal
 ];
 
-const EXTERNAL_ACTOR_TYPES = [
-  'Appraiser',
-  'Umpire',
-  'Structural Engineer',
-  'General Contractor',
-  'Leak Detection Specialist',
-  'Roof Consultant',
-  'Plumbing Expert',
-  'Other Specialist'
-];
-
-const CARRIER_REP_TYPES = [
-  'Field Adjuster',
-  'Desk Adjuster',
-  'Independent Adjuster',
-  'Staff Adjuster',
-  'Engineer / Expert',
-  'Supervisor / Team Lead'
-];
 
 export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCatalogsViewProps) {
   // Navigation & Category State
@@ -92,11 +84,17 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
   const [carriers, setCarriers] = useState<string[]>([]);
   const [eventTypes, setEventTypes] = useState<string[]>([]);
 
+  // Roles & Specializations Catalog State
+  const [paRoles, setPaRoles] = useState<string[]>([]);
+  const [carrierRepRoles, setCarrierRepRoles] = useState<string[]>([]);
+  const [actorRoles, setActorRoles] = useState<string[]>([]);
+  const [activeRoleSubTab, setActiveRoleSubTab] = useState<'pa' | 'carrier_rep' | 'actor'>('pa');
+
   // Modals & Editing State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ id?: string; name: string; type: CatalogCategory; count?: number } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id?: string; name: string; type: CatalogCategory; count?: number; roleGroup?: 'pa' | 'carrier_rep' | 'actor' } | null>(null);
   const [updateLinkedRecords, setUpdateLinkedRecords] = useState(true);
 
   // Form Fields State
@@ -106,13 +104,26 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
   const loadCatalogs = async () => {
     setLoading(true);
     try {
-      const [fetchedPas, fetchedReps, fetchedActors, fetchedInsureds, fetchedCarriers, fetchedEventTypes] = await Promise.all([
+      const [
+        fetchedPas,
+        fetchedReps,
+        fetchedActors,
+        fetchedInsureds,
+        fetchedCarriers,
+        fetchedEventTypes,
+        fetchedPaRoles,
+        fetchedRepRoles,
+        fetchedActorRoles,
+      ] = await Promise.all([
         schedulingService.getPublicAdjusters(true),
         schedulingService.getCarrierReps(),
         schedulingService.getExternalActors(),
         schedulingService.getInsureds(),
         appSettingsService.getCustomCarriers(),
         appSettingsService.getCustomEventTypes(),
+        appSettingsService.getCustomPaRoles(),
+        appSettingsService.getCustomCarrierRepRoles(),
+        appSettingsService.getCustomActorRoles(),
       ]);
 
       setPas(fetchedPas);
@@ -128,6 +139,16 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
       const eventsTypes = events.map(e => e.eventType?.trim()).filter(Boolean);
       const allUniqueTypes = Array.from(new Set([...fetchedEventTypes, ...eventsTypes])).sort((a, b) => a.localeCompare(b));
       setEventTypes(allUniqueTypes);
+
+      // Merge dynamic roles with existing records
+      const existingPaRoles = fetchedPas.map(p => formatPaRole(p.role)).filter(Boolean);
+      setPaRoles(Array.from(new Set([...fetchedPaRoles, ...existingPaRoles])).sort((a, b) => a.localeCompare(b)));
+
+      const existingRepRoles = fetchedReps.map(r => r.typeOfRepresentative?.trim()).filter(Boolean);
+      setCarrierRepRoles(Array.from(new Set([...fetchedRepRoles, ...existingRepRoles])).sort((a, b) => a.localeCompare(b)));
+
+      const existingActorRoles = fetchedActors.map(a => a.typeOfActor?.trim()).filter(Boolean);
+      setActorRoles(Array.from(new Set([...fetchedActorRoles, ...existingActorRoles])).sort((a, b) => a.localeCompare(b)));
     } catch (err) {
       console.error('Error loading master catalogs:', err);
     } finally {
@@ -137,6 +158,20 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
 
   useEffect(() => {
     loadCatalogs();
+
+    const handlePaRoles = (e: any) => { if (e.detail) setPaRoles(e.detail); };
+    const handleRepRoles = (e: any) => { if (e.detail) setCarrierRepRoles(e.detail); };
+    const handleActorRoles = (e: any) => { if (e.detail) setActorRoles(e.detail); };
+
+    window.addEventListener('custom_pa_roles_updated', handlePaRoles);
+    window.addEventListener('custom_carrier_rep_roles_updated', handleRepRoles);
+    window.addEventListener('custom_actor_roles_updated', handleActorRoles);
+
+    return () => {
+      window.removeEventListener('custom_pa_roles_updated', handlePaRoles);
+      window.removeEventListener('custom_carrier_rep_roles_updated', handleRepRoles);
+      window.removeEventListener('custom_actor_roles_updated', handleActorRoles);
+    };
   }, []);
 
   const triggerFeedback = (msg: string) => {
@@ -184,6 +219,33 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
     });
     return map;
   }, [claims]);
+
+  const paRoleUsageMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    pas.forEach(p => {
+      const r = formatPaRole(p.role).trim().toLowerCase();
+      if (r) map[r] = (map[r] || 0) + 1;
+    });
+    return map;
+  }, [pas]);
+
+  const carrierRepRoleUsageMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    carrierReps.forEach(r => {
+      const t = (r.typeOfRepresentative || '').trim().toLowerCase();
+      if (t) map[t] = (map[t] || 0) + 1;
+    });
+    return map;
+  }, [carrierReps]);
+
+  const actorRoleUsageMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    externalActors.forEach(a => {
+      const t = (a.typeOfActor || '').trim().toLowerCase();
+      if (t) map[t] = (map[t] || 0) + 1;
+    });
+    return map;
+  }, [externalActors]);
 
   // --------------------------------------------------------------------------
   // DUPLICATE DETECTORS (Smart similarity & case inspection)
@@ -341,12 +403,26 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
     );
   }, [insureds, q, filterDuplicatesOnly, duplicateInsureds]);
 
+  const filteredRoles = useMemo(() => {
+    let list: { name: string; roleGroup: 'pa' | 'carrier_rep' | 'actor'; count: number }[] = [];
+    if (activeRoleSubTab === 'pa') {
+      list = paRoles.map(r => ({ name: r, roleGroup: 'pa', count: paRoleUsageMap[r.trim().toLowerCase()] || 0 }));
+    } else if (activeRoleSubTab === 'carrier_rep') {
+      list = carrierRepRoles.map(r => ({ name: r, roleGroup: 'carrier_rep', count: carrierRepRoleUsageMap[r.trim().toLowerCase()] || 0 }));
+    } else {
+      list = actorRoles.map(r => ({ name: r, roleGroup: 'actor', count: actorRoleUsageMap[r.trim().toLowerCase()] || 0 }));
+    }
+
+    if (!q) return list;
+    return list.filter(item => item.name.toLowerCase().includes(q));
+  }, [activeRoleSubTab, paRoles, carrierRepRoles, actorRoles, paRoleUsageMap, carrierRepRoleUsageMap, actorRoleUsageMap, q]);
+
   // --------------------------------------------------------------------------
   // LIVE DUPLICATE WARNING IN MODAL FORM
   // --------------------------------------------------------------------------
   const liveDuplicateWarning = useMemo(() => {
     if (!isModalOpen) return null;
-    const nameVal = (formData.name || formData.carrierName || formData.typeName || '').trim().toLowerCase();
+    const nameVal = (formData.name || formData.carrierName || formData.typeName || formData.roleName || '').trim().toLowerCase();
     if (!nameVal) return null;
 
     if (activeCategory === 'pas') {
@@ -371,9 +447,15 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
     } else if (activeCategory === 'insureds') {
       const exists = insureds.find(i => i.id !== editingItem?.id && i.name.trim().toLowerCase() === nameVal);
       if (exists) return `Notice: An insured client with the name "${exists.name}" already exists.`;
+    } else if (activeCategory === 'roles') {
+      const group = formData.roleGroup || activeRoleSubTab;
+      const targetList = group === 'pa' ? paRoles : group === 'carrier_rep' ? carrierRepRoles : actorRoles;
+      const editingName = (editingItem?.name || editingItem || '').toLowerCase();
+      const exists = targetList.find(r => r.toLowerCase() !== editingName && r.trim().toLowerCase() === nameVal);
+      if (exists) return `Notice: The role/title "${exists}" already exists in this library.`;
     }
     return null;
-  }, [isModalOpen, formData, activeCategory, editingItem, pas, carrierReps, externalActors, carriers, eventTypes, insureds]);
+  }, [isModalOpen, formData, activeCategory, editingItem, pas, carrierReps, externalActors, carriers, eventTypes, insureds, paRoles, carrierRepRoles, actorRoles, activeRoleSubTab]);
 
   // --------------------------------------------------------------------------
   // OPEN MODAL FOR CREATE / EDIT
@@ -383,7 +465,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
     if (activeCategory === 'pas') {
       setFormData({
         name: '',
-        role: 'adjuster',
+        role: paRoles[0] || 'Public Adjuster',
         email: '',
         phone: '',
         generalAvailability: '',
@@ -394,7 +476,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
       setFormData({
         name: '',
         carrierName: carriers[0] || 'Citizens Property Insurance',
-        typeOfRepresentative: 'Field Adjuster',
+        typeOfRepresentative: carrierRepRoles[0] || 'Field Adjuster',
         phone: '',
         email: '',
         company: '',
@@ -403,7 +485,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
     } else if (activeCategory === 'external_actors') {
       setFormData({
         name: '',
-        typeOfActor: 'Appraiser',
+        typeOfActor: actorRoles[0] || 'Appraiser',
         company: '',
         phone: '',
         email: '',
@@ -422,6 +504,11 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
         generalAvailability: '',
         notes: '',
       });
+    } else if (activeCategory === 'roles') {
+      setFormData({
+        roleName: '',
+        roleGroup: activeRoleSubTab,
+      });
     }
     setIsModalOpen(true);
   };
@@ -431,7 +518,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
     if (activeCategory === 'pas') {
       setFormData({
         name: item.name,
-        role: item.role || 'adjuster',
+        role: formatPaRole(item.role),
         email: item.email || '',
         phone: item.phone || '',
         generalAvailability: item.generalAvailability || '',
@@ -442,7 +529,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
       setFormData({
         name: item.name,
         carrierName: item.carrierName,
-        typeOfRepresentative: item.typeOfRepresentative || 'Field Adjuster',
+        typeOfRepresentative: item.typeOfRepresentative || carrierRepRoles[0] || 'Field Adjuster',
         phone: item.phone || '',
         email: item.email || '',
         company: item.company || '',
@@ -451,7 +538,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
     } else if (activeCategory === 'external_actors') {
       setFormData({
         name: item.name,
-        typeOfActor: item.typeOfActor || 'Appraiser',
+        typeOfActor: item.typeOfActor || actorRoles[0] || 'Appraiser',
         company: item.company || '',
         phone: item.phone || '',
         email: item.email || '',
@@ -469,6 +556,11 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
         email: item.email || '',
         generalAvailability: item.generalAvailability || '',
         notes: item.notes || '',
+      });
+    } else if (activeCategory === 'roles') {
+      setFormData({
+        roleName: item.name,
+        roleGroup: item.roleGroup || activeRoleSubTab,
       });
     }
     setIsModalOpen(true);
@@ -598,6 +690,36 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
           });
           triggerFeedback(`New Insured Client "${formData.name}" added.`);
         }
+      } else if (activeCategory === 'roles') {
+        const rName = formData.roleName?.trim();
+        const rGroup = formData.roleGroup || activeRoleSubTab;
+        if (!rName) throw new Error('Role Title is required');
+
+        if (rGroup === 'pa') {
+          if (editingItem) {
+            await appSettingsService.updatePaRole(editingItem.name || editingItem, rName, updateLinkedRecords);
+            triggerFeedback(`PA Role updated to "${rName}".${updateLinkedRecords ? ' Linked Public Adjusters updated.' : ''}`);
+          } else {
+            await appSettingsService.addCustomPaRole(rName);
+            triggerFeedback(`PA Role "${rName}" added to library.`);
+          }
+        } else if (rGroup === 'carrier_rep') {
+          if (editingItem) {
+            await appSettingsService.updateCarrierRepRole(editingItem.name || editingItem, rName, updateLinkedRecords);
+            triggerFeedback(`Carrier Rep Role updated to "${rName}".${updateLinkedRecords ? ' Linked representatives updated.' : ''}`);
+          } else {
+            await appSettingsService.addCustomCarrierRepRole(rName);
+            triggerFeedback(`Carrier Rep Role "${rName}" added to library.`);
+          }
+        } else if (rGroup === 'actor') {
+          if (editingItem) {
+            await appSettingsService.updateActorRole(editingItem.name || editingItem, rName, updateLinkedRecords);
+            triggerFeedback(`Specialist Category updated to "${rName}".${updateLinkedRecords ? ' Linked specialists updated.' : ''}`);
+          } else {
+            await appSettingsService.addCustomActorRole(rName);
+            triggerFeedback(`Specialist Category "${rName}" added to library.`);
+          }
+        }
       }
 
       setIsModalOpen(false);
@@ -638,6 +760,17 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
       id = item.id;
       name = item.name;
       count = insuredUsageMap[item.id] || 0;
+    } else if (type === 'roles') {
+      name = item.name || item;
+      const rGroup = item.roleGroup || activeRoleSubTab;
+      if (rGroup === 'pa') {
+        count = paRoleUsageMap[name.trim().toLowerCase()] || 0;
+      } else if (rGroup === 'carrier_rep') {
+        count = carrierRepRoleUsageMap[name.trim().toLowerCase()] || 0;
+      } else if (rGroup === 'actor') {
+        count = actorRoleUsageMap[name.trim().toLowerCase()] || 0;
+      }
+      id = rGroup;
     }
 
     setItemToDelete({ id, name, type, count });
@@ -667,6 +800,18 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
       } else if (itemToDelete.type === 'insureds' && itemToDelete.id) {
         await schedulingService.deleteInsured(itemToDelete.id);
         triggerFeedback(`Insured Client "${itemToDelete.name}" removed.`);
+      } else if (itemToDelete.type === 'roles') {
+        const rGroup = (itemToDelete.id as 'pa' | 'carrier_rep' | 'actor') || activeRoleSubTab;
+        if (rGroup === 'pa') {
+          await appSettingsService.deletePaRole(itemToDelete.name);
+          triggerFeedback(`PA Role "${itemToDelete.name}" removed from library.`);
+        } else if (rGroup === 'carrier_rep') {
+          await appSettingsService.deleteCarrierRepRole(itemToDelete.name);
+          triggerFeedback(`Carrier Rep Role "${itemToDelete.name}" removed from library.`);
+        } else if (rGroup === 'actor') {
+          await appSettingsService.deleteActorRole(itemToDelete.name);
+          triggerFeedback(`Specialist Category "${itemToDelete.name}" removed from library.`);
+        }
       }
 
       setIsDeleteModalOpen(false);
@@ -741,6 +886,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
                 {activeCategory === 'carriers' && 'Add Carrier'}
                 {activeCategory === 'event_types' && 'Add Event Type'}
                 {activeCategory === 'insureds' && 'Add Insured Client'}
+                {activeCategory === 'roles' && 'Add New Role'}
               </span>
             </button>
           </div>
@@ -755,7 +901,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
         )}
 
         {/* Categories Bar / Navigation Pills */}
-        <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-4 border-t border-slate-100">
+        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-4 border-t border-slate-100">
           <button
             type="button"
             onClick={() => { setActiveCategory('pas'); setFilterDuplicatesOnly(false); }}
@@ -868,6 +1014,25 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
             </div>
             <div className="mt-2 text-xs font-bold font-['Montserrat',sans-serif]">Insured Clients</div>
             <div className="text-[10px] text-slate-500">Policyholders Directory</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setActiveCategory('roles'); setFilterDuplicatesOnly(false); }}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              activeCategory === 'roles'
+                ? 'bg-tealBrand-50/80 border-tealBrand-400 text-tealBrand-900 shadow-xs'
+                : 'bg-slate-50/50 border-slate-200 hover:bg-slate-100/70 text-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <Award className="w-4 h-4 text-indigo-600" />
+              <span className="text-xs font-extrabold px-1.5 py-0.5 rounded-full bg-white border border-slate-200">
+                {paRoles.length + carrierRepRoles.length + actorRoles.length}
+              </span>
+            </div>
+            <div className="mt-2 text-xs font-bold font-['Montserrat',sans-serif]">Roles & Specialties</div>
+            <div className="text-[10px] text-slate-500">PAs, Reps & Experts</div>
           </button>
         </div>
       </div>
@@ -1344,6 +1509,108 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
       )}
 
       {/* ==================================================================== */}
+      {/* CATEGORY 7: ROLES & SPECIALTIES LIBRARY */}
+      {/* ==================================================================== */}
+      {activeCategory === 'roles' && (
+        <div className="space-y-4">
+          {/* Sub-Tabs: PA Roles | Carrier Rep Roles | Specialist Roles */}
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setActiveRoleSubTab('pa')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeRoleSubTab === 'pa'
+                  ? 'bg-white text-tealBrand-900 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5 text-tealBrand-600" />
+              <span>PA & Team Roles ({paRoles.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveRoleSubTab('carrier_rep')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeRoleSubTab === 'carrier_rep'
+                  ? 'bg-white text-cyan-900 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 text-cyan-600" />
+              <span>Carrier Rep Roles ({carrierRepRoles.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveRoleSubTab('actor')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeRoleSubTab === 'actor'
+                  ? 'bg-white text-purple-900 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Scale className="w-3.5 h-3.5 text-purple-600" />
+              <span>Specialist Categories ({actorRoles.length})</span>
+            </button>
+          </div>
+
+          {/* Roles Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredRoles.map((roleItem) => (
+              <div
+                key={roleItem.name}
+                className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border inline-block ${
+                        roleItem.roleGroup === 'pa'
+                          ? 'bg-tealBrand-50 text-tealBrand-800 border-tealBrand-200'
+                          : roleItem.roleGroup === 'carrier_rep'
+                          ? 'bg-cyan-50 text-cyan-800 border-cyan-200'
+                          : 'bg-purple-50 text-purple-800 border-purple-200'
+                      }`}>
+                        {roleItem.roleGroup === 'pa' ? 'Internal Team' : roleItem.roleGroup === 'carrier_rep' ? 'Carrier Representative' : 'Specialist / Expert'}
+                      </span>
+                      <h4 className="text-sm font-bold text-slate-900 font-['Montserrat',sans-serif] mt-1.5">
+                        {roleItem.name}
+                      </h4>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                    roleItem.count > 0 ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700'
+                  }`}>
+                    {roleItem.count > 0 ? `${roleItem.count} Assigned` : 'Unassigned'}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(roleItem)}
+                      className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                      title="Rename Role"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => promptDelete(roleItem, 'roles')}
+                      className="p-1.5 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
+                      title="Delete Role"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
       {/* MODAL: CREATE / EDIT RECORD */}
       {/* ==================================================================== */}
       {isModalOpen && (
@@ -1402,18 +1669,37 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Role
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Role
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newR = prompt('Enter new Public Adjuster role or title:');
+                            if (newR && newR.trim()) {
+                              appSettingsService.addCustomPaRole(newR.trim()).then(updated => {
+                                setPaRoles(updated);
+                                setFormData({ ...formData, role: newR.trim() });
+                              });
+                            }
+                          }}
+                          className="text-[11px] font-semibold text-maroon-800 hover:text-maroon-900 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          + New Role
+                        </button>
+                      </div>
                       <select
-                        value={formData.role || 'adjuster'}
+                        value={formData.role || (paRoles[0] || 'Public Adjuster')}
                         onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-maroon-800"
                       >
-                        <option value="adjuster">Public Adjuster</option>
-                        <option value="senior_adjuster">Senior Public Adjuster</option>
-                        <option value="director">Managing Director</option>
-                        <option value="apprentice">Apprentice / Assistant</option>
+                        {paRoles.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                        {formData.role && !paRoles.includes(formData.role) && (
+                          <option value={formData.role}>{formatPaRole(formData.role)}</option>
+                        )}
                       </select>
                     </div>
 
@@ -1528,17 +1814,37 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Type of Rep
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Type of Rep
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newR = prompt('Enter new Carrier Representative role/type:');
+                            if (newR && newR.trim()) {
+                              appSettingsService.addCustomCarrierRepRole(newR.trim()).then(updated => {
+                                setCarrierRepRoles(updated);
+                                setFormData({ ...formData, typeOfRepresentative: newR.trim() });
+                              });
+                            }
+                          }}
+                          className="text-[11px] font-semibold text-maroon-800 hover:text-maroon-900 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          + New Role
+                        </button>
+                      </div>
                       <select
-                        value={formData.typeOfRepresentative || 'Field Adjuster'}
+                        value={formData.typeOfRepresentative || (carrierRepRoles[0] || 'Field Adjuster')}
                         onChange={(e) => setFormData({ ...formData, typeOfRepresentative: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-maroon-800"
                       >
-                        {CARRIER_REP_TYPES.map(t => (
+                        {carrierRepRoles.map(t => (
                           <option key={t} value={t}>{t}</option>
                         ))}
+                        {formData.typeOfRepresentative && !carrierRepRoles.includes(formData.typeOfRepresentative) && (
+                          <option value={formData.typeOfRepresentative}>{formData.typeOfRepresentative}</option>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -1616,17 +1922,37 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Category / Role
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Category / Role
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newR = prompt('Enter new Specialist category or role:');
+                            if (newR && newR.trim()) {
+                              appSettingsService.addCustomActorRole(newR.trim()).then(updated => {
+                                setActorRoles(updated);
+                                setFormData({ ...formData, typeOfActor: newR.trim() });
+                              });
+                            }
+                          }}
+                          className="text-[11px] font-semibold text-maroon-800 hover:text-maroon-900 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          + New Category
+                        </button>
+                      </div>
                       <select
-                        value={formData.typeOfActor || 'Appraiser'}
+                        value={formData.typeOfActor || (actorRoles[0] || 'Appraiser')}
                         onChange={(e) => setFormData({ ...formData, typeOfActor: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-maroon-800"
                       >
-                        {EXTERNAL_ACTOR_TYPES.map(t => (
+                        {actorRoles.map(t => (
                           <option key={t} value={t}>{t}</option>
                         ))}
+                        {formData.typeOfActor && !actorRoles.includes(formData.typeOfActor) && (
+                          <option value={formData.typeOfActor}>{formData.typeOfActor}</option>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -1817,6 +2143,95 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-maroon-800"
                     />
                   </div>
+                </>
+              )}
+
+              {/* 7. ROLES & SPECIALTIES FORM */}
+              {activeCategory === 'roles' && (
+                <>
+                  {!editingItem && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Role Group
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, roleGroup: 'pa' })}
+                          className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-all text-center ${
+                            (formData.roleGroup || activeRoleSubTab) === 'pa'
+                              ? 'bg-maroon-800 text-white border-maroon-800 shadow-xs'
+                              : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          PA & Team
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, roleGroup: 'carrier_rep' })}
+                          className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-all text-center ${
+                            (formData.roleGroup || activeRoleSubTab) === 'carrier_rep'
+                              ? 'bg-maroon-800 text-white border-maroon-800 shadow-xs'
+                              : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          Carrier Rep
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, roleGroup: 'actor' })}
+                          className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-all text-center ${
+                            (formData.roleGroup || activeRoleSubTab) === 'actor'
+                              ? 'bg-maroon-800 text-white border-maroon-800 shadow-xs'
+                              : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          Specialist
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Role Title / Designation *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder={
+                        (formData.roleGroup || activeRoleSubTab) === 'pa'
+                          ? 'e.g. Apprentice / Assistant, Senior PA...'
+                          : (formData.roleGroup || activeRoleSubTab) === 'carrier_rep'
+                          ? 'e.g. Desk Adjuster, Team Lead...'
+                          : 'e.g. Structural Engineer, Leak Detection...'
+                      }
+                      value={formData.roleName || ''}
+                      onChange={(e) => setFormData({ ...formData, roleName: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-maroon-800"
+                    />
+                  </div>
+
+                  {editingItem && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={updateLinkedRecords}
+                          onChange={(e) => setUpdateLinkedRecords(e.target.checked)}
+                          className="mt-0.5 rounded border-amber-300 text-maroon-800 focus:ring-maroon-800"
+                        />
+                        <div className="text-xs">
+                          <span className="font-bold text-amber-900 block">
+                            Cascade update to currently assigned members
+                          </span>
+                          <span className="text-amber-700 block mt-0.5">
+                            Automatically rename this role across all active members ({editingItem.count || 0} assigned)
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  )}
                 </>
               )}
 

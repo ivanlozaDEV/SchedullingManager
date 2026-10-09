@@ -172,6 +172,11 @@ export function ClaimDetailView({
   const [quickActorSaving, setQuickActorSaving] = useState(false);
   const [quickActorError, setQuickActorError] = useState<string | null>(null);
 
+  // Dynamic catalog roles
+  const [paRoles, setPaRoles] = useState<string[]>(['Public Adjuster', 'Senior Public Adjuster', 'Managing Director', 'Apprentice / Assistant']);
+  const [carrierRepRoles, setCarrierRepRoles] = useState<string[]>(['Field Adjuster', 'Desk Adjuster', 'Independent Adjuster (IA)', 'Staff Adjuster', 'Supervisor / Manager', 'Engineer / Expert']);
+  const [actorRoles, setActorRoles] = useState<string[]>(['Appraiser', 'Umpire', 'Contractor / Estimator', 'Structural Engineer', 'Plumber / Leak Detection', 'Roofer', 'Other Specialist']);
+
   // Load directories and stored event types
   useEffect(() => {
     Promise.all([
@@ -180,10 +185,16 @@ export function ClaimDetailView({
       schedulingService.getExternalActors(),
       schedulingService.getUniqueEventTypes(),
       appSettingsService.getCustomEventTypes(),
-    ]).then(([dbPas, dbReps, dbExternals, dbEventTypes, customDbTypes]) => {
+      appSettingsService.getCustomPaRoles(),
+      appSettingsService.getCustomCarrierRepRoles(),
+      appSettingsService.getCustomActorRoles(),
+    ]).then(([dbPas, dbReps, dbExternals, dbEventTypes, customDbTypes, rPas, rCarrierReps, rActors]) => {
       if (dbPas.length > 0) setDirectoryPas(dbPas);
       if (dbReps.length > 0) setDirectoryReps(dbReps);
       if (dbExternals.length > 0) setDirectoryExternals(dbExternals);
+      if (rPas?.length > 0) setPaRoles(rPas);
+      if (rCarrierReps?.length > 0) setCarrierRepRoles(rCarrierReps);
+      if (rActors?.length > 0) setActorRoles(rActors);
 
       let savedCustomTypes: string[] = [];
       try {
@@ -2595,15 +2606,16 @@ export function ClaimDetailView({
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Type of Representative</label>
                     <select
-                      value={actorForm.typeOfRepresentative || 'Field Adjuster'}
+                      value={actorForm.typeOfRepresentative || carrierRepRoles[0] || 'Field Adjuster'}
                       onChange={(e) => setActorForm({ ...actorForm, typeOfRepresentative: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
                     >
-                      <option value="Field Adjuster">Field Adjuster</option>
-                      <option value="Desk Adjuster">Desk Adjuster</option>
-                      <option value="Independent Adjuster (IA)">Independent Adjuster (IA)</option>
-                      <option value="Staff Adjuster">Staff Adjuster</option>
-                      <option value="Supervisor / Manager">Supervisor / Manager</option>
+                      {carrierRepRoles.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                      {actorForm.typeOfRepresentative && !carrierRepRoles.includes(actorForm.typeOfRepresentative) && (
+                        <option value={actorForm.typeOfRepresentative}>{actorForm.typeOfRepresentative}</option>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -2623,17 +2635,16 @@ export function ClaimDetailView({
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Type of Actor</label>
                     <select
-                      value={actorForm.typeOfActor || 'Appraiser'}
+                      value={actorForm.typeOfActor || actorRoles[0] || 'Appraiser'}
                       onChange={(e) => setActorForm({ ...actorForm, typeOfActor: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
                     >
-                      <option value="Appraiser">Appraiser</option>
-                      <option value="Umpire">Umpire</option>
-                      <option value="Contractor / Estimator">Contractor / Estimator</option>
-                      <option value="Structural Engineer">Structural Engineer</option>
-                      <option value="Plumber / Leak Detection">Plumber / Leak Detection</option>
-                      <option value="Roofer">Roofer</option>
-                      <option value="Other Specialist">Other Specialist</option>
+                      {actorRoles.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                      {actorForm.typeOfActor && !actorRoles.includes(actorForm.typeOfActor) && (
+                        <option value={actorForm.typeOfActor}>{actorForm.typeOfActor}</option>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -2653,13 +2664,16 @@ export function ClaimDetailView({
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Role</label>
                     <select
-                      value={actorForm.role || 'adjuster'}
+                      value={actorForm.role || paRoles[0] || 'Public Adjuster'}
                       onChange={(e) => setActorForm({ ...actorForm, role: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
                     >
-                      <option value="adjuster">Adjuster</option>
-                      <option value="senior_adjuster">Senior Adjuster</option>
-                      <option value="director">Director</option>
+                      {paRoles.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                      {actorForm.role && !paRoles.includes(actorForm.role) && (
+                        <option value={actorForm.role}>{actorForm.role}</option>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -3024,9 +3038,12 @@ export function ClaimDetailView({
                     onChange={(e) => setQuickPaForm({ ...quickPaForm, role: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   >
-                    <option value="adjuster">Public Adjuster</option>
-                    <option value="senior_adjuster">Senior Adjuster</option>
-                    <option value="apprentice">Apprentice / Assistant</option>
+                    {paRoles.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                    {quickPaForm.role && !paRoles.includes(quickPaForm.role) && (
+                      <option value={quickPaForm.role}>{quickPaForm.role}</option>
+                    )}
                   </select>
                 </div>
               </div>
@@ -3113,13 +3130,12 @@ export function ClaimDetailView({
                     onChange={(e) => setQuickExtForm({ ...quickExtForm, typeOfActor: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
                   >
-                    <option value="Contractor">Contractor / Builder</option>
-                    <option value="Engineer">Structural Engineer</option>
-                    <option value="Appraiser">Appraiser</option>
-                    <option value="Umpire">Umpire</option>
-                    <option value="Estimator">Estimator</option>
-                    <option value="Attorney">Attorney</option>
-                    <option value="Other">Other Specialist</option>
+                    {actorRoles.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                    {quickExtForm.typeOfActor && !actorRoles.includes(quickExtForm.typeOfActor) && (
+                      <option value={quickExtForm.typeOfActor}>{quickExtForm.typeOfActor}</option>
+                    )}
                   </select>
                 </div>
                 <div>

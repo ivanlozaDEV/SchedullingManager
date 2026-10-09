@@ -5,6 +5,9 @@ export const APP_SETTING_KEYS = {
   SLA_CONFIG: 'sla_config',
   CUSTOM_CARRIERS: 'custom_carriers',
   CUSTOM_EVENT_TYPES: 'custom_event_types',
+  CUSTOM_PA_ROLES: 'custom_pa_roles',
+  CUSTOM_CARRIER_REP_ROLES: 'custom_carrier_rep_roles',
+  CUSTOM_ACTOR_ROLES: 'custom_actor_roles',
 } as const;
 
 export const DEFAULT_CARRIERS = [
@@ -32,6 +35,36 @@ export const DEFAULT_EVENT_TYPES = [
   'Umpire Inspection',
   'EUO (Examination Under Oath)',
   'Mediation',
+];
+
+export const DEFAULT_PA_ROLES = [
+  'Public Adjuster',
+  'Senior Public Adjuster',
+  'Managing Director',
+  'Assistant / Apprentice',
+  'Case Manager',
+  'Office Coordinator',
+];
+
+export const DEFAULT_CARRIER_REP_ROLES = [
+  'Field Adjuster',
+  'Desk Adjuster',
+  'Independent Adjuster (IA)',
+  'Staff Adjuster',
+  'Supervisor / Manager',
+  'Engineer / Expert',
+  'Team Lead',
+];
+
+export const DEFAULT_ACTOR_ROLES = [
+  'Appraiser',
+  'Umpire',
+  'Structural Engineer',
+  'General Contractor',
+  'Leak Detection Specialist',
+  'Roof Consultant',
+  'Plumbing Expert',
+  'Other Specialist',
 ];
 
 export const appSettingsService = {
@@ -228,6 +261,153 @@ export const appSettingsService = {
   },
 
   /**
+   * Custom PA Roles Catalog
+   */
+  async getCustomPaRoles(): Promise<string[]> {
+    const roles = await this.getSetting<string[]>(APP_SETTING_KEYS.CUSTOM_PA_ROLES, DEFAULT_PA_ROLES);
+    return Array.from(new Set(roles.map(r => r.trim()).filter(Boolean))).sort();
+  },
+
+  async addCustomPaRole(roleName: string): Promise<string[]> {
+    const trimmed = roleName.trim();
+    if (!trimmed) return await this.getCustomPaRoles();
+
+    const current = await this.getCustomPaRoles();
+    if (!current.some(r => r.toLowerCase() === trimmed.toLowerCase())) {
+      const updated = Array.from(new Set([...current, trimmed])).sort();
+      await this.saveSetting(APP_SETTING_KEYS.CUSTOM_PA_ROLES, updated);
+      window.dispatchEvent(new CustomEvent('custom_pa_roles_updated', { detail: updated }));
+      return updated;
+    }
+    return current;
+  },
+
+  async updatePaRole(oldName: string, newName: string, updatePas = true): Promise<string[]> {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew) throw new Error("Role name cannot be empty");
+    const current = await this.getCustomPaRoles();
+    const updated = current.map(r => r.toLowerCase() === oldName.toLowerCase() ? trimmedNew : r);
+    const cleaned = Array.from(new Set(updated.map(r => r.trim()).filter(Boolean))).sort();
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_PA_ROLES, cleaned);
+    window.dispatchEvent(new CustomEvent('custom_pa_roles_updated', { detail: cleaned }));
+
+    if (updatePas && isSupabaseConfigured && oldName !== trimmedNew) {
+      try {
+        await supabase.from('public_adjusters').update({ role: trimmedNew }).eq('role', oldName);
+      } catch (err) {
+        console.warn('Error updating public adjusters with renamed role:', err);
+      }
+    }
+    return cleaned;
+  },
+
+  async deletePaRole(roleName: string): Promise<string[]> {
+    const current = await this.getCustomPaRoles();
+    const updated = current.filter(r => r.toLowerCase() !== roleName.trim().toLowerCase());
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_PA_ROLES, updated);
+    window.dispatchEvent(new CustomEvent('custom_pa_roles_updated', { detail: updated }));
+    return updated;
+  },
+
+  /**
+   * Custom Carrier Rep Roles / Types Catalog
+   */
+  async getCustomCarrierRepRoles(): Promise<string[]> {
+    const roles = await this.getSetting<string[]>(APP_SETTING_KEYS.CUSTOM_CARRIER_REP_ROLES, DEFAULT_CARRIER_REP_ROLES);
+    return Array.from(new Set(roles.map(r => r.trim()).filter(Boolean))).sort();
+  },
+
+  async addCustomCarrierRepRole(roleName: string): Promise<string[]> {
+    const trimmed = roleName.trim();
+    if (!trimmed) return await this.getCustomCarrierRepRoles();
+
+    const current = await this.getCustomCarrierRepRoles();
+    if (!current.some(r => r.toLowerCase() === trimmed.toLowerCase())) {
+      const updated = Array.from(new Set([...current, trimmed])).sort();
+      await this.saveSetting(APP_SETTING_KEYS.CUSTOM_CARRIER_REP_ROLES, updated);
+      window.dispatchEvent(new CustomEvent('custom_carrier_rep_roles_updated', { detail: updated }));
+      return updated;
+    }
+    return current;
+  },
+
+  async updateCarrierRepRole(oldName: string, newName: string, updateReps = true): Promise<string[]> {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew) throw new Error("Role name cannot be empty");
+    const current = await this.getCustomCarrierRepRoles();
+    const updated = current.map(r => r.toLowerCase() === oldName.toLowerCase() ? trimmedNew : r);
+    const cleaned = Array.from(new Set(updated.map(r => r.trim()).filter(Boolean))).sort();
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_CARRIER_REP_ROLES, cleaned);
+    window.dispatchEvent(new CustomEvent('custom_carrier_rep_roles_updated', { detail: cleaned }));
+
+    if (updateReps && isSupabaseConfigured && oldName !== trimmedNew) {
+      try {
+        await supabase.from('carrier_representatives').update({ type_of_representative: trimmedNew }).eq('type_of_representative', oldName);
+      } catch (err) {
+        console.warn('Error updating carrier representatives with renamed role:', err);
+      }
+    }
+    return cleaned;
+  },
+
+  async deleteCarrierRepRole(roleName: string): Promise<string[]> {
+    const current = await this.getCustomCarrierRepRoles();
+    const updated = current.filter(r => r.toLowerCase() !== roleName.trim().toLowerCase());
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_CARRIER_REP_ROLES, updated);
+    window.dispatchEvent(new CustomEvent('custom_carrier_rep_roles_updated', { detail: updated }));
+    return updated;
+  },
+
+  /**
+   * Custom External Actor Roles / Types Catalog
+   */
+  async getCustomActorRoles(): Promise<string[]> {
+    const roles = await this.getSetting<string[]>(APP_SETTING_KEYS.CUSTOM_ACTOR_ROLES, DEFAULT_ACTOR_ROLES);
+    return Array.from(new Set(roles.map(r => r.trim()).filter(Boolean))).sort();
+  },
+
+  async addCustomActorRole(roleName: string): Promise<string[]> {
+    const trimmed = roleName.trim();
+    if (!trimmed) return await this.getCustomActorRoles();
+
+    const current = await this.getCustomActorRoles();
+    if (!current.some(r => r.toLowerCase() === trimmed.toLowerCase())) {
+      const updated = Array.from(new Set([...current, trimmed])).sort();
+      await this.saveSetting(APP_SETTING_KEYS.CUSTOM_ACTOR_ROLES, updated);
+      window.dispatchEvent(new CustomEvent('custom_actor_roles_updated', { detail: updated }));
+      return updated;
+    }
+    return current;
+  },
+
+  async updateActorRole(oldName: string, newName: string, updateActors = true): Promise<string[]> {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew) throw new Error("Role name cannot be empty");
+    const current = await this.getCustomActorRoles();
+    const updated = current.map(r => r.toLowerCase() === oldName.toLowerCase() ? trimmedNew : r);
+    const cleaned = Array.from(new Set(updated.map(r => r.trim()).filter(Boolean))).sort();
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_ACTOR_ROLES, cleaned);
+    window.dispatchEvent(new CustomEvent('custom_actor_roles_updated', { detail: cleaned }));
+
+    if (updateActors && isSupabaseConfigured && oldName !== trimmedNew) {
+      try {
+        await supabase.from('external_actors').update({ type_of_actor: trimmedNew }).eq('type_of_actor', oldName);
+      } catch (err) {
+        console.warn('Error updating external actors with renamed specialty/role:', err);
+      }
+    }
+    return cleaned;
+  },
+
+  async deleteActorRole(roleName: string): Promise<string[]> {
+    const current = await this.getCustomActorRoles();
+    const updated = current.filter(r => r.toLowerCase() !== roleName.trim().toLowerCase());
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_ACTOR_ROLES, updated);
+    window.dispatchEvent(new CustomEvent('custom_actor_roles_updated', { detail: updated }));
+    return updated;
+  },
+
+  /**
    * Realtime subscription for cross-device live sync
    */
   subscribeToChanges(onUpdate: (key: string, value: any) => void) {
@@ -254,6 +434,12 @@ export const appSettingsService = {
                 window.dispatchEvent(new CustomEvent('custom_carriers_updated', { detail: newRecord.value }));
               } else if (newRecord.key === APP_SETTING_KEYS.CUSTOM_EVENT_TYPES) {
                 window.dispatchEvent(new CustomEvent('custom_event_types_updated', { detail: newRecord.value }));
+              } else if (newRecord.key === APP_SETTING_KEYS.CUSTOM_PA_ROLES) {
+                window.dispatchEvent(new CustomEvent('custom_pa_roles_updated', { detail: newRecord.value }));
+              } else if (newRecord.key === APP_SETTING_KEYS.CUSTOM_CARRIER_REP_ROLES) {
+                window.dispatchEvent(new CustomEvent('custom_carrier_rep_roles_updated', { detail: newRecord.value }));
+              } else if (newRecord.key === APP_SETTING_KEYS.CUSTOM_ACTOR_ROLES) {
+                window.dispatchEvent(new CustomEvent('custom_actor_roles_updated', { detail: newRecord.value }));
               }
 
               onUpdate(newRecord.key, newRecord.value);
