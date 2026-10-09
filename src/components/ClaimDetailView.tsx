@@ -59,6 +59,7 @@ interface ClaimDetailViewProps {
   onEventCreated: () => void;
   onClaimUpdated: () => Promise<void>;
   onViewInFunnel: (claimNumber: string) => void;
+  onClaimDeleted?: () => void;
 }
 
 const DEFAULT_EVENT_TYPES = [
@@ -94,6 +95,7 @@ export function ClaimDetailView({
   onEventCreated,
   onClaimUpdated,
   onViewInFunnel,
+  onClaimDeleted,
 }: ClaimDetailViewProps) {
   const [slaConfig, setSlaConfig] = useState<SlaConfig>(getSlaConfig());
 
@@ -331,6 +333,29 @@ export function ClaimDetailView({
       console.error('Failed to delete event:', err);
     } finally {
       setDeletingEventLoading(false);
+    }
+  };
+
+  // Delete Claim State & Handler
+  const [showDeleteClaimModal, setShowDeleteClaimModal] = useState(false);
+  const [deletingClaimLoading, setDeletingClaimLoading] = useState(false);
+
+  const handleConfirmDeleteClaim = async () => {
+    setDeletingClaimLoading(true);
+    try {
+      await schedulingService.deleteClaim(claim.id);
+      setShowDeleteClaimModal(false);
+      if (onClaimDeleted) {
+        onClaimDeleted();
+      } else {
+        await onEventCreated();
+        onBack();
+      }
+    } catch (err: any) {
+      console.error('Failed to delete claim:', err);
+      alert('Error deleting claim: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDeletingClaimLoading(false);
     }
   };
 
@@ -938,6 +963,16 @@ export function ClaimDetailView({
           >
             <RefreshCw className="w-3.5 h-3.5 text-[#1187aa]" />
             <span className="hidden sm:inline">Refresh</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowDeleteClaimModal(true)}
+            title="Delete this claim"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-300 rounded-lg transition-all shadow-2xs active:scale-95 cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+            <span className="hidden sm:inline">Delete</span>
           </button>
 
           {claimEvents.length > 0 && (
@@ -3137,6 +3172,48 @@ export function ClaimDetailView({
             onEventCreated();
           }}
         />
+      )}
+
+      {/* DELETE CLAIM CONFIRMATION MODAL */}
+      {showDeleteClaimModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-700 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Claim</h3>
+                <p className="text-xs text-slate-500">Are you sure you want to delete this claim?</p>
+              </div>
+            </div>
+            
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
+              <p className="font-bold text-slate-800 font-mono">Claim #{claim.claimNumber}</p>
+              <p className="text-slate-600 font-semibold">{claim.carrier} · {claim.insured?.name || 'No client name'}</p>
+              <p className="text-slate-500">{claim.propertyAddress}</p>
+              <p className="text-[11px] text-amber-700 font-medium pt-1">⚠️ This will permanently delete this claim and all associated events, time slots, and coordination logs.</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowDeleteClaimModal(false)}
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingClaimLoading}
+                onClick={handleConfirmDeleteClaim}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {deletingClaimLoading ? 'Deleting...' : 'Yes, Delete Claim'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

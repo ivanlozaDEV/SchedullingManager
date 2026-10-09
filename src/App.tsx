@@ -23,7 +23,8 @@ import {
   LayoutGrid,
   Filter,
   Mail,
-  LogOut
+  LogOut,
+  Trash2
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
@@ -277,6 +278,28 @@ export function App() {
     }
   };
 
+  // Delete Claim State & Handler
+  const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
+  const [isDeletingClaim, setIsDeletingClaim] = useState(false);
+
+  const handleDeleteClaim = async () => {
+    if (!claimToDelete) return;
+    try {
+      setIsDeletingClaim(true);
+      await schedulingService.deleteClaim(claimToDelete.id);
+      await loadData();
+      if (selectedClaim?.id === claimToDelete.id) {
+        setSelectedClaim(null);
+      }
+      setClaimToDelete(null);
+    } catch (err: any) {
+      console.error('Error deleting claim:', err);
+      alert('Error deleting claim: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsDeletingClaim(false);
+    }
+  };
+
   // Pipeline Stages in English with solid colors
   const stages: { key: CoordinationStage; title: string; desc: string; badgeBg: string; badgeText: string; headerBorder: string }[] = [
     { 
@@ -515,6 +538,10 @@ export function App() {
             pas={pas}
             events={events}
             onEventCreated={loadData}
+            onClaimDeleted={async () => {
+              await loadData();
+              setSelectedClaim(null);
+            }}
             onClaimUpdated={async () => {
               const freshList = await loadData();
               if (selectedClaim?.id && freshList) {
@@ -1619,9 +1646,17 @@ export function App() {
                                 <button
                                   type="button"
                                   onClick={() => setSelectedClaim(claim)}
-                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-maroon-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-3 py-1.5 rounded-lg transition-colors"
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-maroon-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                                 >
                                   <span>Ver Claim</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setClaimToDelete(claim)}
+                                  className="p-1.5 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                                  title="Eliminar claim"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </td>
@@ -1766,12 +1801,20 @@ export function App() {
                               setViewMode('funnel');
                               setSearchQuery(claim.claimNumber);
                             }}
-                            className="p-2 text-xs font-bold text-tealBrand-700 hover:text-tealBrand-900 bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-200 rounded-lg transition-colors"
+                            className="p-2 text-xs font-bold text-tealBrand-700 hover:text-tealBrand-900 bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-200 rounded-lg transition-colors cursor-pointer"
                             title="View in Funnel"
                           >
                             <ArrowRight className="w-4 h-4" />
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setClaimToDelete(claim)}
+                          className="p-2 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                          title="Eliminar claim"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   );
@@ -1844,6 +1887,48 @@ export function App() {
           onClose={() => setHistoryEventTarget(null)}
           onLogAdded={loadData}
         />
+      )}
+
+      {/* Delete Claim Confirmation Modal */}
+      {claimToDelete && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-700 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Eliminar Reclamo</h3>
+                <p className="text-xs text-slate-500">¿Estás seguro de eliminar este reclamo?</p>
+              </div>
+            </div>
+            
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
+              <p className="font-bold text-slate-800 font-mono">Claim #{claimToDelete.claimNumber}</p>
+              <p className="text-slate-600 font-semibold">{claimToDelete.carrier} · {claimToDelete.insured?.name || 'Cliente sin nombre'}</p>
+              <p className="text-slate-500">{claimToDelete.propertyAddress}</p>
+              <p className="text-[11px] text-amber-700 font-medium pt-1">⚠️ Se eliminarán permanentemente el reclamo, sus eventos, fechas y bitácora de coordinación.</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setClaimToDelete(null)}
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingClaim}
+                onClick={handleDeleteClaim}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingClaim ? 'Eliminando...' : 'Sí, Eliminar Reclamo'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

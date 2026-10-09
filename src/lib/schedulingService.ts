@@ -1017,6 +1017,17 @@ export const schedulingService = {
     return updated;
   },
 
+  // 13.6 Eliminar Claim
+  async deleteClaim(claimId: string) {
+    if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
+    const { error } = await supabase
+      .from('claims')
+      .delete()
+      .eq('id', claimId);
+    if (error) throw error;
+    return true;
+  },
+
   // 14. Crear Evento / Inspección para un Claim
   async createEvent(eventData: {
     claimId: string;
