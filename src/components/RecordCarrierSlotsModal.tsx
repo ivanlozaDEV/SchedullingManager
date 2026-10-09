@@ -71,7 +71,7 @@ export function RecordCarrierSlotsModal({
     e.preventDefault();
     setError(null);
 
-    // Validate that all slots have dates
+    // Validate that all slots have dates and logical times
     for (let i = 0; i < slots.length; i++) {
       if (!slots[i].slotDate) {
         setError(`Please provide a date for Option #${i + 1}`);
@@ -79,6 +79,10 @@ export function RecordCarrierSlotsModal({
       }
       if (!slots[i].startTime || !slots[i].endTime) {
         setError(`Please provide both start and end times for Option #${i + 1}`);
+        return;
+      }
+      if (slots[i].startTime >= slots[i].endTime) {
+        setError(`Option #${i + 1}: End time (${slots[i].endTime}) must be after start time (${slots[i].startTime})`);
         return;
       }
     }
@@ -228,7 +232,7 @@ export function RecordCarrierSlotsModal({
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 text-xs font-bold text-white bg-maroon-800 hover:bg-maroon-900 disabled:opacity-50 rounded-lg transition-colors shadow-xs"
+              className="px-4 py-2 text-xs font-bold text-white bg-[#1187AA] hover:bg-[#0C6079] disabled:opacity-50 rounded-lg transition-colors shadow-xs"
             >
               {saving ? 'Saving...' : isEditing ? 'Update Dates & Refresh PA Review ➔' : 'Submit Dates & Advance to PA Review ➔'}
             </button>

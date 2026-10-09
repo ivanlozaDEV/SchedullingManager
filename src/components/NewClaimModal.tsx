@@ -13,6 +13,13 @@ import {
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { appSettingsService } from '../lib/appSettingsService';
+import { 
+  formatPhoneAsYouType, 
+  isValidPhone, 
+  isValidEmail, 
+  formatZipCode, 
+  formatClaimNumber 
+} from '../lib/formatters';
 import type { Insured, PublicAdjuster, CarrierRepresentative, ExternalActor, Claim } from '../types';
 
 const DEFAULT_CARRIERS = [
@@ -270,6 +277,17 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
     setSubmitting(true);
 
     try {
+      // Validation: Primary Claim Info
+      if (!claimNumber.trim()) {
+        throw new Error('Claim number is required');
+      }
+      if (!propertyAddress.trim()) {
+        throw new Error('Property address is required');
+      }
+      if (zipCode.trim() && zipCode.replace(/\D/g, '').length < 5) {
+        throw new Error('Please enter a valid 5-digit US Zip Code');
+      }
+
       // 0. Resolve Carrier
       let finalCarrier = carrier;
       if (isCustomCarrier) {
@@ -295,7 +313,13 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
       let finalInsuredId = selectedInsured?.id;
       if (insuredMode === 'create') {
         if (!newInsuredName.trim()) {
-          throw new Error('Insured full name is required');
+          throw new Error('Insured client full name is required');
+        }
+        if (newInsuredPhone.trim() && !isValidPhone(newInsuredPhone)) {
+          throw new Error('Please enter a valid 10-digit phone number for the Insured (e.g. (305) 555-0123)');
+        }
+        if (newInsuredEmail.trim() && !isValidEmail(newInsuredEmail)) {
+          throw new Error('Please enter a valid email address for the Insured (e.g. client@example.com)');
         }
         const created = await schedulingService.createInsured({
           name: newInsuredName.trim(),
@@ -314,6 +338,12 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
       // 2. Resolve Public Adjuster ID
       let finalPaId = selectedPa?.id;
       if (paMode === 'create' && newPaName.trim()) {
+        if (newPaPhone.trim() && !isValidPhone(newPaPhone)) {
+          throw new Error('Please enter a valid 10-digit phone number for the Public Adjuster');
+        }
+        if (newPaEmail.trim() && !isValidEmail(newPaEmail)) {
+          throw new Error('Please enter a valid email address for the Public Adjuster');
+        }
         const createdPa = await schedulingService.createPublicAdjuster({
           name: newPaName.trim(),
           role: newPaRole,
@@ -328,6 +358,12 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
       // 3. Resolve Carrier Rep ID
       let finalCarrierRepId = selectedCarrierRep?.id;
       if (carrierRepMode === 'create' && newRepName.trim()) {
+        if (newRepPhone.trim() && !isValidPhone(newRepPhone)) {
+          throw new Error('Please enter a valid 10-digit phone number for the Carrier Representative');
+        }
+        if (newRepEmail.trim() && !isValidEmail(newRepEmail)) {
+          throw new Error('Please enter a valid email address for the Carrier Representative');
+        }
         const createdRep = await schedulingService.createCarrierRep({
           carrierName: finalCarrier,
           name: newRepName.trim(),
@@ -342,6 +378,12 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
       // 4. Resolve External Actor ID
       let finalExternalActorId = selectedExternalActor?.id;
       if (externalActorMode === 'create' && newExtName.trim()) {
+        if (newExtPhone.trim() && !isValidPhone(newExtPhone)) {
+          throw new Error('Please enter a valid 10-digit phone number for the External Actor');
+        }
+        if (newExtEmail.trim() && !isValidEmail(newExtEmail)) {
+          throw new Error('Please enter a valid email address for the External Actor');
+        }
         const createdExt = await schedulingService.createExternalActor({
           name: newExtName.trim(),
           typeOfActor: newExtType,
@@ -558,8 +600,8 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                         required
                         placeholder="e.g. CLM-2026-0819"
                         value={claimNumber}
-                        onChange={(e) => setClaimNumber(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
+                        onChange={(e) => setClaimNumber(formatClaimNumber(e.target.value))}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono uppercase text-slate-900 focus:outline-none focus:border-maroon-800"
                       />
                     </div>
 
@@ -678,7 +720,8 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                           type="text"
                           placeholder="e.g. 33131"
                           value={zipCode}
-                          onChange={(e) => setZipCode(e.target.value)}
+                          maxLength={10}
+                          onChange={(e) => setZipCode(formatZipCode(e.target.value))}
                           className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
                         />
                       </div>
@@ -837,9 +880,9 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                           <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Phone</label>
                           <input
                             type="text"
-                            placeholder="(305) 000-0000"
+                            placeholder="(305) 555-0123"
                             value={newInsuredPhone}
-                            onChange={(e) => setNewInsuredPhone(e.target.value)}
+                            onChange={(e) => setNewInsuredPhone(formatPhoneAsYouType(e.target.value))}
                             className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
                           />
                         </div>
@@ -849,7 +892,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                             type="email"
                             placeholder="email@client.com"
                             value={newInsuredEmail}
-                            onChange={(e) => setNewInsuredEmail(e.target.value)}
+                            onChange={(e) => setNewInsuredEmail(e.target.value.toLowerCase().trim())}
                             className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
                           />
                         </div>
@@ -1040,9 +1083,9 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                           <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Phone</label>
                           <input
                             type="text"
-                            placeholder="(305) 000-0000"
+                            placeholder="(305) 555-0123"
                             value={newPaPhone}
-                            onChange={(e) => setNewPaPhone(e.target.value)}
+                            onChange={(e) => setNewPaPhone(formatPhoneAsYouType(e.target.value))}
                             className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
                           />
                         </div>
@@ -1052,7 +1095,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                             type="email"
                             placeholder="adjuster@firm.com"
                             value={newPaEmail}
-                            onChange={(e) => setNewPaEmail(e.target.value)}
+                            onChange={(e) => setNewPaEmail(e.target.value.toLowerCase().trim())}
                             className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
                           />
                         </div>
@@ -1228,9 +1271,9 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                           <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">Phone</label>
                           <input
                             type="text"
-                            placeholder="(305) 000-0000"
+                            placeholder="(305) 555-0123"
                             value={newRepPhone}
-                            onChange={(e) => setNewRepPhone(e.target.value)}
+                            onChange={(e) => setNewRepPhone(formatPhoneAsYouType(e.target.value))}
                             className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
                           />
                         </div>
@@ -1240,7 +1283,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                             type="email"
                             placeholder="rep@carrier.com"
                             value={newRepEmail}
-                            onChange={(e) => setNewRepEmail(e.target.value)}
+                            onChange={(e) => setNewRepEmail(e.target.value.toLowerCase().trim())}
                             className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
                           />
                         </div>
@@ -1410,8 +1453,8 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                             type="text"
                             placeholder="(305) 000-0000"
                             value={newExtPhone}
-                            onChange={(e) => setNewExtPhone(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
+                            onChange={(e) => setNewExtPhone(formatPhoneAsYouType(e.target.value))}
+                            className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#1187AA]"
                           />
                         </div>
                         <div>
@@ -1420,8 +1463,8 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                             type="email"
                             placeholder="contact@company.com"
                             value={newExtEmail}
-                            onChange={(e) => setNewExtEmail(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-maroon-800"
+                            onChange={(e) => setNewExtEmail(e.target.value.toLowerCase().trim())}
+                            className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#1187AA]"
                           />
                         </div>
                       </div>

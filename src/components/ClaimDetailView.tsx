@@ -33,6 +33,13 @@ import { ResetCoordinationModal } from './ResetCoordinationModal';
 import { EventHistoryModal } from './EventHistoryModal';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from '../lib/slaUtils';
 import { appSettingsService } from '../lib/appSettingsService';
+import { 
+  formatPhoneAsYouType, 
+  isValidPhone, 
+  isValidEmail, 
+  formatZipCode, 
+  formatClaimNumber 
+} from '../lib/formatters';
 import type { 
   Claim, 
   PublicAdjuster, 
@@ -263,6 +270,10 @@ export function ClaimDetailView({
       setClaimInfoError('Property address is required');
       return;
     }
+    if (claimForm.zipCode?.trim() && !/^\d{5}(-\d{4})?$/.test(claimForm.zipCode.trim())) {
+      setClaimInfoError('ZIP code must be 5 digits (e.g. 33130)');
+      return;
+    }
 
     setSavingClaimInfo(true);
     setClaimInfoError(null);
@@ -433,6 +444,14 @@ export function ClaimDetailView({
       setQuickActorError('PA full name is required');
       return;
     }
+    if (quickPaForm.phone?.trim() && !isValidPhone(quickPaForm.phone)) {
+      setQuickActorError('Please enter a valid 10-digit phone number (e.g. (305) 555-0199)');
+      return;
+    }
+    if (quickPaForm.email?.trim() && !isValidEmail(quickPaForm.email)) {
+      setQuickActorError('Please enter a valid email address');
+      return;
+    }
     setQuickActorSaving(true);
     setQuickActorError(null);
     try {
@@ -468,6 +487,14 @@ export function ClaimDetailView({
     e.preventDefault();
     if (!quickExtForm.name.trim()) {
       setQuickActorError('Contact name is required');
+      return;
+    }
+    if (quickExtForm.phone?.trim() && !isValidPhone(quickExtForm.phone)) {
+      setQuickActorError('Please enter a valid 10-digit phone number (e.g. (305) 555-0144)');
+      return;
+    }
+    if (quickExtForm.email?.trim() && !isValidEmail(quickExtForm.email)) {
+      setQuickActorError('Please enter a valid email address');
       return;
     }
     setQuickActorSaving(true);
@@ -699,6 +726,14 @@ export function ClaimDetailView({
     if (!editingActor) return;
     if (!actorForm.name?.trim()) {
       setActorError('Name is required');
+      return;
+    }
+    if (actorForm.phone?.trim() && !isValidPhone(actorForm.phone)) {
+      setActorError('Please enter a valid 10-digit phone number (e.g. (305) 555-0199)');
+      return;
+    }
+    if (actorForm.email?.trim() && !isValidEmail(actorForm.email)) {
+      setActorError('Please enter a valid email address');
       return;
     }
 
@@ -1735,14 +1770,14 @@ export function ClaimDetailView({
                               type="email"
                               placeholder="Email Address"
                               value={customNotifyEmail}
-                              onChange={(e) => setCustomNotifyEmail(e.target.value)}
+                              onChange={(e) => setCustomNotifyEmail(e.target.value.toLowerCase().trim())}
                               className="bg-white border border-slate-300 rounded px-2 py-1 text-xs"
                             />
                             <input
                               type="text"
-                              placeholder="Phone Number"
+                              placeholder="(305) 555-0100"
                               value={customNotifyPhone}
-                              onChange={(e) => setCustomNotifyPhone(e.target.value)}
+                              onChange={(e) => setCustomNotifyPhone(formatPhoneAsYouType(e.target.value))}
                               className="bg-white border border-slate-300 rounded px-2 py-1 text-xs"
                             />
                           </div>
@@ -1763,6 +1798,14 @@ export function ClaimDetailView({
                               type="button"
                               onClick={() => {
                                 if (!customNotifyName.trim()) return;
+                                if (customNotifyPhone.trim() && !isValidPhone(customNotifyPhone)) {
+                                  alert('Please enter a valid 10-digit phone number (e.g. (305) 555-0100)');
+                                  return;
+                                }
+                                if (customNotifyEmail.trim() && !isValidEmail(customNotifyEmail)) {
+                                  alert('Please enter a valid email address');
+                                  return;
+                                }
                                 setCustomNotifyList([
                                   ...customNotifyList,
                                   {
@@ -2515,9 +2558,9 @@ export function ClaimDetailView({
                   <input
                     type="text"
                     value={actorForm.phone || ''}
-                    onChange={(e) => setActorForm({ ...actorForm, phone: e.target.value })}
-                    placeholder="305-123-4567"
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                    onChange={(e) => setActorForm({ ...actorForm, phone: formatPhoneAsYouType(e.target.value) })}
+                    placeholder="(305) 555-0199"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   />
                 </div>
                 <div>
@@ -2525,9 +2568,9 @@ export function ClaimDetailView({
                   <input
                     type="email"
                     value={actorForm.email || ''}
-                    onChange={(e) => setActorForm({ ...actorForm, email: e.target.value })}
+                    onChange={(e) => setActorForm({ ...actorForm, email: e.target.value.toLowerCase().trim() })}
                     placeholder="email@example.com"
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   />
                 </div>
               </div>
@@ -2662,8 +2705,8 @@ export function ClaimDetailView({
                   <input
                     type="text"
                     value={claimForm.claimNumber}
-                    onChange={(e) => setClaimForm({ ...claimForm, claimNumber: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800 font-mono font-bold"
+                    onChange={(e) => setClaimForm({ ...claimForm, claimNumber: formatClaimNumber(e.target.value) })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA] font-mono font-bold"
                   />
                 </div>
               </div>
@@ -2756,8 +2799,10 @@ export function ClaimDetailView({
                   <input
                     type="text"
                     value={claimForm.zipCode}
-                    onChange={(e) => setClaimForm({ ...claimForm, zipCode: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                    onChange={(e) => setClaimForm({ ...claimForm, zipCode: formatZipCode(e.target.value) })}
+                    placeholder="33130"
+                    maxLength={10}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   />
                 </div>
               </div>
@@ -2843,8 +2888,8 @@ export function ClaimDetailView({
                     type="tel"
                     placeholder="(305) 555-0199"
                     value={quickPaForm.phone}
-                    onChange={(e) => setQuickPaForm({ ...quickPaForm, phone: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                    onChange={(e) => setQuickPaForm({ ...quickPaForm, phone: formatPhoneAsYouType(e.target.value) })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   />
                 </div>
                 <div>
@@ -2852,7 +2897,7 @@ export function ClaimDetailView({
                   <select
                     value={quickPaForm.role}
                     onChange={(e) => setQuickPaForm({ ...quickPaForm, role: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   >
                     <option value="adjuster">Public Adjuster</option>
                     <option value="senior_adjuster">Senior Adjuster</option>
@@ -2867,8 +2912,8 @@ export function ClaimDetailView({
                   type="email"
                   placeholder="john@ipadjusters.com"
                   value={quickPaForm.email}
-                  onChange={(e) => setQuickPaForm({ ...quickPaForm, email: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                  onChange={(e) => setQuickPaForm({ ...quickPaForm, email: e.target.value.toLowerCase().trim() })}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                 />
               </div>
 
@@ -2971,8 +3016,8 @@ export function ClaimDetailView({
                     type="tel"
                     placeholder="(305) 555-0144"
                     value={quickExtForm.phone}
-                    onChange={(e) => setQuickExtForm({ ...quickExtForm, phone: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                    onChange={(e) => setQuickExtForm({ ...quickExtForm, phone: formatPhoneAsYouType(e.target.value) })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   />
                 </div>
                 <div>
@@ -2981,8 +3026,8 @@ export function ClaimDetailView({
                     type="email"
                     placeholder="mike@apexflorida.com"
                     value={quickExtForm.email}
-                    onChange={(e) => setQuickExtForm({ ...quickExtForm, email: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-maroon-800"
+                    onChange={(e) => setQuickExtForm({ ...quickExtForm, email: e.target.value.toLowerCase().trim() })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-[#1187AA]"
                   />
                 </div>
               </div>
