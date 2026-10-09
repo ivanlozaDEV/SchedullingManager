@@ -3,17 +3,27 @@
 @tailwind utilities;
 
 :root {
+  --color-brand-primary: #1187aa;
+  --color-brand-primary-hover: #0c6079;
+  --color-brand-primary-light: #e7f3f7;
+  --color-brand-primary-dark: #094a5e;
+  --color-surface-bg: #f5f9fa;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #f1f5f9;
+  background-color: #f5f9fa;
   color: #0f172a;
 }
 
-/* Custom scrollbars para tema de día */
+::selection {
+  background-color: #e7f3f7;
+  color: #0c6079;
+}
+
+/* Custom scrollbars en celeste oficial */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -29,5 +39,5 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #1187aa;
 }

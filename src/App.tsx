@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
   Search, 
-  ShieldCheck, 
   Phone, 
   RefreshCw, 
   Copy, 
@@ -23,10 +22,13 @@ import {
   LayoutList,
   LayoutGrid,
   Filter,
-  Mail
+  Mail,
+  LogOut
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
+import { LoginGate } from './components/LoginGate';
+import { HomeHub } from './components/HomeHub';
 import { NewClaimModal } from './components/NewClaimModal';
 import { ClaimDetailView } from './components/ClaimDetailView';
 import { RecordCarrierSlotsModal } from './components/RecordCarrierSlotsModal';
@@ -45,6 +47,23 @@ import type {
 } from './types';
 
 export function App() {
+  const [authRole, setAuthRole] = useState<'admin' | 'viewer' | null>(() => {
+    return (
+      (localStorage.getItem('ip_scheduling_auth_role') as 'admin' | 'viewer' | null) ||
+      (sessionStorage.getItem('ip_scheduling_auth_role') as 'admin' | 'viewer' | null) ||
+      null
+    );
+  });
+
+  const handleLogout = () => {
+    localStorage.removeItem('ip_scheduling_auth_role');
+    sessionStorage.removeItem('ip_scheduling_auth_role');
+    setAuthRole(null);
+    setCurrentView('hub');
+  };
+
+  const [currentView, setCurrentView] = useState<'hub' | 'login' | 'scheduling'>('hub');
+
   const [events, setEvents] = useState<CoordinationEvent[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
   const [pas, setPas] = useState<PublicAdjuster[]>([]);
@@ -342,6 +361,36 @@ export function App() {
     );
   });
 
+  // 1. Initial / Default view: Home Operations Hub with the 2 Cards (Cover / Portada)
+  if (currentView === 'hub') {
+    return (
+      <HomeHub
+        onOpenScheduling={() => {
+          if (authRole) {
+            setCurrentView('scheduling');
+          } else {
+            setCurrentView('login');
+          }
+        }}
+        onLogout={handleLogout}
+        authRole={authRole}
+      />
+    );
+  }
+
+  // 2. Protected Login Gate specifically for Scheduling Manager
+  if (currentView === 'login' || !authRole) {
+    return (
+      <LoginGate
+        onLogin={(role) => {
+          setAuthRole(role);
+          setCurrentView('scheduling');
+        }}
+        onBack={() => setCurrentView('hub')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Clean Light Header */}
@@ -350,19 +399,30 @@ export function App() {
           
           {/* Brand Logo & Name */}
           <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-lg bg-maroon-800 flex items-center justify-center text-white shadow-xs">
-              <ShieldCheck className="w-6 h-6 text-tealBrand-300" />
-            </div>
-            <div>
-              <span className="font-extrabold text-2xl tracking-tight text-maroon-800">
-                <span className="italic">IP</span> <span className="text-slate-900 font-bold">Adjusters</span>
+            <img 
+              src="/ip-adjusting-logo.svg" 
+              alt="IP Adjusting Group Logo" 
+              className="h-10 w-auto object-contain"
+            />
+            <div className="hidden sm:block border-l border-slate-200 pl-3">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e7f3f7] text-[#1187aa] border border-[#419fbb]/30 uppercase tracking-wider font-['Montserrat',sans-serif]">
+                Scheduling System
               </span>
-              <p className="text-xs text-slate-500 font-medium">Inspection Scheduling & Coordination</p>
+              <p className="text-[11px] text-slate-500 font-medium mt-0.5">Inspection Coordination</p>
             </div>
           </div>
 
           {/* Action buttons & View Switcher */}
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setCurrentView('hub')}
+              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-2xs"
+              title="Return to IP Operations Hub"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-blue-700" />
+              <span>Operations Hub</span>
+            </button>
+
             <button
               onClick={loadData}
               disabled={loading}
@@ -391,6 +451,20 @@ export function App() {
               <Plus className="w-4 h-4" />
               <span>New Claim</span>
             </button>
+
+            {/* Role Badge & Logout */}
+            <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
+              <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
+                {authRole}
+              </span>
+              <button
+                onClick={handleLogout}
+                title="Log out of Scheduling Manager"
+                className="p-2 rounded-lg bg-slate-100 hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </header>
