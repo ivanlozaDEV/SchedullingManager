@@ -25,7 +25,8 @@ import {
   Send,
   AlertTriangle,
   RotateCcw,
-  History
+  History,
+  RefreshCw
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { RecordCarrierSlotsModal } from './RecordCarrierSlotsModal';
@@ -929,11 +930,21 @@ export function ClaimDetailView({
             </button>
           )}
 
+          <button
+            type="button"
+            onClick={onClaimUpdated}
+            title="Refresh claim details"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 hover:border-[#1187aa] rounded-lg transition-all shadow-2xs active:scale-95 cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-[#1187aa]" />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+
           {claimEvents.length > 0 && (
             <button
               type="button"
               onClick={() => onViewInFunnel(claim.claimNumber)}
-              className="p-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors"
+              className="p-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer"
               title="View this claim's events in Funnel"
             >
               <ArrowRight className="w-4 h-4" />

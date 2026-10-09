@@ -56,14 +56,28 @@ export function App() {
     );
   });
 
+  const [currentView, setCurrentView] = useState<'hub' | 'login' | 'scheduling'>(() => {
+    const saved = sessionStorage.getItem('ip_scheduling_current_view') as 'hub' | 'login' | 'scheduling' | null;
+    const hasAuth = (localStorage.getItem('ip_scheduling_auth_role') as 'admin' | 'viewer' | null) ||
+                    (sessionStorage.getItem('ip_scheduling_auth_role') as 'admin' | 'viewer' | null);
+    if (saved === 'scheduling' && hasAuth) return 'scheduling';
+    if (saved === 'hub') return 'hub';
+    if (saved === 'login' && !hasAuth) return 'login';
+    return hasAuth ? 'scheduling' : 'hub';
+  });
+
+  const navigateToView = (view: 'hub' | 'login' | 'scheduling') => {
+    sessionStorage.setItem('ip_scheduling_current_view', view);
+    setCurrentView(view);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('ip_scheduling_auth_role');
     sessionStorage.removeItem('ip_scheduling_auth_role');
+    sessionStorage.removeItem('ip_scheduling_current_view');
     setAuthRole(null);
     setCurrentView('hub');
   };
-
-  const [currentView, setCurrentView] = useState<'hub' | 'login' | 'scheduling'>('hub');
 
   const [events, setEvents] = useState<CoordinationEvent[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -387,9 +401,9 @@ export function App() {
       <HomeHub
         onOpenScheduling={() => {
           if (authRole) {
-            setCurrentView('scheduling');
+            navigateToView('scheduling');
           } else {
-            setCurrentView('login');
+            navigateToView('login');
           }
         }}
         onLogout={handleLogout}
@@ -404,9 +418,9 @@ export function App() {
       <LoginGate
         onLogin={(role) => {
           setAuthRole(role);
-          setCurrentView('scheduling');
+          navigateToView('scheduling');
         }}
-        onBack={() => setCurrentView('hub')}
+        onBack={() => navigateToView('hub')}
       />
     );
   }
@@ -433,23 +447,25 @@ export function App() {
           </div>
 
           {/* Action buttons & View Switcher */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2.5">
             <button
-              onClick={() => setCurrentView('hub')}
-              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-2xs"
+              onClick={() => navigateToView('hub')}
+              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-2xs cursor-pointer"
               title="Return to IP Operations Hub"
             >
               <LayoutGrid className="w-3.5 h-3.5 text-blue-700" />
               <span>Operations Hub</span>
             </button>
 
+            {/* Prominent Dashboard Refresh Button */}
             <button
               onClick={loadData}
               disabled={loading}
-              title="Refresh data"
-              className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 transition-colors"
+              title="Refresh pipeline and claims data from database"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-[#F5F9FA] border border-slate-300 hover:border-[#1187aa] text-slate-700 hover:text-[#1187aa] text-xs font-bold transition-all shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-maroon-800' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-[#1187aa] ${loading ? 'animate-spin' : ''}`} />
+              <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
             </button>
 
             <button
