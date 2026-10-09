@@ -63,13 +63,11 @@ serve(async (req) => {
     const slotId = url.searchParams.get('slotId')
 
     if (!eventId || !slotId) {
-      return new Response(renderFeedbackHtml({
+      return buildRedirectResponse({
+        role: 'insured',
+        status: 'error',
         title: "Missing Parameters",
-        message: "No valid event or date option was specified in the confirmation link.",
-        isSuccess: false
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 400
+        message: "No valid event or date option was specified in the confirmation link."
       })
     }
 
@@ -90,13 +88,11 @@ serve(async (req) => {
         .single()
 
       if (eventErr || !event) {
-        return new Response(renderFeedbackHtml({
+        return buildRedirectResponse({
+          role: 'insured',
+          status: 'error',
           title: "Inspection Not Found",
-          message: "We could not locate this inspection event in our system.",
-          isSuccess: false
-        }), {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          status: 404
+          message: "We could not locate this inspection event in our system."
         })
       }
 
@@ -111,13 +107,11 @@ serve(async (req) => {
       const chosenSlot = rawSlots.find((s: any) => s.id === slotId)
 
       if (!chosenSlot) {
-        return new Response(renderFeedbackHtml({
+        return buildRedirectResponse({
+          role: 'insured',
+          status: 'error',
           title: "Date Option Not Found",
-          message: "The requested inspection date could not be found or has already been updated.",
-          isSuccess: false
-        }), {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          status: 404
+          message: "The requested inspection date could not be found or has already been updated."
         })
       }
 
@@ -175,30 +169,25 @@ serve(async (req) => {
         console.error("Error triggering send-calendar-invite:", err)
       }
 
-      // Render branded confirmation page directly on verified Supabase domain (prevents browser red security warnings)
-      return new Response(renderClientConfirmationSuccessHtml({
-        claimNumber,
-        insuredName,
-        carrier,
-        propertyAddress,
-        paName,
+      // Redirect to frontend confirmation portal
+      return buildRedirectResponse({
+        role: 'insured',
+        status: 'success',
+        claim: claimNumber,
+        insured: insuredName,
+        carrier: carrier,
+        address: propertyAddress,
         date: slotDate,
-        startTime: startTime.slice(0, 5),
-        endTime: endTime.slice(0, 5)
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 200
+        time: `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`
       })
 
     } catch (err: any) {
       console.error("Error confirming slot from client email:", err)
-      return new Response(renderFeedbackHtml({
+      return buildRedirectResponse({
+        role: 'insured',
+        status: 'error',
         title: "Confirmation Error",
-        message: err.message || "An unexpected error occurred while confirming your inspection.",
-        isSuccess: false
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 500
+        message: err.message || "An unexpected error occurred while confirming your inspection."
       })
     }
   }

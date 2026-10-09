@@ -57,13 +57,11 @@ serve(async (req) => {
         .single()
 
       if (eventErr || !event) {
-        return new Response(renderFeedbackHtml({
+        return buildRedirectResponse({
+          role: 'pa',
+          status: 'error',
           title: "Event Not Found",
-          message: "We could not locate this event in the system. It may have been reassigned or removed.",
-          isSuccess: false
-        }), {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          status: 404
+          message: "We could not locate this event in the system. It may have been reassigned or removed."
         })
       }
 
@@ -102,13 +100,11 @@ serve(async (req) => {
         const rejectedSlots = sortedSlots.filter(s => !selectedIds.includes(s.id))
 
         if (acceptedSlots.length === 0) {
-          return new Response(renderFeedbackHtml({
+          return buildRedirectResponse({
+            role: 'pa',
+            status: 'error',
             title: "Invalid Selection",
-            message: "No valid options were identified to approve.",
-            isSuccess: false
-          }), {
-            headers: { 'Content-Type': 'text/html; charset=utf-8' },
-            status: 400
+            message: "No valid options were identified to approve."
           })
         }
 
@@ -641,17 +637,16 @@ async function executeSlotSelection({
     console.error("Error triggering notify-insured-slots from 1-click email:", err)
   }
 
-  // 5. Render branded confirmation page directly on verified Supabase domain
-  return new Response(renderConfirmationSuccessHtml({
-    claimNumber,
-    insuredName,
-    carrier,
-    propertyAddress,
-    paName,
-    acceptedSlots
-  }), {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    status: 200
+  // 5. Redirect to frontend confirmation portal
+  return buildRedirectResponse({
+    role: 'pa',
+    status: 'success',
+    claim: claimNumber,
+    insured: insuredName,
+    carrier: carrier,
+    address: propertyAddress,
+    date: acceptedSlots.map((s: any) => s.slot_date).join(', '),
+    time: acceptedSlots.map((s: any) => `${(s.start_time || '').slice(0, 5)}-${(s.end_time || '').slice(0, 5)}`).join(', ')
   })
 }
 
