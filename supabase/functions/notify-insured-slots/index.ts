@@ -8,6 +8,40 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function buildRedirectResponse({
+  role = 'insured',
+  status = 'success',
+  claim = '',
+  insured = '',
+  carrier = '',
+  address = '',
+  date = '',
+  time = '',
+  title = '',
+  message = ''
+}: any) {
+  const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://ip-scheduling-manager.onrender.com'
+  const redirectUrl = new URL(baseUrl)
+  redirectUrl.searchParams.set('view', 'confirmation')
+  if (role) redirectUrl.searchParams.set('role', role)
+  if (status) redirectUrl.searchParams.set('status', status)
+  if (claim) redirectUrl.searchParams.set('claim', claim)
+  if (insured) redirectUrl.searchParams.set('insured', insured)
+  if (carrier) redirectUrl.searchParams.set('carrier', carrier)
+  if (address) redirectUrl.searchParams.set('address', address)
+  if (date) redirectUrl.searchParams.set('date', date)
+  if (time) redirectUrl.searchParams.set('time', time)
+  if (title) redirectUrl.searchParams.set('title', title)
+  if (message) redirectUrl.searchParams.set('message', message)
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Location': redirectUrl.toString()
+    }
+  })
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -29,13 +63,11 @@ serve(async (req) => {
     const slotId = url.searchParams.get('slotId')
 
     if (!eventId || !slotId) {
-      return new Response(renderFeedbackHtml({
-        title: "Error: Missing Parameters",
-        message: "No valid event or date option was specified in the confirmation link.",
-        isSuccess: false
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 400
+      return buildRedirectResponse({
+        role: 'insured',
+        status: 'error',
+        title: "Missing Parameters",
+        message: "No valid event or date option was specified in the confirmation link."
       })
     }
 
@@ -56,13 +88,11 @@ serve(async (req) => {
         .single()
 
       if (eventErr || !event) {
-        return new Response(renderFeedbackHtml({
+        return buildRedirectResponse({
+          role: 'insured',
+          status: 'error',
           title: "Inspection Not Found",
-          message: "We could not locate this inspection event in our system.",
-          isSuccess: false
-        }), {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          status: 404
+          message: "We could not locate this inspection event in our system."
         })
       }
 
@@ -77,13 +107,11 @@ serve(async (req) => {
       const chosenSlot = rawSlots.find((s: any) => s.id === slotId)
 
       if (!chosenSlot) {
-        return new Response(renderFeedbackHtml({
+        return buildRedirectResponse({
+          role: 'insured',
+          status: 'error',
           title: "Date Option Not Found",
-          message: "The requested inspection date could not be found.",
-          isSuccess: false
-        }), {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          status: 404
+          message: "The requested inspection date could not be found."
         })
       }
 
@@ -136,30 +164,25 @@ serve(async (req) => {
         body: JSON.stringify({ eventId })
       }).catch(err => console.error("Error triggering send-calendar-invite:", err))
 
-      // Return clean confirmation HTML page
-      return new Response(renderClientConfirmationSuccessHtml({
-        claimNumber,
-        insuredName,
-        carrier,
-        propertyAddress,
-        paName,
+      // Return clean 302 redirect to frontend confirmation portal
+      return buildRedirectResponse({
+        role: 'insured',
+        status: 'success',
+        claim: claimNumber,
+        insured: insuredName,
+        carrier: carrier,
+        address: propertyAddress,
         date: slotDate,
-        startTime: startTime.slice(0, 5),
-        endTime: endTime.slice(0, 5)
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 200
+        time: `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`
       })
 
     } catch (err: any) {
       console.error("Error confirming slot from client email:", err)
-      return new Response(renderFeedbackHtml({
+      return buildRedirectResponse({
+        role: 'insured',
+        status: 'error',
         title: "Confirmation Error",
-        message: err.message || "An unexpected error occurred while confirming your inspection.",
-        isSuccess: false
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 500
+        message: err.message || "An unexpected error occurred while confirming your inspection."
       })
     }
   }

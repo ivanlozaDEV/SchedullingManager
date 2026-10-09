@@ -29,6 +29,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
 import { LoginGate } from './components/LoginGate';
 import { HomeHub } from './components/HomeHub';
+import { ConfirmationPortal } from './components/ConfirmationPortal';
 import { NewClaimModal } from './components/NewClaimModal';
 import { ClaimDetailView } from './components/ClaimDetailView';
 import { RecordCarrierSlotsModal } from './components/RecordCarrierSlotsModal';
@@ -360,6 +361,25 @@ export function App() {
       (c.insured?.phone && c.insured.phone.includes(q))
     );
   });
+
+  // 0. Email 1-Click Confirmation Landing Portal (Public, no login required)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('view') === 'confirmation') {
+    return (
+      <ConfirmationPortal
+        role={urlParams.get('role')}
+        status={urlParams.get('status')}
+        claim={urlParams.get('claim')}
+        insured={urlParams.get('insured')}
+        carrier={urlParams.get('carrier')}
+        address={urlParams.get('address')}
+        date={urlParams.get('date')}
+        time={urlParams.get('time')}
+        title={urlParams.get('title')}
+        message={urlParams.get('message')}
+      />
+    );
+  }
 
   // 1. Initial / Default view: Home Operations Hub with the 2 Cards (Cover / Portada)
   if (currentView === 'hub') {

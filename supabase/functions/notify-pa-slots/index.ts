@@ -57,13 +57,10 @@ serve(async (req) => {
         .single()
 
       if (eventErr || !event) {
-        return new Response(renderFeedbackHtml({
+        return buildRedirectResponse({
+          status: 'error',
           title: "Event Not Found",
-          message: "We could not locate this event in the system. It may have been reassigned or removed.",
-          isSuccess: false
-        }), {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          status: 404
+          message: "We could not locate this event in the system. It may have been reassigned or removed."
         })
       }
 
@@ -102,13 +99,10 @@ serve(async (req) => {
         const rejectedSlots = sortedSlots.filter(s => !selectedIds.includes(s.id))
 
         if (acceptedSlots.length === 0) {
-          return new Response(renderFeedbackHtml({
+          return buildRedirectResponse({
+            status: 'error',
             title: "Invalid Selection",
-            message: "No valid options were identified to approve.",
-            isSuccess: false
-          }), {
-            headers: { 'Content-Type': 'text/html; charset=utf-8' },
-            status: 400
+            message: "No valid options were identified to approve."
           })
         }
 
@@ -532,6 +526,43 @@ admin@ipadjustinggroup.com | (772) 282-0862
 })
 
 // =========================================================================
+// HELPER: BUILD 302 REDIRECT TO FRONTEND CONFIRMATION PORTAL
+// =========================================================================
+function buildRedirectResponse({
+  role = 'pa',
+  status = 'success',
+  claim = '',
+  insured = '',
+  carrier = '',
+  address = '',
+  date = '',
+  time = '',
+  title = '',
+  message = ''
+}: any) {
+  const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://ip-scheduling-manager.onrender.com'
+  const redirectUrl = new URL(baseUrl)
+  redirectUrl.searchParams.set('view', 'confirmation')
+  if (role) redirectUrl.searchParams.set('role', role)
+  if (status) redirectUrl.searchParams.set('status', status)
+  if (claim) redirectUrl.searchParams.set('claim', claim)
+  if (insured) redirectUrl.searchParams.set('insured', insured)
+  if (carrier) redirectUrl.searchParams.set('carrier', carrier)
+  if (address) redirectUrl.searchParams.set('address', address)
+  if (date) redirectUrl.searchParams.set('date', date)
+  if (time) redirectUrl.searchParams.set('time', time)
+  if (title) redirectUrl.searchParams.set('title', title)
+  if (message) redirectUrl.searchParams.set('message', message)
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Location': redirectUrl.toString()
+    }
+  })
+}
+
+// =========================================================================
 // HELPER: EXECUTE DATABASE UPDATE & RENDER CONFIRMATION SCREEN
 // =========================================================================
 async function executeSlotSelection({
@@ -578,7 +609,7 @@ async function executeSlotSelection({
   if (evtErr) console.error("Error updating event stage:", evtErr)
 
   // 4. Log in coordination audit bitacora
-  const dateSummary = acceptedSlots.map((s: any) => `${s.slot_date} (${(s.start_time || '').slice(0, 5)}-${(s.end_time || '').slice(0, 5)})`).join(' and ')
+  const dateSummary = acceptedSlots.map((s: any) => `${s.slot_date} (${(s.start_time || '').slice(0, 5)}-${(s.end_time || '').slice(0, 5)})`).join(' & ')
   await supabaseAdmin.from('coordination_logs').insert({
     event_id: eventId,
     contact_target: 'pa',
@@ -597,17 +628,15 @@ async function executeSlotSelection({
     body: JSON.stringify({ eventId })
   }).catch(err => console.error("Error triggering notify-insured-slots from 1-click email:", err))
 
-  // 5. Return clean confirmation HTML page
-  return new Response(renderConfirmationSuccessHtml({
-    claimNumber,
-    insuredName,
-    carrier,
-    propertyAddress,
-    paName,
-    acceptedSlots
-  }), {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    status: 200
+  // 5. Return clean 302 redirect to frontend confirmation portal
+  return buildRedirectResponse({
+    role: 'pa',
+    status: 'success',
+    claim: claimNumber,
+    insured: insuredName,
+    carrier: carrier,
+    address: propertyAddress,
+    date: dateSummary
   })
 }
 
