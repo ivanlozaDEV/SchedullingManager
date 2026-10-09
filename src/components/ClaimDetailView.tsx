@@ -193,6 +193,19 @@ export function ClaimDetailView({
 
   // Copied slot message state
   const [copiedSlotId, setCopiedSlotId] = useState<string | null>(null);
+  const [sendingEmailEventId, setSendingEmailEventId] = useState<string | null>(null);
+
+  const handleSendInsuredEmail = async (eventId: string) => {
+    setSendingEmailEventId(eventId);
+    try {
+      await schedulingService.notifyInsuredSlots(eventId);
+      alert('Email successfully sent to insured client!');
+    } catch (err: any) {
+      alert('Error sending email: ' + (err.message || err));
+    } finally {
+      setSendingEmailEventId(null);
+    }
+  };
 
   // Actor Edit Modal State
   const [editingActor, setEditingActor] = useState<ActorEditTarget | null>(null);
@@ -2240,6 +2253,18 @@ export function ClaimDetailView({
                                 >
                                   <Send className="w-3.5 h-3.5 text-tealBrand-700" />
                                 </a>
+                              )}
+                              {claim.insured?.email && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendInsuredEmail(evt.id)}
+                                  disabled={sendingEmailEventId === evt.id}
+                                  className="px-2.5 py-1.5 bg-white border border-tealBrand-300 text-tealBrand-900 hover:bg-tealBrand-100 rounded-md text-[11px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                                  title="Send or resend 1-click email invitation to Insured"
+                                >
+                                  <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
+                                  <span>{sendingEmailEventId === evt.id ? 'Sending...' : 'Email Client'}</span>
+                                </button>
                               )}
                             </div>
                           </div>

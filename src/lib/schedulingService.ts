@@ -384,6 +384,15 @@ export const schedulingService = {
       channel: 'email',
       notes: `📅 Carrier offered ${slots.length} proposed dates: ${dateSummary}. Forwarded to PA for review.`
     });
+
+    // 5. Enviar automáticamente notificación por correo al PA con el diseño corporativo
+    supabase.functions.invoke('notify-pa-slots', {
+      body: { eventId }
+    }).then((res) => {
+      console.log("Notificación por correo enviada al PA con éxito:", res);
+    }).catch(err => {
+      console.error("Error al disparar notificación al PA:", err);
+    });
   },
 
   // 6.2 PA escoge 2 de las fechas propuestas y avanza a Etapa 3: Insured Selection
@@ -428,6 +437,21 @@ export const schedulingService = {
       channel: 'call_answered',
       notes: `⚖️ PA reviewed and approved 2 options for the client. Advanced to Stage 3 (Client Choice).`
     });
+
+    // Enviar correo automáticamente al cliente asegurado con las 2 opciones en 1-clic
+    supabase.functions.invoke('notify-insured-slots', {
+      body: { eventId }
+    }).catch(err => console.error("Error triggering notify-insured-slots edge function:", err));
+  },
+
+  // Enviar / Reenviar correo con las opciones al cliente asegurado
+  async notifyInsuredSlots(eventId: string) {
+    if (!isSupabaseConfigured) return;
+    const { data, error } = await supabase.functions.invoke('notify-insured-slots', {
+      body: { eventId }
+    });
+    if (error) throw error;
+    return data;
   },
 
   // 6.3 Insured escoge 1 fecha y se bloquea la cita definitiva en Etapa 4: Confirmed
@@ -486,9 +510,21 @@ export const schedulingService = {
     options?: {
       cancelledBy?: string;
       cancellationReason?: string;
+      sendCancellationNotice?: boolean;
     }
   ) {
     if (!isSupabaseConfigured) return;
+
+    // 0. Obtener detalles previos del evento para la notificación (fecha anterior, etc.)
+    const { data: previousEvent } = await supabase
+      .from('events')
+      .select('final_date, final_start_time, final_end_time, coordination_stage')
+      .eq('id', eventId)
+      .single();
+
+    const previousDate = previousEvent?.final_date;
+    const previousStartTime = previousEvent?.final_start_time;
+    const previousEndTime = previousEvent?.final_end_time;
 
     // 1. Resetear el evento a la etapa 1 y estado 'in_coordination'
     const { error: eventErr } = await supabase
@@ -529,6 +565,20 @@ export const schedulingService = {
         channel: 'system_reset',
         notes: logNotes
       });
+
+    // 4. Enviar correo de notificación de cancelación a todas las partes involucradas
+    if (options?.sendCancellationNotice !== false) {
+      supabase.functions.invoke('send-cancellation-notice', {
+        body: {
+          eventId,
+          cancelledBy,
+          cancellationReason: reason,
+          previousDate,
+          previousStartTime,
+          previousEndTime
+        }
+      }).catch(err => console.error("Error triggering send-cancellation-notice edge function:", err));
+    }
   },
 
   // 7. Avanzar Etapa del Evento o Confirmar

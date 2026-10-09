@@ -6,7 +6,7 @@ interface ResetCoordinationModalProps {
   event: CoordinationEvent;
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (options: { cancelledBy?: string; cancellationReason?: string }) => Promise<void>;
+  onConfirm: (options: { cancelledBy?: string; cancellationReason?: string; sendCancellationNotice?: boolean }) => Promise<void>;
 }
 
 const CANCEL_PARTY_OPTIONS = [
@@ -25,6 +25,7 @@ export function ResetCoordinationModal({
 }: ResetCoordinationModalProps) {
   const [selectedParty, setSelectedParty] = useState<string>('');
   const [reason, setReason] = useState<string>('');
+  const [sendNotice, setSendNotice] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -36,6 +37,7 @@ export function ResetCoordinationModal({
       await onConfirm({
         cancelledBy: selectedParty || undefined,
         cancellationReason: reason.trim() || undefined,
+        sendCancellationNotice: sendNotice,
       });
       onClose();
     } catch (err: any) {
@@ -137,6 +139,23 @@ export function ResetCoordinationModal({
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Adjuster requested reschedule due to conflict, weather delay, insured out of town..."
               className="w-full p-2.5 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-rose-700 focus:border-rose-700 placeholder:text-slate-400 transition-all resize-none"
+            />
+          </div>
+
+          {/* Cancellation Notice Email Checkbox */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold text-slate-800 block">Send cancellation email notice</span>
+              <p className="text-[11px] text-slate-500">
+                Automatically notifies Insured, PA, and Carrier representatives via email with rescheduling notice
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              id="sendNoticeCheckbox"
+              checked={sendNotice}
+              onChange={(e) => setSendNotice(e.target.checked)}
+              className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer shrink-0"
             />
           </div>
 

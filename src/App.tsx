@@ -22,9 +22,10 @@ import {
   History,
   LayoutList,
   LayoutGrid,
-  Filter
+  Filter,
+  Mail
 } from 'lucide-react';
-import { isSupabaseConfigured } from './lib/supabase';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
 import { NewClaimModal } from './components/NewClaimModal';
 import { ClaimDetailView } from './components/ClaimDetailView';
@@ -120,6 +121,23 @@ export function App() {
 
   useEffect(() => {
     loadData();
+
+    if (!isSupabaseConfigured) return;
+
+    // Escucha en tiempo real para que la app se actualice sola si el PA escoge desde el email
+    const liveChannel = supabase
+      .channel('events-live-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+        loadData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_slots' }, () => {
+        loadData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(liveChannel);
+    };
   }, []);
 
   // Quick message generator for WhatsApp / SMS in English
@@ -149,6 +167,19 @@ export function App() {
   const [paSelectedSlotIds, setPaSelectedSlotIds] = useState<Record<string, string[]>>({});
   const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
   const [insuredConfirmingSlotId, setInsuredConfirmingSlotId] = useState<string | null>(null);
+  const [sendingEmailEventId, setSendingEmailEventId] = useState<string | null>(null);
+
+  const handleSendInsuredEmail = async (eventId: string) => {
+    setSendingEmailEventId(eventId);
+    try {
+      await schedulingService.notifyInsuredSlots(eventId);
+      alert('Email sent successfully to the insured client!');
+    } catch (err: any) {
+      alert('Error sending email: ' + (err.message || err));
+    } finally {
+      setSendingEmailEventId(null);
+    }
+  };
 
   const handleTogglePaSlot = (eventId: string, slotId: string) => {
     const current = paSelectedSlotIds[eventId] || [];
@@ -1134,10 +1165,21 @@ export function App() {
                                                 const phone = evt.claim?.insured?.phone?.replace(/\D/g, '');
                                                 if (phone) window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(messageText)}`, '_blank');
                                               }}
-                                              className="h-8 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 transition-colors flex items-center justify-center"
+                                              className="h-8 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 transition-colors flex items-center justify-center"
                                               title="Open WhatsApp directly"
                                             >
                                               <Send className="w-3.5 h-3.5 text-tealBrand-700" />
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSendInsuredEmail(evt.id)}
+                                              disabled={sendingEmailEventId === evt.id}
+                                              className="h-8 px-2.5 rounded-lg bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-300 text-tealBrand-800 transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold"
+                                              title="Send or resend 1-click email invitation to Insured"
+                                            >
+                                              <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
+                                              <span>{sendingEmailEventId === evt.id ? '...' : 'Email'}</span>
                                             </button>
                                           </>
                                         )}
