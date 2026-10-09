@@ -155,14 +155,19 @@ serve(async (req) => {
       })
 
       // Automatically trigger calendar invite Edge Function in background
-      fetch(`${supabaseUrl}/functions/v1/send-calendar-invite`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        },
-        body: JSON.stringify({ eventId })
-      }).catch(err => console.error("Error triggering send-calendar-invite:", err))
+      try {
+        const calRes = await fetch(`${supabaseUrl}/functions/v1/send-calendar-invite`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({ eventId })
+        })
+        console.log("Triggered send-calendar-invite status:", calRes.status)
+      } catch (err) {
+        console.error("Error triggering send-calendar-invite:", err)
+      }
 
       // Return clean 302 redirect to frontend confirmation portal
       return buildRedirectResponse({

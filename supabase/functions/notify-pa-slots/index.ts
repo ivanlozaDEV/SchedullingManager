@@ -30,13 +30,11 @@ serve(async (req) => {
     const slotsParam = url.searchParams.get('slots')
 
     if (!eventId) {
-      return new Response(renderFeedbackHtml({
+      return buildRedirectResponse({
+        role: 'pa',
+        status: 'error',
         title: "Error: Missing Event ID",
-        message: "No valid event identifier was provided in the link.",
-        isSuccess: false
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 400
+        message: "No valid event identifier was provided in the link."
       })
     }
 
@@ -138,13 +136,11 @@ serve(async (req) => {
 
     } catch (err: any) {
       console.error("Error processing GET slot selection:", err)
-      return new Response(renderFeedbackHtml({
+      return buildRedirectResponse({
+        role: 'pa',
+        status: 'error',
         title: "Processing Error",
-        message: err.message || "An unexpected error occurred while processing your selection.",
-        isSuccess: false
-      }), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 500
+        message: err.message || "An unexpected error occurred while processing your selection."
       })
     }
   }
@@ -619,14 +615,22 @@ async function executeSlotSelection({
   })
 
   // 4.1 Trigger notify-insured-slots to email the client with the 2 pre-approved dates
-  fetch(`${supabaseUrl}/functions/v1/notify-insured-slots`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${supabaseServiceKey}`
-    },
-    body: JSON.stringify({ eventId })
-  }).catch(err => console.error("Error triggering notify-insured-slots from 1-click email:", err))
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+  try {
+    const notifyRes = await fetch(`${supabaseUrl}/functions/v1/notify-insured-slots`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`
+      },
+      body: JSON.stringify({ eventId })
+    })
+    console.log("Triggered notify-insured-slots status:", notifyRes.status)
+  } catch (err) {
+    console.error("Error triggering notify-insured-slots from 1-click email:", err)
+  }
 
   // 5. Return clean 302 redirect to frontend confirmation portal
   return buildRedirectResponse({
