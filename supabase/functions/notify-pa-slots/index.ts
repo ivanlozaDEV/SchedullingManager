@@ -271,8 +271,7 @@ serve(async (req) => {
     }
 
     const portalLink = `${functionUrl}?action=portal&eventId=${eventId}`
-
-    const subject = `Carrier Proposed Dates for Review | Claim #${claimNumber} (${insuredName})`
+    const subject = `Carrier Proposed Dates for Review | ${insuredName} - Claim #${claimNumber}`
 
     // Plain Text Template
     const plainText = `Dear ${paName},

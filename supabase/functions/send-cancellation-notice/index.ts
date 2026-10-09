@@ -137,7 +137,7 @@ serve(async (req) => {
       })
     }
 
-    const subject = `Notice: Inspection Cancelled / Rescheduling | Claim #${claimNumber} (${insuredName})`
+    const subject = `Notice: Inspection Cancelled / Rescheduling | ${insuredName} - Claim #${claimNumber}`
 
     const plainText = `NOTICE OF INSPECTION CANCELLATION & RESCHEDULING
 

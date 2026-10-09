@@ -61,9 +61,11 @@ serve(async (req) => {
       return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
     }
     const dtStart = formatIcsDate(event.final_date, event.final_start_time || '00:00:00')
-    const dtEnd = formatIcsDate(event.final_date, event.final_end_time || '23:59:59')
-    const title = `Inspection: ${event.event_type} - Claim ${event.claim?.claim_number}`
-    const desc = `Address: ${event.claim?.property_address}\nLocation: ${event.location}\nClaim Number: ${event.claim?.claim_number}\nCarrier: ${event.claim?.carrier}`
+    const insuredName = event.claim?.insured?.name || 'Insured Client'
+    const claimNumber = event.claim?.claim_number || 'N/A'
+    const eventType = event.event_type || 'Inspection'
+    const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`
+    const desc = `Address: ${event.claim?.property_address}\nLocation: ${event.location}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier}\nInsured: ${insuredName}`
 
     const icsContent = [
       'BEGIN:VCALENDAR',
@@ -102,7 +104,7 @@ serve(async (req) => {
     const mailOptions = {
       from: `"IP Scheduling" <${smtpUser}>`,
       to: uniqueRecipients.map(r => r.email).join(', '),
-      subject: `Confirmed: ${title}`,
+      subject: `Confirmed: ${eventType} | ${insuredName} - Claim #${claimNumber}`,
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
           <h2 style="color: #0f766e;">Inspection Scheduled</h2>

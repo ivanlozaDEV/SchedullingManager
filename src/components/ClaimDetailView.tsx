@@ -1046,7 +1046,7 @@ export function ClaimDetailView({
                 {claim.insured.email && (
                   <div className="flex items-center gap-2 text-slate-600">
                     <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                    <a href={`mailto:${claim.insured.email}`} className="hover:underline">{claim.insured.email}</a>
+                    <a href={`mailto:${claim.insured.email}?subject=${encodeURIComponent(`${claim.insured.name || 'Insured'} - Claim #${claim.claimNumber}`)}`} className="hover:underline">{claim.insured.email}</a>
                   </div>
                 )}
                 {claim.insured.generalAvailability && (
@@ -1207,7 +1207,7 @@ export function ClaimDetailView({
                         </a>
                       )}
                       {rep.email && (
-                        <a href={`mailto:${rep.email}`} className="flex items-center gap-1 hover:underline">
+                        <a href={`mailto:${rep.email}?subject=${encodeURIComponent(`${claim.insured?.name || 'Insured'} - Claim #${claim.claimNumber}`)}`} className="flex items-center gap-1 hover:underline">
                           <Mail className="w-3 h-3 text-tealBrand-700" />
                           <span>{rep.email}</span>
                         </a>
@@ -1282,7 +1282,7 @@ export function ClaimDetailView({
                         </a>
                       )}
                       {ext.email && (
-                        <a href={`mailto:${ext.email}`} className="flex items-center gap-1 hover:underline">
+                        <a href={`mailto:${ext.email}?subject=${encodeURIComponent(`${claim.insured?.name || 'Insured'} - Claim #${claim.claimNumber}`)}`} className="flex items-center gap-1 hover:underline">
                           <Mail className="w-3 h-3 text-tealBrand-700" />
                           <span>{ext.email}</span>
                         </a>
