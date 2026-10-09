@@ -56,44 +56,54 @@ serve(async (req) => {
     }
 
     // 3. Generate Dates & .ics content
-    const formatIcsDate = (dateStr: string, timeStr: string) => {
-      const d = new Date(`${dateStr}T${timeStr}`)
-      return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
-    }
-    const dtStart = formatIcsDate(event.final_date, event.final_start_time || '00:00:00')
-    const dtEnd = formatIcsDate(event.final_date, event.final_end_time || '23:59:59')
+    const cleanDate = (event.final_date || '').replace(/-/g, '')
+    const cleanStartTime = (event.final_start_time || '09:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0')
+    const cleanEndTime = (event.final_end_time || '11:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0')
+    const dtStartIcs = `${cleanDate}T${cleanStartTime}`
+    const dtEndIcs = `${cleanDate}T${cleanEndTime}`
+
     const insuredName = event.claim?.insured?.name || 'Insured Client'
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'
     const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`
-    const desc = `Address: ${event.claim?.property_address}\nLocation: ${event.location}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier}\nInsured: ${insuredName}`
+    const desc = `Address: ${event.claim?.property_address || ''}\nLocation: ${event.location || ''}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier || ''}\nInsured: ${insuredName}`
+
+    const smtpUser = Deno.env.get('GMAIL_SMTP_USER') || 'no-reply@ipadjustinggroup.com'
+    const smtpPass = Deno.env.get('GMAIL_SMTP_PASSWORD')
+
+    const attendeesIcs = uniqueRecipients.map(r => 
+      `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="${(r.name || r.email).replace(/[;:,"]/g, '')}":mailto:${r.email}`
+    ).join('\r\n')
 
     const icsContent = [
       'BEGIN:VCALENDAR',
+      'PRODID:-//IP Adjusting Group//IP Scheduling Manager//EN',
       'VERSION:2.0',
-      'PRODID:-//IP Scheduling Manager//EN',
+      'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
-      `UID:${event.id}@ipscheduling.com`,
+      `UID:${event.id}@ipadjustinggroup.com`,
       `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'}`,
-      `DTSTART:${dtStart}`,
-      `DTEND:${dtEnd}`,
+      `ORGANIZER;CN="IP Scheduling":mailto:${smtpUser}`,
+      attendeesIcs,
+      `DTSTART;TZID=America/New_York:${dtStartIcs}`,
+      `DTEND;TZID=America/New_York:${dtEndIcs}`,
       `SUMMARY:${title}`,
       `DESCRIPTION:${desc.replace(/\n/g, '\\n')}`,
-      `LOCATION:${event.location}`,
+      `LOCATION:${event.location || ''}`,
+      'STATUS:CONFIRMED',
+      'SEQUENCE:0',
+      'TRANSP:OPAQUE',
       'END:VEVENT',
       'END:VCALENDAR'
-    ].join('\r\n')
+    ].filter(Boolean).join('\r\n')
 
-    // Google Calendar Link
-    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStart}/${dtEnd}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(event.location || '')}`
+    // Google Calendar Direct Web Link
+    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStartIcs}/${dtEndIcs}&ctz=America/New_York&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(event.location || '')}`
 
     // 4. Send email via Google SMTP (Nodemailer)
-    const smtpUser = Deno.env.get('GMAIL_SMTP_USER') // e.g. you@gmail.com
-    const smtpPass = Deno.env.get('GMAIL_SMTP_PASSWORD') // e.g. App Password
-
-    if (!smtpUser || !smtpPass) {
-      console.warn("GMAIL_SMTP_USER or GMAIL_SMTP_PASSWORD not set. Skipping actual email send.")
+    if (!smtpPass) {
+      console.warn("GMAIL_SMTP_PASSWORD not set. Skipping actual email send.")
       return new Response(JSON.stringify({ message: "Simulated success (No Google SMTP credentials)" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 })
     }
 
@@ -107,27 +117,45 @@ serve(async (req) => {
       to: uniqueRecipients.map(r => r.email).join(', '),
       subject: `Confirmed: ${eventType} | ${insuredName} - Claim #${claimNumber}`,
       html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-          <h2 style="color: #0f766e;">Inspection Scheduled</h2>
-          <p>The inspection has been confirmed for <strong>${event.final_date}</strong> between <strong>${event.final_start_time?.slice(0, 5)}</strong> and <strong>${event.final_end_time?.slice(0, 5)}</strong>.</p>
-          <p>Location: ${event.location}</p>
-          <p>
-            <a href="${googleCalendarUrl}" target="_blank" style="display: inline-block; padding: 10px 15px; background-color: #4285F4; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">
-              📅 Add to Google Calendar
-            </a>
-          </p>
-          <p style="font-size: 12px; color: #666; margin-top: 20px;">
-            A calendar invitation (.ics) is also attached to this email. You can open it to add it to Apple Calendar, Outlook, or Google Calendar.
-          </p>
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="background: linear-gradient(135deg, #1187AA 0%, #0C6079 100%); padding: 22px 24px; text-align: center;">
+            <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: 0.5px;">IP ADJUSTING GROUP</h1>
+            <p style="margin: 3px 0 0 0; color: rgba(255,255,255,0.9); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Inspection Coordination & Scheduling</p>
+          </div>
+          <div style="padding: 24px;">
+            <div style="display: inline-block; padding: 4px 10px; background-color: #dcfce7; color: #15803d; border-radius: 9999px; font-size: 12px; font-weight: bold; margin-bottom: 12px;">
+              ✓ Inspection Confirmed
+            </div>
+            <h2 style="margin: 0 0 14px 0; color: #0f172a; font-size: 20px;">${eventType} Scheduled</h2>
+            
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 18px; line-height: 1.6; font-size: 14px;">
+              <div><strong>📅 Date:</strong> ${event.final_date}</div>
+              <div><strong>⏰ Time Window:</strong> ${(event.final_start_time || '').slice(0, 5)} - ${(event.final_end_time || '').slice(0, 5)} (Eastern Time)</div>
+              <div><strong>📍 Location:</strong> ${event.location || event.claim?.property_address || 'N/A'}</div>
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;">
+                <div><strong>Claim #:</strong> ${claimNumber}</div>
+                <div><strong>Insured:</strong> ${insuredName}</div>
+                <div><strong>Carrier:</strong> ${event.claim?.carrier || 'Carrier'}</div>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+              <a href="${googleCalendarUrl}" target="_blank" style="display: inline-block; padding: 11px 22px; background-color: #1187AA; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                📅 Open in Google Calendar
+              </a>
+            </div>
+
+            <p style="font-size: 12px; color: #64748b; margin: 16px 0 0 0; text-align: center; line-height: 1.5;">
+              A formal calendar invitation is attached to automatically sync this appointment with Google Calendar, Apple Calendar, or Outlook.
+            </p>
+          </div>
         </div>
       `,
-      attachments: [
-        {
-          filename: 'invite.ics',
-          content: icsContent,
-          contentType: 'text/calendar'
-        }
-      ]
+      icalEvent: {
+        filename: 'invite.ics',
+        method: 'REQUEST',
+        content: icsContent
+      }
     }
 
     const info = await transporter.sendMail(mailOptions)
