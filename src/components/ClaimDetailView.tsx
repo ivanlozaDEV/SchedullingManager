@@ -17,6 +17,7 @@ import {
   Shield, 
   Layers, 
   Edit3, 
+  Pencil,
   Trash2, 
   Copy,
   X,
@@ -110,8 +111,9 @@ export function ClaimDetailView({
     return () => window.removeEventListener('sla_config_updated', handleConfigChange);
   }, []);
 
-  // Add Event Form State
+  // Add/Edit Event Form State
   const [showAddEvent, setShowAddEvent] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CoordinationEvent | null>(null);
   const [availableEventTypes, setAvailableEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
   const [eventType, setEventType] = useState('');
   const [customEventType, setCustomEventType] = useState('');
@@ -435,6 +437,7 @@ export function ClaimDetailView({
 
   // Initialize event location and participant selections when opening form
   const handleOpenAddEvent = () => {
+    setEditingEvent(null);
     setLocation(`${claim.propertyAddress}, ${claim.city || 'Miami'}, ${claim.state || 'FL'} ${claim.zipCode || ''}`.trim());
     setGateCode('');
     setLockboxCode('');
@@ -443,6 +446,7 @@ export function ClaimDetailView({
     setEventError(null);
     setEventType('');
     setCustomEventType('');
+    setCoordinationStage('1_awaiting_carrier_slots');
 
     // Default In-Person Attendees
     setAttendInsured(Boolean(claim.insuredId));
@@ -460,6 +464,56 @@ export function ClaimDetailView({
     setCustomNotifyName('');
     setCustomNotifyEmail('');
     setCustomNotifyPhone('');
+
+    setShowAddEvent(true);
+  };
+
+  const handleOpenEditEvent = (evt: CoordinationEvent) => {
+    setEditingEvent(evt);
+    setEventError(null);
+
+    // Event Type
+    const isStandard = DEFAULT_EVENT_TYPES.includes(evt.eventType);
+    if (isStandard) {
+      setEventType(evt.eventType);
+      setCustomEventType('');
+    } else {
+      setEventType('Other');
+      setCustomEventType(evt.eventType);
+    }
+
+    setCoordinationStage(evt.coordinationStage);
+    setLocation(evt.location || '');
+    setGateCode(evt.gateCode || '');
+    setLockboxCode(evt.lockboxCode || '');
+    setAccessInstructions(evt.accessInstructions || '');
+    setEventNotes(evt.notes || '');
+
+    // Attendees & Notify Parties
+    const participants = evt.participants || [];
+
+    // In-person attendees (role_type === 'actor' or undefined)
+    const actors = participants.filter((p) => !p.roleType || p.roleType === 'actor');
+    setAttendInsured(actors.some((p) => p.participantType === 'insured'));
+    setAttendAssignedPa(actors.some((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId === claim.publicAdjusterId));
+    setAttendRepIds(actors.filter((p) => p.participantType === 'carrier_representative' && p.carrierRepId).map((p) => p.carrierRepId!) );
+    setAttendExtActorIds(actors.filter((p) => p.participantType === 'external_actor' && p.externalActorId && (claim.externalActors || []).some(a => a.id === p.externalActorId)).map((p) => p.externalActorId!) );
+    setSupportPaIds(actors.filter((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId && p.publicAdjusterId !== claim.publicAdjusterId).map((p) => p.publicAdjusterId!) );
+    setAdditionalExtIds(actors.filter((p) => p.participantType === 'external_actor' && p.externalActorId && !(claim.externalActors || []).some(a => a.id === p.externalActorId)).map((p) => p.externalActorId!) );
+
+    // Informed / Notify recipients (role_type === 'informed')
+    const informed = participants.filter((p) => p.roleType === 'informed');
+    setNotifyPaIds(informed.filter((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId).map((p) => p.publicAdjusterId!) );
+    setNotifyExtIds(informed.filter((p) => p.participantType === 'external_actor' && p.externalActorId).map((p) => p.externalActorId!) );
+    
+    const customInformed = informed.filter((p) => p.participantType === 'office' && p.customName).map((p) => ({
+      id: p.id || Math.random().toString(),
+      name: p.customName || '',
+      email: p.customEmail || undefined,
+      phone: p.customPhone || undefined,
+    }));
+    setCustomNotifyList(customInformed);
+    setShowAddCustomNotify(false);
 
     setShowAddEvent(true);
   };
@@ -662,23 +716,37 @@ export function ClaimDetailView({
         });
       });
 
-      await schedulingService.createEvent({
-        claimId: claim.id,
-        eventType: finalEventType,
-        coordinationStage,
-        location: location.trim(),
-        gateCode: gateCode.trim() || undefined,
-        lockboxCode: lockboxCode.trim() || undefined,
-        accessInstructions: accessInstructions.trim() || undefined,
-        notes: eventNotes.trim() || undefined,
-        participants,
-      });
+      if (editingEvent) {
+        await schedulingService.updateEvent(editingEvent.id, {
+          eventType: finalEventType,
+          coordinationStage,
+          location: location.trim(),
+          gateCode: gateCode.trim() || undefined,
+          lockboxCode: lockboxCode.trim() || undefined,
+          accessInstructions: accessInstructions.trim() || undefined,
+          notes: eventNotes.trim() || undefined,
+          participants,
+        });
+      } else {
+        await schedulingService.createEvent({
+          claimId: claim.id,
+          eventType: finalEventType,
+          coordinationStage,
+          location: location.trim(),
+          gateCode: gateCode.trim() || undefined,
+          lockboxCode: lockboxCode.trim() || undefined,
+          accessInstructions: accessInstructions.trim() || undefined,
+          notes: eventNotes.trim() || undefined,
+          participants,
+        });
+      }
 
       setShowAddEvent(false);
+      setEditingEvent(null);
       onEventCreated();
     } catch (err: any) {
-      console.error('Error creating event:', err);
-      setEventError(err.message || 'Failed to create event');
+      console.error(editingEvent ? 'Error updating event:' : 'Error creating event:', err);
+      setEventError(err.message || (editingEvent ? 'Failed to update event' : 'Failed to create event'));
     } finally {
       setSubmittingEvent(false);
     }
@@ -1376,13 +1444,13 @@ export function ClaimDetailView({
               <div className="mt-4 bg-slate-50 border border-maroon-800/30 rounded-xl p-4 space-y-4 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h4 className="text-xs font-bold text-maroon-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <Calendar className="w-4 h-4" />
-                    Create New Inspection Event
+                    {editingEvent ? <Pencil className="w-4 h-4" /> : <Calendar className="w-4 h-4" />}
+                    {editingEvent ? `Edit Event: ${editingEvent.eventType}` : 'Create New Inspection Event'}
                   </h4>
                   <button
                     type="button"
-                    onClick={() => setShowAddEvent(false)}
-                    className="text-xs text-slate-500 hover:text-slate-800 font-semibold"
+                    onClick={() => { setShowAddEvent(false); setEditingEvent(null); }}
+                    className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -1940,17 +2008,19 @@ export function ClaimDetailView({
                   <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200">
                     <button
                       type="button"
-                      onClick={() => setShowAddEvent(false)}
-                      className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                      onClick={() => { setShowAddEvent(false); setEditingEvent(null); }}
+                      className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={submittingEvent}
-                      className="px-4 py-2 text-xs font-bold text-white bg-maroon-800 hover:bg-maroon-900 disabled:opacity-50 rounded-lg transition-colors"
+                      className="px-4 py-2 text-xs font-bold text-white bg-maroon-800 hover:bg-maroon-900 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
                     >
-                      {submittingEvent ? 'Creating Event...' : 'Confirm & Create Event'}
+                      {submittingEvent 
+                        ? (editingEvent ? 'Updating Event...' : 'Creating Event...') 
+                        : (editingEvent ? 'Save Changes' : 'Confirm & Create Event')}
                     </button>
                   </div>
                 </form>
@@ -2064,9 +2134,18 @@ export function ClaimDetailView({
                         </button>
                         <button
                           type="button"
+                          onClick={() => handleOpenEditEvent(evt)}
+                          title="Edit event details & participants"
+                          className="text-xs font-semibold text-slate-700 hover:text-maroon-900 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                        >
+                          <Pencil className="w-3 h-3 text-slate-600" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setDeletingEventTarget(evt)}
                           title="Delete Event"
-                          className="text-xs font-semibold text-red-600 hover:text-red-800 bg-white hover:bg-red-50 border border-red-200 px-2 py-1 rounded-md transition-colors flex items-center gap-1 shadow-xs"
+                          className="text-xs font-semibold text-red-600 hover:text-red-800 bg-white hover:bg-red-50 border border-red-200 px-2 py-1 rounded-md transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
                         >
                           <Trash2 className="w-3 h-3" />
                           <span>Delete</span>

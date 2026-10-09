@@ -1092,6 +1092,83 @@ export const schedulingService = {
     return newEvent;
   },
 
+  // 14.1 Actualizar Evento / Inspección existente
+  async updateEvent(eventId: string, eventData: {
+    eventType?: string;
+    status?: EventStatus;
+    coordinationStage?: CoordinationStage;
+    location?: string;
+    notes?: string;
+    lockboxCode?: string;
+    gateCode?: string;
+    accessInstructions?: string;
+    finalDate?: string;
+    finalStartTime?: string;
+    finalEndTime?: string;
+    participants?: {
+      participantType: 'insured' | 'public_adjuster' | 'carrier_representative' | 'external_actor' | 'office';
+      roleType?: ParticipantRole;
+      publicAdjusterId?: string;
+      carrierRepId?: string;
+      externalActorId?: string;
+      insuredId?: string;
+      customName?: string;
+      customEmail?: string;
+      customPhone?: string;
+    }[];
+  }) {
+    if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
+
+    const updatePayload: any = {
+      updated_at: new Date().toISOString(),
+    };
+    if (eventData.eventType !== undefined) updatePayload.event_type = eventData.eventType;
+    if (eventData.status !== undefined) updatePayload.status = eventData.status;
+    if (eventData.coordinationStage !== undefined) updatePayload.coordination_stage = eventData.coordinationStage;
+    if (eventData.location !== undefined) updatePayload.location = eventData.location;
+    if (eventData.lockboxCode !== undefined) updatePayload.lockbox_code = eventData.lockboxCode || null;
+    if (eventData.gateCode !== undefined) updatePayload.gate_code = eventData.gateCode || null;
+    if (eventData.accessInstructions !== undefined) updatePayload.access_instructions = eventData.accessInstructions || null;
+    if (eventData.notes !== undefined) updatePayload.notes = eventData.notes || '';
+    if (eventData.finalDate !== undefined) updatePayload.final_date = eventData.finalDate || null;
+    if (eventData.finalStartTime !== undefined) updatePayload.final_start_time = eventData.finalStartTime || null;
+    if (eventData.finalEndTime !== undefined) updatePayload.final_end_time = eventData.finalEndTime || null;
+
+    const { data: updatedEvent, error: eventErr } = await supabase
+      .from('events')
+      .update(updatePayload)
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (eventErr) throw eventErr;
+
+    // Actualizar participantes si se proveen
+    if (eventData.participants !== undefined) {
+      await supabase.from('event_participants').delete().eq('event_id', eventId);
+
+      if (eventData.participants.length > 0) {
+        const payload = eventData.participants.map(p => ({
+          event_id: eventId,
+          participant_type: p.participantType,
+          role_type: p.roleType || 'actor',
+          public_adjuster_id: p.publicAdjusterId || null,
+          carrier_rep_id: p.carrierRepId || null,
+          external_actor_id: p.externalActorId || null,
+          insured_id: p.insuredId || null,
+          custom_name: p.customName || null,
+          custom_email: p.customEmail || null,
+          custom_phone: p.customPhone || null,
+        }));
+
+        const { error: partErr } = await supabase.from('event_participants').insert(payload);
+        if (partErr) console.warn('Error re-inserting participants:', partErr);
+      }
+    }
+
+    return updatedEvent;
+  },
+
   // 13.9 Eliminar Evento de Coordinación
   async deleteEvent(eventId: string) {
     if (!isSupabaseConfigured) return;
