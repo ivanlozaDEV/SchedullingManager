@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ip-scheduling-manager
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_ADMIN_PASSWORD
+        value: IPStorms2022
+      - key: VITE_VIEWER_PASSWORD
+        value: IPViewer2022
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
