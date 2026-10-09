@@ -61,6 +61,7 @@ serve(async (req) => {
       return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
     }
     const dtStart = formatIcsDate(event.final_date, event.final_start_time || '00:00:00')
+    const dtEnd = formatIcsDate(event.final_date, event.final_end_time || '23:59:59')
     const insuredName = event.claim?.insured?.name || 'Insured Client'
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'

@@ -63,11 +63,13 @@ serve(async (req) => {
     const slotId = url.searchParams.get('slotId')
 
     if (!eventId || !slotId) {
-      return buildRedirectResponse({
-        role: 'insured',
-        status: 'error',
+      return new Response(renderFeedbackHtml({
         title: "Missing Parameters",
-        message: "No valid event or date option was specified in the confirmation link."
+        message: "No valid event or date option was specified in the confirmation link.",
+        isSuccess: false
+      }), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        status: 400
       })
     }
 
@@ -88,11 +90,13 @@ serve(async (req) => {
         .single()
 
       if (eventErr || !event) {
-        return buildRedirectResponse({
-          role: 'insured',
-          status: 'error',
+        return new Response(renderFeedbackHtml({
           title: "Inspection Not Found",
-          message: "We could not locate this inspection event in our system."
+          message: "We could not locate this inspection event in our system.",
+          isSuccess: false
+        }), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          status: 404
         })
       }
 
@@ -107,11 +111,13 @@ serve(async (req) => {
       const chosenSlot = rawSlots.find((s: any) => s.id === slotId)
 
       if (!chosenSlot) {
-        return buildRedirectResponse({
-          role: 'insured',
-          status: 'error',
+        return new Response(renderFeedbackHtml({
           title: "Date Option Not Found",
-          message: "The requested inspection date could not be found."
+          message: "The requested inspection date could not be found or has already been updated.",
+          isSuccess: false
+        }), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          status: 404
         })
       }
 
@@ -169,25 +175,30 @@ serve(async (req) => {
         console.error("Error triggering send-calendar-invite:", err)
       }
 
-      // Return clean 302 redirect to frontend confirmation portal
-      return buildRedirectResponse({
-        role: 'insured',
-        status: 'success',
-        claim: claimNumber,
-        insured: insuredName,
-        carrier: carrier,
-        address: propertyAddress,
+      // Render branded confirmation page directly on verified Supabase domain (prevents browser red security warnings)
+      return new Response(renderClientConfirmationSuccessHtml({
+        claimNumber,
+        insuredName,
+        carrier,
+        propertyAddress,
+        paName,
         date: slotDate,
-        time: `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`
+        startTime: startTime.slice(0, 5),
+        endTime: endTime.slice(0, 5)
+      }), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        status: 200
       })
 
     } catch (err: any) {
       console.error("Error confirming slot from client email:", err)
-      return buildRedirectResponse({
-        role: 'insured',
-        status: 'error',
+      return new Response(renderFeedbackHtml({
         title: "Confirmation Error",
-        message: err.message || "An unexpected error occurred while confirming your inspection."
+        message: err.message || "An unexpected error occurred while confirming your inspection.",
+        isSuccess: false
+      }), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        status: 500
       })
     }
   }
@@ -542,15 +553,16 @@ function renderClientConfirmationSuccessHtml({
   <title>Inspection Confirmed | IP Adjusting Group</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b; }
-    .card { max-width: 550px; margin: 20px auto; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; }
-    .header { background: #004E91; padding: 24px; text-align: center; }
+    .card { max-width: 550px; margin: 20px auto; background: #ffffff; border-radius: 14px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: linear-gradient(135deg, #1187AA 0%, #0C6079 100%); padding: 26px 20px; text-align: center; }
     .content { padding: 26px 28px; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="header">
-      <img src="https://drive.google.com/uc?export=view&id=15sfb2FC7bIfoVUfzJYJ9snM7WToqYb2l" alt="IP Adjusting Group" style="max-width: 170px; height: auto; margin: 0 auto; display: block; filter: brightness(0) invert(1);">
+      <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 800; letter-spacing: 0.5px; font-family: Montserrat, sans-serif;">IP ADJUSTING GROUP</h1>
+      <p style="margin: 4px 0 0 0; color: rgba(255,255,255,0.9); font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;">Public Adjusters & Insurance Appraisal</p>
     </div>
     <div class="content">
       <div style="text-align:center; margin-bottom:20px;">
@@ -581,7 +593,7 @@ function renderClientConfirmationSuccessHtml({
       </div>
 
       <div style="background-color:#eff6ff; border-left:4px solid #0284c7; padding:12px 16px; border-radius:4px; margin-top:16px; font-size:13px; color:#0369a1; line-height:1.5;">
-        📅 <strong>Calendar Invitation:</strong> A calendar invitation has been generated and sent to your email with all details.
+        📅 <strong>Calendar Invitation:</strong> A confirmation and calendar invite (.ics) have been generated and sent to your email with all details.
       </div>
 
       <div style="text-align:center; margin-top:24px;">
@@ -604,14 +616,19 @@ function renderFeedbackHtml({ title, message, isSuccess }: any) {
   <title>${title} | IP Scheduling Manager</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b; }
-    .card { max-width: 500px; margin: 30px auto; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; padding: 30px; text-align: center; }
+    .card { max-width: 500px; margin: 30px auto; background: #ffffff; border-radius: 14px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div style="font-size:44px; margin-bottom:12px;">${isSuccess ? '✅' : '⚠️'}</div>
-    <h2 style="margin:0 0 10px 0; color:#0f172a; font-size:22px;">${title}</h2>
-    <p style="margin:0; color:#64748b; font-size:14px; line-height:1.6;">${message}</p>
+    <div style="background: linear-gradient(135deg, #1187AA 0%, #0C6079 100%); padding: 20px; text-align: center;">
+      <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: 0.5px; font-family: Montserrat, sans-serif;">IP ADJUSTING GROUP</h1>
+    </div>
+    <div style="padding: 28px 24px; text-align: center;">
+      <div style="font-size:44px; margin-bottom:12px;">${isSuccess ? '✅' : '⚠️'}</div>
+      <h2 style="margin:0 0 10px 0; color:#0f172a; font-size:20px;">${title}</h2>
+      <p style="margin:0; color:#64748b; font-size:14px; line-height:1.6;">${message}</p>
+    </div>
   </div>
 </body>
 </html>`

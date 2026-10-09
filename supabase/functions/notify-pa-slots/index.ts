@@ -30,11 +30,13 @@ serve(async (req) => {
     const slotsParam = url.searchParams.get('slots')
 
     if (!eventId) {
-      return buildRedirectResponse({
-        role: 'pa',
-        status: 'error',
+      return new Response(renderFeedbackHtml({
         title: "Error: Missing Event ID",
-        message: "No valid event identifier was provided in the link."
+        message: "No valid event identifier was provided in the link.",
+        isSuccess: false
+      }), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        status: 400
       })
     }
 
@@ -55,10 +57,13 @@ serve(async (req) => {
         .single()
 
       if (eventErr || !event) {
-        return buildRedirectResponse({
-          status: 'error',
+        return new Response(renderFeedbackHtml({
           title: "Event Not Found",
-          message: "We could not locate this event in the system. It may have been reassigned or removed."
+          message: "We could not locate this event in the system. It may have been reassigned or removed.",
+          isSuccess: false
+        }), {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          status: 404
         })
       }
 
@@ -97,10 +102,13 @@ serve(async (req) => {
         const rejectedSlots = sortedSlots.filter(s => !selectedIds.includes(s.id))
 
         if (acceptedSlots.length === 0) {
-          return buildRedirectResponse({
-            status: 'error',
+          return new Response(renderFeedbackHtml({
             title: "Invalid Selection",
-            message: "No valid options were identified to approve."
+            message: "No valid options were identified to approve.",
+            isSuccess: false
+          }), {
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+            status: 400
           })
         }
 
@@ -136,11 +144,13 @@ serve(async (req) => {
 
     } catch (err: any) {
       console.error("Error processing GET slot selection:", err)
-      return buildRedirectResponse({
-        role: 'pa',
-        status: 'error',
+      return new Response(renderFeedbackHtml({
         title: "Processing Error",
-        message: err.message || "An unexpected error occurred while processing your selection."
+        message: err.message || "An unexpected error occurred while processing your selection.",
+        isSuccess: false
+      }), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        status: 500
       })
     }
   }
@@ -631,15 +641,17 @@ async function executeSlotSelection({
     console.error("Error triggering notify-insured-slots from 1-click email:", err)
   }
 
-  // 5. Return clean 302 redirect to frontend confirmation portal
-  return buildRedirectResponse({
-    role: 'pa',
-    status: 'success',
-    claim: claimNumber,
-    insured: insuredName,
-    carrier: carrier,
-    address: propertyAddress,
-    date: dateSummary
+  // 5. Render branded confirmation page directly on verified Supabase domain
+  return new Response(renderConfirmationSuccessHtml({
+    claimNumber,
+    insuredName,
+    carrier,
+    propertyAddress,
+    paName,
+    acceptedSlots
+  }), {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    status: 200
   })
 }
 
@@ -676,15 +688,16 @@ function renderConfirmationSuccessHtml({
   <title>Selection Confirmed | IP Scheduling Manager</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b; }
-    .card { max-width: 550px; margin: 20px auto; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; }
-    .header { background: #004E91; padding: 24px; text-align: center; }
+    .card { max-width: 550px; margin: 20px auto; background: #ffffff; border-radius: 14px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: linear-gradient(135deg, #1187AA 0%, #0C6079 100%); padding: 26px 20px; text-align: center; }
     .content { padding: 26px 28px; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="header">
-      <img src="https://drive.google.com/uc?export=view&id=15sfb2FC7bIfoVUfzJYJ9snM7WToqYb2l" alt="IP Adjusting Group" style="max-width: 170px; height: auto; margin: 0 auto; display: block; filter: brightness(0) invert(1);">
+      <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 800; letter-spacing: 0.5px; font-family: Montserrat, sans-serif;">IP ADJUSTING GROUP</h1>
+      <p style="margin: 4px 0 0 0; color: rgba(255,255,255,0.9); font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;">Public Adjusters & Insurance Appraisal</p>
     </div>
     <div class="content">
       <div style="text-align:center; margin-bottom:20px;">
