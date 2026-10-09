@@ -132,7 +132,8 @@ serve(async (req) => {
         propertyAddress,
         paName,
         slots: sortedSlots,
-        currentStage: event.coordination_stage
+        currentStage: event.coordination_stage,
+        eventType: event.event_type || 'Inspection'
       }), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
         status: 200
@@ -277,19 +278,19 @@ serve(async (req) => {
     }
 
     const portalLink = `${functionUrl}?action=portal&eventId=${eventId}`
-    const subject = `Carrier Proposed Dates for Review | ${insuredName} - Claim #${claimNumber}`
+    const subject = `Carrier Proposed Dates: ${eventType} | ${insuredName} - Claim #${claimNumber}`
 
     // Plain Text Template
     const plainText = `Dear ${paName},
 
-The insurance carrier (${carrier}) has provided ${sortedSlots.length} proposed inspection dates for Claim #${claimNumber}.
+The insurance carrier (${carrier}) has provided ${sortedSlots.length} proposed dates for the upcoming ${eventType} for Claim #${claimNumber}.
 
 CLAIM DETAILS:
 - Claim Number: ${claimNumber}
 - Insured: ${insuredName}
 - Carrier: ${carrier}
 - Property Address: ${address}
-- Inspection Type: ${eventType}
+- Event Type: ${eventType}
 
 PROPOSED DATES FROM CARRIER:
 ${slotsPlainText}
@@ -312,7 +313,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Carrier Proposed Dates for Review</title>
+  <title>Carrier Proposed Dates: ${eventType}</title>
   <style>
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
     table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
@@ -354,7 +355,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
               <p style="margin:0 0 14px 0; font-size:16px;">Dear <strong>${paName}</strong>,</p>
               
               <p style="margin:0 0 16px 0;">
-                The insurance carrier (<strong>${carrier}</strong>) has provided <strong>${sortedSlots.length} proposed inspection dates</strong> for your claim. Please review the options below and choose <strong>2 dates</strong> to present to the client.
+                The insurance carrier (<strong>${carrier}</strong>) has provided <strong>${sortedSlots.length} proposed dates</strong> for your upcoming <strong>${eventType}</strong>. Please review the options below and choose <strong>2 dates</strong> to present to the client.
               </p>
 
               <!-- CLAIM SUMMARY BOX -->
@@ -369,7 +370,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Insured:</strong> ${insuredName}<br>
                       <strong>Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${address}<br>
-                      <strong>Inspection Type:</strong> ${eventType}
+                      <strong>Event Type:</strong> ${eventType}
                     </div>
                   </td>
                 </tr>
@@ -380,7 +381,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                 <tr>
                   <td>
                     <div style="font-size:13px; color:#0369a1; font-weight:bold; line-height:1.4;">
-                      💡 Select your 2 preferred inspection dates directly from this email:
+                      💡 Select your 2 preferred dates directly from this email:
                     </div>
                     <div style="font-size:12px; color:#075985; margin-top:3px; line-height:1.4;">
                       Click the red <strong>"Discard this date"</strong> button on the date that does NOT work for you, or approve a pair below.
@@ -539,7 +540,8 @@ function buildRedirectResponse({
   date = '',
   time = '',
   title = '',
-  message = ''
+  message = '',
+  eventType = ''
 }: any) {
   const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://ip-scheduling-manager.onrender.com'
   const redirectUrl = new URL(baseUrl)
@@ -554,6 +556,7 @@ function buildRedirectResponse({
   if (time) redirectUrl.searchParams.set('time', time)
   if (title) redirectUrl.searchParams.set('title', title)
   if (message) redirectUrl.searchParams.set('message', message)
+  if (eventType) redirectUrl.searchParams.set('eventType', eventType)
 
   return new Response(null, {
     status: 302,
@@ -646,7 +649,8 @@ async function executeSlotSelection({
     carrier: carrier,
     address: propertyAddress,
     date: acceptedSlots.map((s: any) => s.slot_date).join(', '),
-    time: acceptedSlots.map((s: any) => `${(s.start_time || '').slice(0, 5)}-${(s.end_time || '').slice(0, 5)}`).join(', ')
+    time: acceptedSlots.map((s: any) => `${(s.start_time || '').slice(0, 5)}-${(s.end_time || '').slice(0, 5)}`).join(', '),
+    eventType: event.event_type || 'Inspection'
   })
 }
 
@@ -743,7 +747,8 @@ function renderPortalHtml({
   propertyAddress,
   paName,
   slots,
-  currentStage
+  currentStage,
+  eventType = 'Inspection'
 }: any) {
   const isAlreadyAdvanced = currentStage && currentStage !== '2_pa_selection' && currentStage !== '1_carrier_outreach'
 
@@ -769,7 +774,7 @@ function renderPortalHtml({
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Select Inspection Options | IP Adjusting Group</title>
+  <title>Select ${eventType} Options | IP Adjusting Group</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b; }
     .card { max-width: 550px; margin: 20px auto; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; }
@@ -784,7 +789,7 @@ function renderPortalHtml({
       <img src="https://drive.google.com/uc?export=view&id=15sfb2FC7bIfoVUfzJYJ9snM7WToqYb2l" alt="IP Adjusting Group" style="max-width: 170px; height: auto; margin: 0 auto; display: block; filter: brightness(0) invert(1);">
     </div>
     <div class="content">
-      <h2 style="margin:0 0 6px 0; color:#0f172a; font-size:20px;">Select 2 Inspection Dates for the Client</h2>
+      <h2 style="margin:0 0 6px 0; color:#0f172a; font-size:20px;">Select 2 ${eventType} Dates for the Client</h2>
       <p style="margin:0 0 18px 0; color:#64748b; font-size:13px;">Dear <strong>${paName}</strong>, please select exactly <strong>2 options</strong> that work best for your schedule:</p>
 
       <!-- Claim Info -->

@@ -110,7 +110,7 @@ serve(async (req) => {
       const dtStart = formatIcsDate(cancelDate, previousStartTime || event.final_start_time || '09:00:00')
       const dtEnd = formatIcsDate(cancelDate, previousEndTime || event.final_end_time || '11:00:00')
       const icsTitle = `CANCELLED: ${eventType} - Claim ${claimNumber}`
-      const icsDesc = `Inspection appointment has been cancelled and returned to rescheduling.\nReason: ${cancellationReason || 'Reschedule requested'}\nCancelled by: ${cancelledBy || 'General'}`
+      const icsDesc = `${eventType} appointment has been cancelled and returned to rescheduling.\nReason: ${cancellationReason || 'Reschedule requested'}\nCancelled by: ${cancelledBy || 'General'}`
 
       const icsContent = [
         'BEGIN:VCALENDAR',
@@ -137,20 +137,20 @@ serve(async (req) => {
       })
     }
 
-    const subject = `Notice: Inspection Cancelled / Rescheduling | ${insuredName} - Claim #${claimNumber}`
+    const subject = `Notice: ${eventType} Cancelled / Rescheduling | ${insuredName} - Claim #${claimNumber}`
 
-    const plainText = `NOTICE OF INSPECTION CANCELLATION & RESCHEDULING
+    const plainText = `NOTICE OF ${eventType.toUpperCase()} CANCELLATION & RESCHEDULING
 
 Dear Parties,
 
-Please be advised that the property inspection scheduled for Claim #${claimNumber} has been cancelled and returned to rescheduling.
+Please be advised that the ${eventType.toLowerCase()} scheduled for Claim #${claimNumber} has been cancelled and returned to rescheduling.
 
 CLAIM DETAILS:
 - Claim Number: ${claimNumber}
 - Insured: ${insuredName}
 - Insurance Carrier: ${carrier}
 - Property Address: ${propertyAddress}
-- Inspection Type: ${eventType}
+- Event Type: ${eventType}
 ${cancelDate ? `- Previous Scheduled Date: ${cancelDate} (${cancelStartTime} - ${cancelEndTime})\n` : ''}- Cancelled By / Requested By: ${cancelledBy || 'General'}
 - Reason / Notes: ${cancellationReason || 'Rescheduling requested.'}
 
@@ -170,7 +170,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Notice: Inspection Cancelled</title>
+  <title>Notice: ${eventType} Cancelled</title>
   <style>
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
     table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
@@ -217,7 +217,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       ⚠️ Notice of Cancellation & Rescheduling
                     </div>
                     <div style="font-size:13px; color:#7f1d1d; margin-top:4px; line-height:1.5;">
-                      The scheduled property inspection for <strong>Claim #${claimNumber}</strong> has been cancelled and returned to the coordination stage for rescheduling.
+                      The scheduled ${eventType.toLowerCase()} for <strong>Claim #${claimNumber}</strong> has been cancelled and returned to the coordination stage for rescheduling.
                     </div>
                   </td>
                 </tr>
@@ -235,7 +235,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Insured:</strong> ${insuredName}<br>
                       <strong>Insurance Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${propertyAddress}<br>
-                      <strong>Inspection Type:</strong> ${eventType}<br>
+                      <strong>Event Type:</strong> ${eventType}<br>
                       ${cancelDate ? `<strong>Cancelled Appointment:</strong> 📅 ${cancelDate} (${cancelStartTime} - ${cancelEndTime})<br>` : ''}
                       <strong>Cancelled By / Requested By:</strong> ${cancelledBy || 'General'}<br>
                       <strong>Reason / Notes:</strong> ${cancellationReason || 'Rescheduling requested.'}
@@ -252,7 +252,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       🔄 What are the next steps?
                     </div>
                     <div style="font-size:13px; color:#475569; line-height:1.5;">
-                      Our coordination team at <strong>IP Adjusting Group</strong> is actively working to arrange new available dates between the carrier and the public adjuster. We will reach out with updated inspection options shortly.
+                      Our coordination team at <strong>IP Adjusting Group</strong> is actively working to arrange new available dates between the carrier and the public adjuster. We will reach out with updated options shortly.
                     </div>
                   </td>
                 </tr>

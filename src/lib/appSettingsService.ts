@@ -133,7 +133,7 @@ export const appSettingsService = {
    */
   async getCustomCarriers(): Promise<string[]> {
     const carriers = await this.getSetting<string[]>(APP_SETTING_KEYS.CUSTOM_CARRIERS, DEFAULT_CARRIERS);
-    return Array.from(new Set([...DEFAULT_CARRIERS, ...carriers])).sort();
+    return Array.from(new Set(carriers.map(c => c.trim()).filter(Boolean))).sort();
   },
 
   async addCustomCarrier(carrierName: string): Promise<string[]> {
@@ -141,7 +141,7 @@ export const appSettingsService = {
     if (!trimmed) return await this.getCustomCarriers();
 
     const current = await this.getCustomCarriers();
-    if (!current.includes(trimmed)) {
+    if (!current.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
       const updated = Array.from(new Set([...current, trimmed])).sort();
       await this.saveSetting(APP_SETTING_KEYS.CUSTOM_CARRIERS, updated);
       window.dispatchEvent(new CustomEvent('custom_carriers_updated', { detail: updated }));
@@ -150,12 +150,40 @@ export const appSettingsService = {
     return current;
   },
 
+  async updateCarrier(oldName: string, newName: string, updateClaims = true): Promise<string[]> {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew) throw new Error("Carrier name cannot be empty");
+    const current = await this.getCustomCarriers();
+    const updated = current.map(c => c.toLowerCase() === oldName.toLowerCase() ? trimmedNew : c);
+    const cleaned = Array.from(new Set(updated.map(c => c.trim()).filter(Boolean))).sort();
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_CARRIERS, cleaned);
+    window.dispatchEvent(new CustomEvent('custom_carriers_updated', { detail: cleaned }));
+
+    if (updateClaims && isSupabaseConfigured && oldName !== trimmedNew) {
+      try {
+        await supabase.from('claims').update({ carrier: trimmedNew }).eq('carrier', oldName);
+        await supabase.from('carrier_representatives').update({ carrier_name: trimmedNew }).eq('carrier_name', oldName);
+      } catch (err) {
+        console.warn('Error updating claims/reps with renamed carrier:', err);
+      }
+    }
+    return cleaned;
+  },
+
+  async deleteCarrier(carrierName: string): Promise<string[]> {
+    const current = await this.getCustomCarriers();
+    const updated = current.filter(c => c.toLowerCase() !== carrierName.trim().toLowerCase());
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_CARRIERS, updated);
+    window.dispatchEvent(new CustomEvent('custom_carriers_updated', { detail: updated }));
+    return updated;
+  },
+
   /**
    * Custom Event Types Catalog
    */
   async getCustomEventTypes(): Promise<string[]> {
     const types = await this.getSetting<string[]>(APP_SETTING_KEYS.CUSTOM_EVENT_TYPES, DEFAULT_EVENT_TYPES);
-    return Array.from(new Set([...DEFAULT_EVENT_TYPES, ...types])).sort();
+    return Array.from(new Set(types.map(t => t.trim()).filter(Boolean))).sort();
   },
 
   async addCustomEventType(typeName: string): Promise<string[]> {
@@ -163,13 +191,40 @@ export const appSettingsService = {
     if (!trimmed) return await this.getCustomEventTypes();
 
     const current = await this.getCustomEventTypes();
-    if (!current.includes(trimmed)) {
+    if (!current.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
       const updated = Array.from(new Set([...current, trimmed])).sort();
       await this.saveSetting(APP_SETTING_KEYS.CUSTOM_EVENT_TYPES, updated);
       window.dispatchEvent(new CustomEvent('custom_event_types_updated', { detail: updated }));
       return updated;
     }
     return current;
+  },
+
+  async updateEventType(oldName: string, newName: string, updateEvents = true): Promise<string[]> {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew) throw new Error("Event type cannot be empty");
+    const current = await this.getCustomEventTypes();
+    const updated = current.map(t => t.toLowerCase() === oldName.toLowerCase() ? trimmedNew : t);
+    const cleaned = Array.from(new Set(updated.map(t => t.trim()).filter(Boolean))).sort();
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_EVENT_TYPES, cleaned);
+    window.dispatchEvent(new CustomEvent('custom_event_types_updated', { detail: cleaned }));
+
+    if (updateEvents && isSupabaseConfigured && oldName !== trimmedNew) {
+      try {
+        await supabase.from('events').update({ event_type: trimmedNew }).eq('event_type', oldName);
+      } catch (err) {
+        console.warn('Error updating events with renamed event type:', err);
+      }
+    }
+    return cleaned;
+  },
+
+  async deleteEventType(typeName: string): Promise<string[]> {
+    const current = await this.getCustomEventTypes();
+    const updated = current.filter(t => t.toLowerCase() !== typeName.trim().toLowerCase());
+    await this.saveSetting(APP_SETTING_KEYS.CUSTOM_EVENT_TYPES, updated);
+    window.dispatchEvent(new CustomEvent('custom_event_types_updated', { detail: updated }));
+    return updated;
   },
 
   /**

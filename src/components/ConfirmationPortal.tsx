@@ -11,6 +11,7 @@ interface ConfirmationPortalProps {
   time: string | null;
   title: string | null;
   message: string | null;
+  eventType?: string | null;
 }
 
 export function ConfirmationPortal({
@@ -24,10 +25,12 @@ export function ConfirmationPortal({
   time,
   title,
   message,
+  eventType,
 }: ConfirmationPortalProps) {
   const isSuccess = status !== 'error';
   const isInsured = role === 'insured';
   const isPA = role === 'pa';
+  const eventLabel = eventType || 'Inspection';
 
   return (
     <div className="min-h-screen bg-[#F5F9FA] flex flex-col font-sans">
@@ -42,7 +45,7 @@ export function ConfirmationPortal({
             />
             <div className="hidden sm:block border-l border-slate-200 pl-3">
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e7f3f7] text-[#1187aa] border border-[#419fbb]/30 uppercase tracking-wider font-['Montserrat',sans-serif]">
-                Inspection Coordination
+                Coordination Desk
               </span>
             </div>
           </div>
@@ -73,14 +76,14 @@ export function ConfirmationPortal({
 
             <h1 className="text-2xl font-black font-['Montserrat',sans-serif] tracking-tight">
               {title || (isSuccess 
-                ? (isInsured ? 'Inspection Confirmed!' : 'Inspection Dates Selected!') 
+                ? (isInsured ? `${eventLabel} Confirmed!` : `${eventLabel} Dates Selected!`) 
                 : 'Notice Regarding Your Selection')}
             </h1>
 
             <p className="text-xs sm:text-sm text-cyan-100/90 mt-2 font-medium max-w-md mx-auto leading-relaxed">
               {message || (isSuccess
                 ? (isInsured 
-                    ? 'Thank you! Your inspection appointment has been successfully locked in our system.' 
+                    ? `Thank you! Your ${eventLabel.toLowerCase()} appointment has been successfully locked in our system.` 
                     : 'Thank you! Your date selections have been recorded and presented to the client.')
                 : 'Please contact your coordinator if you need further assistance.')}
             </p>
@@ -93,7 +96,7 @@ export function ConfirmationPortal({
             {isSuccess && date && (
               <div className="bg-[#e7f3f7]/60 border border-[#419fbb]/30 rounded-2xl p-5 text-center">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#0c6079] font-['Montserrat',sans-serif]">
-                  {isInsured ? 'Confirmed Inspection Date & Time' : 'Approved Date Options'}
+                  {isInsured ? `Confirmed ${eventLabel} Date & Time` : 'Approved Date Options'}
                 </span>
                 <div className="text-xl sm:text-2xl font-extrabold text-[#1187aa] mt-1 font-['Montserrat',sans-serif]">
                   📅 {date}

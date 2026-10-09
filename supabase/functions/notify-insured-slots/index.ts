@@ -18,7 +18,8 @@ function buildRedirectResponse({
   date = '',
   time = '',
   title = '',
-  message = ''
+  message = '',
+  eventType = ''
 }: any) {
   const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://ip-scheduling-manager.onrender.com'
   const redirectUrl = new URL(baseUrl)
@@ -33,6 +34,7 @@ function buildRedirectResponse({
   if (time) redirectUrl.searchParams.set('time', time)
   if (title) redirectUrl.searchParams.set('title', title)
   if (message) redirectUrl.searchParams.set('message', message)
+  if (eventType) redirectUrl.searchParams.set('eventType', eventType)
 
   return new Response(null, {
     status: 302,
@@ -91,8 +93,8 @@ serve(async (req) => {
         return buildRedirectResponse({
           role: 'insured',
           status: 'error',
-          title: "Inspection Not Found",
-          message: "We could not locate this inspection event in our system."
+          title: "Event Not Found",
+          message: "We could not locate this event in our system."
         })
       }
 
@@ -102,6 +104,7 @@ serve(async (req) => {
       const carrier = claim?.carrier || 'Carrier'
       const propertyAddress = claim?.property_address || event.location || 'N/A'
       const paName = claim?.public_adjuster?.name || 'Public Adjuster'
+      const eventType = event.event_type || 'Inspection'
 
       const rawSlots = event.slots || []
       const chosenSlot = rawSlots.find((s: any) => s.id === slotId)
@@ -111,7 +114,8 @@ serve(async (req) => {
           role: 'insured',
           status: 'error',
           title: "Date Option Not Found",
-          message: "The requested inspection date could not be found or has already been updated."
+          message: "The requested date option could not be found or has already been updated.",
+          eventType
         })
       }
 
@@ -151,7 +155,7 @@ serve(async (req) => {
         contact_target: 'insured',
         contact_target_name: insuredName,
         channel: 'email',
-        notes: `✓ 1-Click Email Confirmation: Insured (${insuredName}) selected date: ${slotDate} (${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}). Inspection locked & scheduled.`
+        notes: `✓ 1-Click Email Confirmation: Insured (${insuredName}) selected date: ${slotDate} (${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}). ${eventType} locked & scheduled.`
       })
 
       // Automatically trigger calendar invite Edge Function in background
@@ -178,7 +182,8 @@ serve(async (req) => {
         carrier: carrier,
         address: propertyAddress,
         date: slotDate,
-        time: `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`
+        time: `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`,
+        eventType
       })
 
     } catch (err: any) {
@@ -298,11 +303,11 @@ serve(async (req) => {
       `
     })
 
-    const subject = `Action Required: Choose Your Inspection Date | ${insuredName} - Claim #${claimNumber}`
+    const subject = `Action Required: Choose Your ${eventType} Date | ${insuredName} - Claim #${claimNumber}`
 
     const plainText = `Dear ${insuredName},
 
-The insurance company (${carrier}) has requested an on-site property inspection for your claim at ${propertyAddress}.
+The insurance company (${carrier}) has requested an on-site ${eventType.toLowerCase()} for your claim at ${propertyAddress}.
 
 Your Public Adjuster, ${paName}, has reviewed the calendar and pre-approved the following ${sortedSlots.length} date options for you:
 
@@ -323,7 +328,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Choose Your Inspection Date</title>
+  <title>Choose Your ${eventType} Date</title>
   <style>
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
     table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
@@ -365,7 +370,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
               <p style="margin:0 0 14px 0; font-size:16px;">Dear <strong>${insuredName}</strong>,</p>
               
               <p style="margin:0 0 16px 0;">
-                The insurance company (<strong>${carrier}</strong>) has scheduled an upcoming property inspection for your claim. Your Public Adjuster, <strong>${paName}</strong>, has coordinated and pre-approved the following <strong>${sortedSlots.length} available dates</strong> for you:
+                The insurance company (<strong>${carrier}</strong>) has scheduled an upcoming <strong>${eventType}</strong> for your claim. Your Public Adjuster, <strong>${paName}</strong>, has coordinated and pre-approved the following <strong>${sortedSlots.length} available dates</strong> for you:
               </p>
 
               <!-- CLAIM SUMMARY BOX -->
@@ -379,7 +384,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Claim Number:</strong> ${claimNumber}<br>
                       <strong>Insurance Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${propertyAddress}<br>
-                      <strong>Inspection Type:</strong> ${eventType}<br>
+                      <strong>Event Type:</strong> ${eventType}<br>
                       <strong>Public Adjuster:</strong> ${paName}
                     </div>
                   </td>
@@ -391,7 +396,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                 <tr>
                   <td>
                     <div style="font-size:13px; color:#0369a1; font-weight:bold; line-height:1.4;">
-                      👉 Please select 1 of the options below to confirm your inspection:
+                      👉 Please select 1 of the options below to confirm your appointment:
                     </div>
                     <div style="font-size:12px; color:#075985; margin-top:3px; line-height:1.4;">
                       Click the blue <strong>"Choose This Date"</strong> button on your preferred date. No password or app login is required.
@@ -405,7 +410,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                 <tr>
                   <td style="border-bottom:2px solid #0071bc; padding-bottom:6px;">
                     <span style="font-size:16px; font-weight:bold; color:#004E91;">
-                      Available Inspection Dates:
+                      Available Dates:
                     </span>
                   </td>
                 </tr>
@@ -532,14 +537,15 @@ function renderClientConfirmationSuccessHtml({
   paName,
   date,
   startTime,
-  endTime
+  endTime,
+  eventType = 'Inspection'
 }: any) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Inspection Confirmed | IP Adjusting Group</title>
+  <title>${eventType} Confirmed | IP Adjusting Group</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b; }
     .card { max-width: 550px; margin: 20px auto; background: #ffffff; border-radius: 14px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e2e8f0; }
@@ -556,14 +562,14 @@ function renderClientConfirmationSuccessHtml({
     <div class="content">
       <div style="text-align:center; margin-bottom:20px;">
         <div style="font-size:46px; margin-bottom:8px;">✅</div>
-        <h2 style="margin:0 0 6px 0; color:#0f172a; font-size:22px;">Inspection Confirmed!</h2>
-        <p style="margin:0; color:#64748b; font-size:14px;">Thank you, <strong>${insuredName}</strong>. Your property inspection is now scheduled.</p>
+        <h2 style="margin:0 0 6px 0; color:#0f172a; font-size:22px;">${eventType} Confirmed!</h2>
+        <p style="margin:0; color:#64748b; font-size:14px;">Thank you, <strong>${insuredName}</strong>. Your ${eventType} is now scheduled.</p>
       </div>
 
       <!-- Confirmed Appointment Card -->
       <div style="background-color:#f0fdf4; border:2px solid #86efac; border-radius:10px; padding:18px; margin-bottom:20px; text-align:center;">
         <div style="font-size:12px; font-weight:bold; color:#166534; text-transform:uppercase; letter-spacing:0.5px;">
-          Confirmed Appointment Date & Time
+          Confirmed ${eventType} Date & Time
         </div>
         <div style="font-size:22px; font-weight:bold; color:#14532d; margin-top:6px;">
           📅 ${date}

@@ -124,7 +124,7 @@ serve(async (req) => {
           </div>
           <div style="padding: 24px;">
             <div style="display: inline-block; padding: 4px 10px; background-color: #dcfce7; color: #15803d; border-radius: 9999px; font-size: 12px; font-weight: bold; margin-bottom: 12px;">
-              ✓ Inspection Confirmed
+              ✓ ${eventType} Confirmed
             </div>
             <h2 style="margin: 0 0 14px 0; color: #0f172a; font-size: 20px;">${eventType} Scheduled</h2>
             

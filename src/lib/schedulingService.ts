@@ -15,13 +15,13 @@ import type {
 
 export const schedulingService = {
   // 1. Obtener Public Adjusters
-  async getPublicAdjusters(): Promise<PublicAdjuster[]> {
+  async getPublicAdjusters(includeInactive = false): Promise<PublicAdjuster[]> {
     if (!isSupabaseConfigured) return [];
-    const { data, error } = await supabase
-      .from('public_adjusters')
-      .select('*')
-      .eq('is_active', true)
-      .order('name', { ascending: true });
+    let query = supabase.from('public_adjusters').select('*');
+    if (!includeInactive) {
+      query = query.eq('is_active', true);
+    }
+    const { data, error } = await query.order('name', { ascending: true });
 
     if (error) {
       console.warn('Error fetching public_adjusters:', error.message);

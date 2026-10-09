@@ -24,7 +24,8 @@ import {
   Filter,
   Mail,
   LogOut,
-  Trash2
+  Trash2,
+  SlidersHorizontal
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
@@ -37,6 +38,7 @@ import { RecordCarrierSlotsModal } from './components/RecordCarrierSlotsModal';
 import { SlaSettingsModal } from './components/SlaSettingsModal';
 import { ResetCoordinationModal } from './components/ResetCoordinationModal';
 import { EventHistoryModal } from './components/EventHistoryModal';
+import { MasterCatalogsView } from './components/MasterCatalogsView';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from './lib/slaUtils';
 import { appSettingsService } from './lib/appSettingsService';
 import type { 
@@ -91,7 +93,7 @@ export function App() {
   const [isNewClaimOpen, setIsNewClaimOpen] = useState(false);
   const [isSlaSettingsOpen, setIsSlaSettingsOpen] = useState(false);
   const [slaConfig, setSlaConfig] = useState<SlaConfig>(getSlaConfig());
-  const [viewMode, setViewMode] = useState<'funnel' | 'claims'>('funnel');
+  const [viewMode, setViewMode] = useState<'funnel' | 'claims' | 'catalogs'>('funnel');
   const [claimsEventFilter, setClaimsEventFilter] = useState<'all' | 'unassigned' | 'assigned'>('all');
   const [claimsLayoutMode, setClaimsLayoutMode] = useState<'list' | 'grid'>('list');
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
@@ -414,6 +416,7 @@ export function App() {
         time={urlParams.get('time')}
         title={urlParams.get('title')}
         message={urlParams.get('message')}
+        eventType={urlParams.get('eventType')}
       />
     );
   }
@@ -592,19 +595,32 @@ export function App() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setViewMode('catalogs')}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                viewMode === 'catalogs'
+                  ? 'bg-white text-maroon-800 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Catalogs & Actors</span>
+            </button>
           </div>
 
-          {/* Search Box */}
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search claim #, insured, address..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-maroon-800 focus:bg-white transition-colors"
-            />
-          </div>
+          {/* Search Box (For Funnel and Claims views) */}
+          {viewMode !== 'catalogs' && (
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search claim #, insured, address..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-maroon-800 focus:bg-white transition-colors"
+              />
+            </div>
+          )}
         </div>
 
         {/* ======================================================== */}
@@ -1822,6 +1838,17 @@ export function App() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* VIEW 3: MASTER CATALOGS & ACTORS (CRUD) */}
+        {/* ======================================================== */}
+        {viewMode === 'catalogs' && (
+          <MasterCatalogsView
+            claims={claims}
+            events={events}
+            onDataRefresh={loadData}
+          />
         )}
           </>
         )}
