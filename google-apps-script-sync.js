@@ -12,7 +12,7 @@
 // ============================================================================
 // CONFIGURACIÓN
 // ============================================================================
-const WEBHOOK_URL = 'https://edbfyjhbctbxhnqfvrgt.supabase.co/functions/v1/sync-sheet-claim';
+const WEBHOOK_URL = 'https://nazzlfkfwdzrgzspvixm.supabase.co/functions/v1/sync-sheet-claim';
 const TARGET_SHEET_NAME = 'New ClientList';
 
 // Fila predeterminada desde donde empezar si ejecutas "Sincronizar Todos"
