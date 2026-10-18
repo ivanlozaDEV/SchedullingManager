@@ -87,6 +87,7 @@ export interface Claim {
   status: 'Open' | 'Under Review' | 'Appraisal' | 'Settled' | 'Closed';
   notes?: string;
   publicAdjusterId?: string;
+  timezone?: 'CT' | 'ET' | null;
   insured?: Insured;
   publicAdjuster?: PublicAdjuster;
   carrierReps?: CarrierRepresentative[];
@@ -153,6 +154,7 @@ export interface CoordinationEvent {
   openAvailabilityActor?: 'insured' | 'pa' | 'carrier' | null;
   openAvailabilityNotes?: string | null;
   slotsOriginator?: 'carrier' | 'insured' | 'pa' | 'office' | null;
+  timezone?: 'CT' | 'ET' | null;
   createdAt: string;
   updatedAt: string;
   // Joins

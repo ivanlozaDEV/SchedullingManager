@@ -20,6 +20,7 @@ import {
   formatZipCode, 
   formatClaimNumber 
 } from '../lib/formatters';
+import { detectPropertyTimezone } from '../lib/timezoneUtils';
 import type { Insured, PublicAdjuster, CarrierRepresentative, ExternalActor, Claim } from '../types';
 
 const DEFAULT_CARRIERS = [
@@ -674,9 +675,23 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
 
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Street Address <span className="text-red-500">*</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Street Address <span className="text-red-500">*</span>
+                        </label>
+                        {(() => {
+                          const detectedTz = detectPropertyTimezone(`${propertyAddress} ${city} ${zipCode}`);
+                          return (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              detectedTz === 'CT'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-blue-50 text-blue-800 border-blue-200'
+                            }`}>
+                              {detectedTz === 'CT' ? '🏖️ Zona detectada: Central Time (Pensacola)' : '🌴 Zona detectada: Eastern Time (Miami)'}
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <div className="relative">
                         <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                         <input

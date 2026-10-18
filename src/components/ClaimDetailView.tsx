@@ -1147,6 +1147,16 @@ export function ClaimDetailView({
                   <MapPin className="w-3.5 h-3.5 text-maroon-800 shrink-0 mt-0.5" />
                   <span>{claim.propertyAddress}, {claim.city}, {claim.state} {claim.zipCode}</span>
                 </div>
+                <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-slate-100">
+                  <span className="text-[11px] text-slate-500">Zona Horaria:</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    claim.timezone === 'CT'
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-blue-50 text-blue-800 border-blue-200'
+                  }`}>
+                    {claim.timezone === 'CT' ? '🏖️ Pensacola / Panhandle (Central Time - CT)' : '🌴 Miami / Sur de la Florida (Eastern Time - ET)'}
+                  </span>
+                </div>
               </div>
               {claim.notes && (
                 <div className="pt-2 border-t border-slate-100">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, Plus, Trash2, AlertCircle, CheckCircle2, User, Sparkles } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
+import { formatTimeRangeWithDualTimezone } from '../lib/timezoneUtils';
 import type { CoordinationEvent, Claim, CoordinationStage } from '../types';
 
 interface RecordCarrierSlotsModalProps {
@@ -349,6 +350,30 @@ export function RecordCarrierSlotsModal({
         ) : (
           /* MODE B: SPECIFIC SLOTS */
           <form onSubmit={(e) => handleSubmitSlots(e, false)} className="space-y-4">
+            {/* Property Timezone Banner */}
+            <div className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
+              event?.timezone === 'CT' 
+                ? 'bg-amber-50 border-amber-300 text-amber-950' 
+                : 'bg-blue-50 border-blue-200 text-blue-950'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-base">{event?.timezone === 'CT' ? '🏖️' : '🌴'}</span>
+                <div>
+                  <span className="font-bold block">
+                    {event?.timezone === 'CT' ? 'Zona Horaria: Pensacola / Panhandle (Central Time - CT)' : 'Zona Horaria: Miami / Sur de la Florida (Eastern Time - ET)'}
+                  </span>
+                  <span className="text-[11px] opacity-80 block">
+                    {event?.timezone === 'CT' 
+                      ? '💡 Ingresa la hora local de la casa. En Miami (PA) será 1 hora más tarde.' 
+                      : '💡 Las horas ingresadas son hora local de Miami (Eastern Time).'}
+                  </span>
+                </div>
+              </div>
+              <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-white border border-slate-300 uppercase">
+                {event?.timezone === 'CT' ? 'CT' : 'ET'}
+              </span>
+            </div>
+
             <div className="space-y-2.5">
               {slots.map((slot, idx) => (
                 <div 
@@ -404,6 +429,15 @@ export function RecordCarrierSlotsModal({
                       />
                     </div>
                   </div>
+
+                  {slot.startTime && slot.endTime && (
+                    <div className="text-[11px] text-slate-600 font-mono bg-white px-2.5 py-1 rounded-lg border border-slate-200 flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500 font-sans">Equivalencia:</span>
+                      <strong className="text-tealBrand-800">
+                        {formatTimeRangeWithDualTimezone(slot.startTime, slot.endTime, event?.timezone || 'ET').displayFull}
+                      </strong>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

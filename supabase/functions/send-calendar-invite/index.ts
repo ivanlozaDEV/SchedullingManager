@@ -55,7 +55,16 @@ serve(async (req) => {
       return new Response(JSON.stringify({ message: "No participants with emails found" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 })
     }
 
-    // 3. Generate Dates & .ics content
+    // 3. Detect Property Timezone (Central Time vs Eastern Time)
+    const combinedAddr = `${event.location || ''} ${event.claim?.property_address || ''} ${event.claim?.city || ''} ${event.claim?.zip_code || ''} ${event.notes || ''}`.toLowerCase();
+    const isCt = /\[timezone:\s*ct\]/i.test(combinedAddr) || 
+      /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
+      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa'].some(kw => combinedAddr.includes(kw));
+    
+    const ianaTz = isCt ? 'America/Chicago' : 'America/New_York';
+    const tzLabel = isCt ? 'Central Time (CT - Pensacola)' : 'Eastern Time (ET - Miami)';
+
+    // 4. Generate Dates & .ics content
     const cleanDate = (event.final_date || '').replace(/-/g, '')
     const cleanStartTime = (event.final_start_time || '09:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0')
     const cleanEndTime = (event.final_end_time || '11:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0')
@@ -66,7 +75,7 @@ serve(async (req) => {
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'
     const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`
-    const desc = `Address: ${event.claim?.property_address || ''}\nLocation: ${event.location || ''}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier || ''}\nInsured: ${insuredName}`
+    const desc = `Address: ${event.claim?.property_address || ''}\nLocation: ${event.location || ''}\nTimezone: ${tzLabel}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier || ''}\nInsured: ${insuredName}`
 
     const smtpUser = Deno.env.get('GMAIL_SMTP_USER') || 'no-reply@ipadjustinggroup.com'
     const smtpPass = Deno.env.get('GMAIL_SMTP_PASSWORD')
@@ -86,8 +95,8 @@ serve(async (req) => {
       `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'}`,
       `ORGANIZER;CN="IP Scheduling":mailto:${smtpUser}`,
       attendeesIcs,
-      `DTSTART;TZID=America/New_York:${dtStartIcs}`,
-      `DTEND;TZID=America/New_York:${dtEndIcs}`,
+      `DTSTART;TZID=${ianaTz}:${dtStartIcs}`,
+      `DTEND;TZID=${ianaTz}:${dtEndIcs}`,
       `SUMMARY:${title}`,
       `DESCRIPTION:${desc.replace(/\n/g, '\\n')}`,
       `LOCATION:${event.location || ''}`,
@@ -99,7 +108,7 @@ serve(async (req) => {
     ].filter(Boolean).join('\r\n')
 
     // Google Calendar Direct Web Link
-    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStartIcs}/${dtEndIcs}&ctz=America/New_York&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(event.location || '')}`
+    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStartIcs}/${dtEndIcs}&ctz=${ianaTz}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(event.location || '')}`
 
     // 4. Send email via Google SMTP (Nodemailer)
     if (!smtpPass) {

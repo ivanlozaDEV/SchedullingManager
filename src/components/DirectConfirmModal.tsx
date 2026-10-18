@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, Clock, CheckCircle2, AlertCircle, Mail, User } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
+import { formatTimeRangeWithDualTimezone } from '../lib/timezoneUtils';
 import type { CoordinationEvent, Claim } from '../types';
 
 interface DirectConfirmModalProps {
@@ -142,6 +143,30 @@ export function DirectConfirmModal({
             </div>
           )}
 
+          {/* Property Timezone Banner */}
+          <div className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
+            event?.timezone === 'CT' 
+              ? 'bg-amber-50 border-amber-300 text-amber-950' 
+              : 'bg-blue-50 border-blue-200 text-blue-950'
+          }`}>
+            <div className="flex items-center gap-2">
+              <span className="text-base">{event?.timezone === 'CT' ? '🏖️' : '🌴'}</span>
+              <div>
+                <span className="font-bold block">
+                  {event?.timezone === 'CT' ? 'Zona Horaria: Pensacola / Panhandle (Central Time - CT)' : 'Zona Horaria: Miami / Sur de la Florida (Eastern Time - ET)'}
+                </span>
+                <span className="text-[11px] opacity-80 block">
+                  {event?.timezone === 'CT' 
+                    ? '💡 Ingresa la hora local de la propiedad. Equivale a +1 hora en Miami.' 
+                    : '💡 Las horas ingresadas son hora local de Miami (Eastern Time).'}
+                </span>
+              </div>
+            </div>
+            <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-white border border-slate-300 uppercase">
+              {event?.timezone === 'CT' ? 'CT' : 'ET'}
+            </span>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-maroon-800" />
@@ -184,6 +209,15 @@ export function DirectConfirmModal({
               />
             </div>
           </div>
+
+          {finalStartTime && finalEndTime && (
+            <div className="text-[11px] text-slate-600 font-mono bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 flex items-center justify-between">
+              <span className="text-[10px] text-slate-500 font-sans">Equivalencia:</span>
+              <strong className="text-tealBrand-800">
+                {formatTimeRangeWithDualTimezone(finalStartTime, finalEndTime, event?.timezone || 'ET').displayFull}
+              </strong>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">

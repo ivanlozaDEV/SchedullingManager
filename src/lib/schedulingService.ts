@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { detectPropertyTimezone } from './timezoneUtils';
 import type { 
   PublicAdjuster, 
   CarrierRepresentative, 
@@ -153,6 +154,7 @@ export const schedulingService = {
       dateOfLoss: row.date_of_loss,
       status: row.status,
       notes: row.notes || '',
+      timezone: detectPropertyTimezone(`${row.property_address || ''} ${row.city || ''} ${row.zip_code || ''} ${row.notes || ''}`),
       insured: row.insured ? {
         id: row.insured.id,
         name: row.insured.name,
@@ -256,6 +258,9 @@ export const schedulingService = {
         const m = row.notes?.match(/\[SlotsOriginator:\s*([a-zA-Z0-9_-]+)\]/);
         return m ? (m[1] as 'carrier' | 'insured' | 'pa' | 'office') : 'carrier';
       })(),
+      timezone: detectPropertyTimezone(
+        `${row.notes || ''} ${row.location || ''} ${row.claim?.property_address || ''} ${row.claim?.city || ''} ${row.claim?.zip_code || ''}`
+      ),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       claim: row.claim ? {
@@ -269,6 +274,9 @@ export const schedulingService = {
         state: row.claim.state,
         zipCode: row.claim.zip_code,
         status: row.claim.status,
+        timezone: detectPropertyTimezone(
+          `${row.claim.notes || ''} ${row.claim.property_address || ''} ${row.claim.city || ''} ${row.claim.zip_code || ''}`
+        ),
         insured: row.claim.insured ? {
           id: row.claim.insured.id,
           name: row.claim.insured.name,
@@ -505,6 +513,42 @@ export const schedulingService = {
       contact_target_name: actorName || originator,
       channel: 'internal',
       notes: `Se configuró a ${labels[originator] || originator} como el responsable de proponer las fechas iniciales.`,
+    });
+  },
+
+  async setEventTimezone(
+    eventId: string,
+    timezone: 'CT' | 'ET',
+    actorName?: string
+  ) {
+    if (!isSupabaseConfigured) return;
+
+    const { data: currentEvent } = await supabase
+      .from('events')
+      .select('notes')
+      .eq('id', eventId)
+      .single();
+
+    const cleanExisting = (currentEvent?.notes || '').replace(/\[Timezone:[^\]]*\]/g, '').trim();
+    const tag = `[Timezone: ${timezone}]`;
+    const updatedNotes = cleanExisting ? `${cleanExisting}\n${tag}` : tag;
+
+    await supabase
+      .from('events')
+      .update({
+        notes: updatedNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', eventId);
+
+    const tzLabel = timezone === 'CT' ? 'Central Time (Pensacola / Panhandle)' : 'Eastern Time (Miami / Resto de FL)';
+
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'office',
+      contact_target_name: actorName || 'Coordinador',
+      channel: 'internal',
+      notes: `Zona horaria de la propiedad ajustada a ${tzLabel}.`,
     });
   },
 

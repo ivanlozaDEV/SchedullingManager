@@ -43,6 +43,7 @@ import { EventHistoryModal } from './components/EventHistoryModal';
 import { MasterCatalogsView } from './components/MasterCatalogsView';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from './lib/slaUtils';
 import { appSettingsService } from './lib/appSettingsService';
+import { formatTimeRangeWithDualTimezone, getLiveOperatingTimes, type FloridaTimezone } from './lib/timezoneUtils';
 import type { 
   CoordinationEvent, 
   PublicAdjuster, 
@@ -101,6 +102,14 @@ export function App() {
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
   const [claimToEdit, setClaimToEdit] = useState<Claim | null>(null);
   const [filterStalledOnly, setFilterStalledOnly] = useState(false);
+  const [liveTimes, setLiveTimes] = useState(getLiveOperatingTimes());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLiveTimes(getLiveOperatingTimes());
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Sync SLA config changes from settings modal and Supabase database across all devices
   useEffect(() => {
@@ -293,6 +302,16 @@ export function App() {
     }
   };
 
+  const handleToggleEventTimezone = async (eventId: string, newTz: FloridaTimezone) => {
+    try {
+      await schedulingService.setEventTimezone(eventId, newTz, authRole || 'Coordinador');
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to update event timezone:', err);
+      alert('Error al cambiar zona horaria: ' + (err.message || 'Error desconocido'));
+    }
+  };
+
   // Delete Claim State & Handler
   const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
   const [isDeletingClaim, setIsDeletingClaim] = useState(false);
@@ -482,6 +501,27 @@ export function App() {
                 Scheduling System
               </span>
               <p className="text-[11px] text-slate-500 font-medium mt-0.5">Inspection Coordination</p>
+            </div>
+          </div>
+
+          {/* Live Florida & Ecuador Operating Clocks for Coordinators & VAs */}
+          <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] shadow-2xs font-mono">
+            <div className="flex items-center gap-1.5" title="Hora actual en Ecuador (Coordinadores / VAs en Guayaquil y Quito)">
+              <span className="text-xs">🇪🇨</span>
+              <span className="text-slate-500 font-sans font-semibold text-[10px]">Ecuador:</span>
+              <strong className="text-slate-800 font-bold">{liveTimes.ecuador}</strong>
+            </div>
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1.5" title="Hora actual en Miami / South FL (Eastern Time - PAs y Oficina)">
+              <span className="text-xs">🌴</span>
+              <span className="text-slate-500 font-sans font-semibold text-[10px]">Miami (ET):</span>
+              <strong className="text-tealBrand-800 font-bold">{liveTimes.miami}</strong>
+            </div>
+            <span className="text-slate-300">|</span>
+            <div className="flex items-center gap-1.5" title="Hora actual en Pensacola / Panhandle (Central Time - Reclamos del Norte)">
+              <span className="text-xs">🏖️</span>
+              <span className="text-slate-500 font-sans font-semibold text-[10px]">Pensacola (CT):</span>
+              <strong className="text-amber-800 font-bold">{liveTimes.pensacola}</strong>
             </div>
           </div>
 
@@ -860,9 +900,28 @@ export function App() {
 
                                   <div className="flex items-center justify-between mt-1">
                                     <h4 className="text-xs font-bold text-slate-900 leading-snug">{evt.eventType}</h4>
-                                    <span className="text-[10px] px-2 py-0.5 rounded bg-tealBrand-50 text-tealBrand-800 font-semibold border border-tealBrand-200 truncate max-w-[130px]">
-                                      {evt.claim?.carrier}
-                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[10px] px-2 py-0.5 rounded bg-tealBrand-50 text-tealBrand-800 font-semibold border border-tealBrand-200 truncate max-w-[110px]">
+                                        {evt.claim?.carrier}
+                                      </span>
+                                      {/* Timezone Badge & Quick 1-Click Toggle */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const nextTz = (evt.timezone || 'ET') === 'CT' ? 'ET' : 'CT';
+                                          handleToggleEventTimezone(evt.id, nextTz);
+                                        }}
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold border transition-all flex items-center gap-0.5 cursor-pointer shadow-2xs ${
+                                          evt.timezone === 'CT'
+                                            ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                            : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+                                        }`}
+                                        title={`Zona Horaria: ${evt.timezone === 'CT' ? 'Central Time (Pensacola)' : 'Eastern Time (Miami)'}. Clic para alternar.`}
+                                      >
+                                        <span>{evt.timezone === 'CT' ? '🏖️ CT' : '🌴 ET'}</span>
+                                      </button>
+                                    </div>
                                   </div>
 
                                   {evt.openAvailabilityActor && (
@@ -1040,7 +1099,9 @@ export function App() {
                                               >
                                                 <div>
                                                   <span className="font-semibold block">📅 {s.slotDate}</span>
-                                                  <span className="text-slate-500 font-mono text-[10px] block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                  <span className="text-slate-500 font-mono text-[10px] block">
+                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                  </span>
                                                 </div>
                                                 <span className="text-[10px] font-bold text-tealBrand-700 bg-tealBrand-50 px-2 py-0.5 rounded border border-tealBrand-200">
                                                   Opción #{idx + 1}
@@ -1216,7 +1277,9 @@ export function App() {
                                               >
                                                 <div>
                                                   <span className="block font-semibold">📅 {s.slotDate}</span>
-                                                  <span className="text-[10px] font-mono block opacity-80">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                  <span className="text-[10px] font-mono block opacity-80">
+                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                  </span>
                                                 </div>
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                                                   isApproved ? 'bg-white text-tealBrand-800 border-tealBrand-200' : 'bg-slate-100 text-slate-400 border-slate-200'
@@ -1242,7 +1305,9 @@ export function App() {
                                               >
                                                 <div>
                                                   <span className="block font-semibold">📅 {s.slotDate}</span>
-                                                  <span className="text-[10px] text-slate-500 block font-mono">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                  <span className="text-[10px] text-slate-500 block font-mono">
+                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                  </span>
                                                 </div>
                                                 <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] font-bold ${
                                                   isSelected ? 'bg-tealBrand-800 border-tealBrand-800 text-white' : 'border-slate-300 bg-white'
@@ -1336,7 +1401,9 @@ export function App() {
                                               >
                                                 <div>
                                                   <span className="block font-semibold">📅 {s.slotDate}</span>
-                                                  <span className="text-[10px] font-mono block opacity-80">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                  <span className="text-[10px] font-mono block opacity-80">
+                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                  </span>
                                                 </div>
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                                                   isChosen ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-100 text-slate-400 border-slate-200'
@@ -1357,7 +1424,9 @@ export function App() {
                                                 >
                                                   <div>
                                                     <span className="font-bold text-slate-900 block">📅 {s.slotDate}</span>
-                                                    <span className="text-[10px] text-slate-600 font-mono block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                                    <span className="text-[10px] text-slate-600 font-mono block">
+                                                      {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                    </span>
                                                   </div>
                                                   <button
                                                     type="button"
@@ -1485,7 +1554,7 @@ export function App() {
                                           📅 {evt.finalDate}
                                         </p>
                                         <p className="text-[11px] text-slate-600 font-mono pl-5.5">
-                                          ⏰ {evt.finalStartTime?.slice(0, 5)} - {evt.finalEndTime?.slice(0, 5)}
+                                          ⏰ {formatTimeRangeWithDualTimezone(evt.finalStartTime || '09:00', evt.finalEndTime || '11:00', evt.timezone || 'ET').displayFull}
                                         </p>
                                         <p className="text-[10px] text-emerald-700 pl-5.5 pt-1 font-medium">
                                           Todas las partes confirmadas
