@@ -12,6 +12,7 @@ import {
   Calendar, 
   Clock, 
   Check, 
+  CheckCircle2,
   AlertCircle,
   ArrowRight,
   Shield,
@@ -58,6 +59,12 @@ export function ClaimDetailModal({
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [eventType, setEventType] = useState('Initial Inspection');
   const [coordinationStage, setCoordinationStage] = useState<CoordinationStage>('1_awaiting_carrier_slots');
+  const [slotsOriginator, setSlotsOriginator] = useState<'carrier' | 'pa' | 'insured' | 'office'>('carrier');
+  const [isDirectScheduleMode, setIsDirectScheduleMode] = useState(false);
+  const [directFinalDate, setDirectFinalDate] = useState('');
+  const [directFinalStartTime, setDirectFinalStartTime] = useState('09:00');
+  const [directFinalEndTime, setDirectFinalEndTime] = useState('11:00');
+  const [directSendCalendarInvite, setDirectSendCalendarInvite] = useState(true);
   const [location, setLocation] = useState('');
   const [gateCode, setGateCode] = useState('');
   const [lockboxCode, setLockboxCode] = useState('');
@@ -83,6 +90,7 @@ export function ClaimDetailModal({
     setLockboxCode('');
     setAccessInstructions('');
     setEventNotes('');
+    setSlotsOriginator('carrier');
     setEventError(null);
     setShowAddEvent(true);
   };
@@ -128,19 +136,39 @@ export function ClaimDetailModal({
         });
       }
 
+      if (isDirectScheduleMode) {
+        if (!directFinalDate) {
+          setEventError('Por favor indica la fecha confirmada para la cita directa.');
+          setSubmittingEvent(false);
+          return;
+        }
+        if (!directFinalStartTime || !directFinalEndTime) {
+          setEventError('Por favor indica hora de inicio y fin para la cita directa.');
+          setSubmittingEvent(false);
+          return;
+        }
+      }
+
       await schedulingService.createEvent({
         claimId: claim.id,
         eventType,
-        coordinationStage,
+        coordinationStage: isDirectScheduleMode ? '4_confirmed' : coordinationStage,
+        slotsOriginator: isDirectScheduleMode ? undefined : slotsOriginator,
         location: location.trim(),
         gateCode: gateCode.trim() || undefined,
         lockboxCode: lockboxCode.trim() || undefined,
         accessInstructions: accessInstructions.trim() || undefined,
         notes: eventNotes.trim() || undefined,
+        finalDate: isDirectScheduleMode ? directFinalDate : undefined,
+        finalStartTime: isDirectScheduleMode ? directFinalStartTime : undefined,
+        finalEndTime: isDirectScheduleMode ? directFinalEndTime : undefined,
+        sendCalendarInvite: isDirectScheduleMode ? directSendCalendarInvite : false,
         participants,
       });
 
       setShowAddEvent(false);
+      setIsDirectScheduleMode(false);
+      setDirectFinalDate('');
       onEventCreated();
     } catch (err: any) {
       console.error('Error creating event:', err);
@@ -438,6 +466,87 @@ export function ClaimDetailModal({
                   )}
 
                   <form onSubmit={handleCreateEvent} className="space-y-3.5">
+                    {/* Mode Selector */}
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200/60 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => { setIsDirectScheduleMode(false); setCoordinationStage('1_awaiting_carrier_slots'); }}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          !isDirectScheduleMode
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
+                        <span>Por Coordinar (Funnel)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setIsDirectScheduleMode(true); setCoordinationStage('4_confirmed'); }}
+                        className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          isDirectScheduleMode
+                            ? 'bg-white text-emerald-900 shadow-xs'
+                            : 'text-slate-600 hover:text-emerald-800'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>⚡ Cita Ya Confirmada (Directa)</span>
+                      </button>
+                    </div>
+
+                    {isDirectScheduleMode && (
+                      <div className="p-3 bg-emerald-50/80 border border-emerald-300 rounded-xl space-y-2.5">
+                        <span className="text-xs font-bold text-emerald-950 flex items-center gap-1">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                          <span>Datos de la Cita Confirmada</span>
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Fecha *</label>
+                            <input
+                              type="date"
+                              required={isDirectScheduleMode}
+                              value={directFinalDate}
+                              onChange={(e) => setDirectFinalDate(e.target.value)}
+                              className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora Inicio *</label>
+                            <input
+                              type="time"
+                              required={isDirectScheduleMode}
+                              value={directFinalStartTime}
+                              onChange={(e) => setDirectFinalStartTime(e.target.value)}
+                              className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora Fin *</label>
+                            <input
+                              type="time"
+                              required={isDirectScheduleMode}
+                              value={directFinalEndTime}
+                              onChange={(e) => setDirectFinalEndTime(e.target.value)}
+                              className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <input
+                            type="checkbox"
+                            id="modalDirectSendCalendarInvite"
+                            checked={directSendCalendarInvite}
+                            onChange={(e) => setDirectSendCalendarInvite(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          />
+                          <label htmlFor="modalDirectSendCalendarInvite" className="text-[11px] text-emerald-950 font-medium cursor-pointer">
+                            Enviar invitaciones de calendario (.ics) inmediatamente
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -454,21 +563,40 @@ export function ClaimDetailModal({
                         </select>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          Starting Coordination Stage <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          value={coordinationStage}
-                          onChange={(e) => setCoordinationStage(e.target.value as CoordinationStage)}
-                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
-                        >
-                          <option value="1_awaiting_carrier_slots">1. Awaiting Carrier Dates</option>
-                          <option value="2_pa_review">2. PA Review (Dates ready)</option>
-                          <option value="3_insured_selection">3. Insured Choice</option>
-                          <option value="4_confirmed">4. Confirmed / Scheduled</option>
-                        </select>
-                      </div>
+                      {!isDirectScheduleMode && (
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Starting Coordination Stage <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={coordinationStage}
+                            onChange={(e) => setCoordinationStage(e.target.value as CoordinationStage)}
+                            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
+                          >
+                            <option value="1_awaiting_carrier_slots">1. Esperando Fechas</option>
+                            <option value="2_pa_review">2. Revisión PA</option>
+                            <option value="3_insured_selection">3. Selección Asegurado</option>
+                            <option value="4_confirmed">4. Confirmado</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {!isDirectScheduleMode && (
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            ¿Quién debe dar las fechas primero? <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={slotsOriginator}
+                            onChange={(e) => setSlotsOriginator(e.target.value as any)}
+                            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
+                          >
+                            <option value="carrier">🏢 Aseguradora (Ajustador)</option>
+                            <option value="pa">⚖️ Public Adjuster (PA)</option>
+                            <option value="insured">👤 Cliente / Asegurado</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
 
                     <div>

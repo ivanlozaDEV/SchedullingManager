@@ -244,6 +244,18 @@ export const schedulingService = {
       accessInstructions: row.access_instructions,
       noticeSentAt: row.notice_sent_at,
       notes: row.notes,
+      openAvailabilityActor: (() => {
+        const m = row.notes?.match(/\[OpenAvailability:\s*([a-zA-Z0-9_-]+)/);
+        return m ? (m[1] as 'insured' | 'pa' | 'carrier') : null;
+      })(),
+      openAvailabilityNotes: (() => {
+        const m = row.notes?.match(/\[OpenAvailability:\s*[a-zA-Z0-9_-]+\s*\|\s*([^\]]*)\]/);
+        return m ? m[1].trim() : null;
+      })(),
+      slotsOriginator: (() => {
+        const m = row.notes?.match(/\[SlotsOriginator:\s*([a-zA-Z0-9_-]+)\]/);
+        return m ? (m[1] as 'carrier' | 'insured' | 'pa' | 'office') : 'carrier';
+      })(),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       claim: row.claim ? {
@@ -266,16 +278,23 @@ export const schedulingService = {
           notes: row.claim.insured.notes,
         } : undefined,
       } : undefined,
-      slots: (row.slots || []).map((s: any) => ({
-        id: s.id,
-        eventId: s.event_id,
-        slotDate: s.slot_date,
-        startTime: s.start_time,
-        endTime: s.end_time,
-        status: s.status,
-        rejectionReason: s.rejection_reason,
-        deadlineAt: s.deadline_at,
-      })),
+      slots: (row.slots || []).map((s: any) => {
+        const proposedByMatch = s.rejection_reason?.match(/^\[By:\s*([a-zA-Z0-9_-]+)\]/);
+        const proposedBy = proposedByMatch ? proposedByMatch[1] : undefined;
+        const cleanRejectionReason = s.rejection_reason?.replace(/^\[By:\s*[a-zA-Z0-9_-]+\]\s*/, '') || s.rejection_reason;
+
+        return {
+          id: s.id,
+          eventId: s.event_id,
+          slotDate: s.slot_date,
+          startTime: s.start_time,
+          endTime: s.end_time,
+          status: s.status,
+          rejectionReason: cleanRejectionReason,
+          proposedBy,
+          deadlineAt: s.deadline_at,
+        };
+      }),
       participants: (row.participants || []).map((p: any) => ({
         id: p.id,
         eventId: p.event_id,
@@ -345,54 +364,252 @@ export const schedulingService = {
     if (error) throw error;
   },
 
-  // 6.1 Registrar fechas propuestas por el carrier (habitualmente 3) y avanzar a Etapa 2: PA Review
-  async recordCarrierSlots(
-    eventId: string, 
-    slots: Array<{ slotDate: string; startTime: string; endTime: string }>
+  // 6.0 Confirmar Cita Directamente (Fast-Track / Cierre Inmediato sin Funnel)
+  async directConfirmEvent(
+    eventId: string,
+    details: {
+      finalDate: string;
+      finalStartTime: string;
+      finalEndTime: string;
+      sendCalendarInvite?: boolean;
+      confirmedByActor?: string;
+      notes?: string;
+    }
   ) {
     if (!isSupabaseConfigured) return;
+
+    // 1. Actualizar el evento directamente a '4_confirmed' y 'scheduled'
+    const { error: eventErr } = await supabase
+      .from('events')
+      .update({
+        coordination_stage: '4_confirmed',
+        status: 'scheduled',
+        final_date: details.finalDate,
+        final_start_time: details.finalStartTime,
+        final_end_time: details.finalEndTime,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', eventId);
+    if (eventErr) throw eventErr;
+
+    // 2. Marcar slots existentes si hubiese
+    const { data: existingSlots } = await supabase
+      .from('event_slots')
+      .select('id, slot_date, start_time')
+      .eq('event_id', eventId);
+
+    if (existingSlots && existingSlots.length > 0) {
+      const matchingSlot = existingSlots.find(
+        (s) => s.slot_date === details.finalDate && s.start_time.slice(0, 5) === details.finalStartTime.slice(0, 5)
+      );
+      if (matchingSlot) {
+        await supabase.from('event_slots').update({ status: 'insured_chosen' }).eq('id', matchingSlot.id);
+        await supabase.from('event_slots').update({ status: 'discarded' }).eq('event_id', eventId).neq('id', matchingSlot.id);
+      }
+    }
+
+    // 3. Registrar en bitácora de auditoría
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'internal',
+      contact_target_name: details.confirmedByActor || 'Coordinator',
+      channel: 'other',
+      notes: `⚡ Cita confirmada y bloqueada: ${details.finalDate} (${details.finalStartTime.slice(0, 5)} - ${details.finalEndTime.slice(0, 5)}). Cierre directo / Fast-Track.${details.notes ? ` Notas: ${details.notes}` : ''}`,
+    });
+
+    // 4. Disparar invitaciones de calendario si no se desmarcó
+    if (details.sendCalendarInvite !== false) {
+      supabase.functions.invoke('send-calendar-invite', {
+        body: { eventId },
+      }).catch((err) => console.error('Error triggering calendar invite edge function:', err));
+    }
+  },
+
+  // 6.0b Registrar Disponibilidad Total / Abierta ("Puede Cualquier Día")
+  async recordOpenAvailability(
+    eventId: string,
+    actor: 'insured' | 'pa' | 'carrier',
+    actorName: string,
+    customNotes?: string,
+    targetStage?: CoordinationStage
+  ) {
+    if (!isSupabaseConfigured) return;
+
+    const { data: currentEvent } = await supabase
+      .from('events')
+      .select('notes, coordination_stage')
+      .eq('id', eventId)
+      .single();
+
+    const cleanExisting = (currentEvent?.notes || '').replace(/\[OpenAvailability:[^\]]*\]/g, '').trim();
+    const tag = `[OpenAvailability: ${actor}${customNotes ? ` | ${customNotes}` : ''}]`;
+    const updatedNotes = cleanExisting ? `${cleanExisting}\n${tag}` : tag;
+
+    // Determinar siguiente etapa lógica si no se especifica:
+    const nextStage = targetStage || (actor === 'insured' ? '1_awaiting_carrier_slots' : '3_insured_selection');
+
+    await supabase
+      .from('events')
+      .update({
+        notes: updatedNotes,
+        coordination_stage: nextStage,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', eventId);
+
+    // Registrar en auditoría
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: actor === 'carrier' ? 'carrier_rep' : actor,
+      contact_target_name: actorName,
+      channel: 'call_answered',
+      notes: `🟢 ${actorName} indicó Disponibilidad Total ("Cualquier día"). ${customNotes ? `Detalles: ${customNotes}. ` : ''}La cita se puede confirmar directamente en cuanto la contraparte dé fecha y hora.`,
+    });
+  },
+
+  // 5.3 Configurar quién debe proponer las fechas iniciales (PA, Carrier o Cliente)
+  async setEventSlotsOriginator(
+    eventId: string,
+    originator: 'carrier' | 'pa' | 'insured',
+    actorName?: string
+  ) {
+    if (!isSupabaseConfigured) return;
+
+    const { data: currentEvent } = await supabase
+      .from('events')
+      .select('notes')
+      .eq('id', eventId)
+      .single();
+
+    const cleanExisting = (currentEvent?.notes || '').replace(/\[SlotsOriginator:[^\]]*\]/g, '').trim();
+    const tag = `[SlotsOriginator: ${originator}]`;
+    const updatedNotes = cleanExisting ? `${cleanExisting}\n${tag}` : tag;
+
+    await supabase
+      .from('events')
+      .update({
+        notes: updatedNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', eventId);
+
+    const labels: Record<string, string> = {
+      pa: 'el Public Adjuster (PA)',
+      carrier: 'la Aseguradora (Carrier)',
+      insured: 'el Cliente (Asegurado)',
+    };
+
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: originator === 'carrier' ? 'carrier_rep' : originator,
+      contact_target_name: actorName || originator,
+      channel: 'internal',
+      notes: `Se configuró a ${labels[originator] || originator} como el responsable de proponer las fechas iniciales.`,
+    });
+  },
+
+  // 6.1 Registrar fechas propuestas (por Carrier, Cliente o PA) de forma 100% flexible
+  async recordCarrierSlots(
+    eventId: string, 
+    slots: Array<{ slotDate: string; startTime: string; endTime: string }>,
+    options?: {
+      proposedBy?: 'carrier' | 'insured' | 'pa' | 'office';
+      targetStage?: CoordinationStage;
+      directConfirmSingleSlot?: boolean;
+      notes?: string;
+    }
+  ) {
+    if (!isSupabaseConfigured) return;
+
+    const proposedBy = options?.proposedBy || 'carrier';
+
+    // Si se indicó confirmar directamente y solo hay 1 slot
+    if (options?.directConfirmSingleSlot && slots.length === 1) {
+      await this.directConfirmEvent(eventId, {
+        finalDate: slots[0].slotDate,
+        finalStartTime: slots[0].startTime,
+        finalEndTime: slots[0].endTime,
+        confirmedByActor: proposedBy,
+        notes: options?.notes,
+        sendCalendarInvite: true,
+      });
+      return;
+    }
+
     // 1. Eliminar slots previos si existieran
     await supabase.from('event_slots').delete().eq('event_id', eventId);
     
-    // 2. Insertar los nuevos slots propuestos
+    // 2. Insertar los nuevos slots propuestos guardando autor en tag
     const insertData = slots.map((s) => ({
       event_id: eventId,
       slot_date: s.slotDate,
       start_time: s.startTime,
       end_time: s.endTime,
       status: 'proposed' as const,
+      rejection_reason: `[By: ${proposedBy}]`,
     }));
     const { error: insertErr } = await supabase.from('event_slots').insert(insertData);
     if (insertErr) throw insertErr;
 
-    // 3. Avanzar evento a Etapa 2: PA Review
+    // 3. Determinar siguiente etapa lógica según quién propuso las fechas
+    let nextStage: CoordinationStage = options?.targetStage || '2_pa_review';
+    if (!options?.targetStage) {
+      if (proposedBy === 'insured') {
+        nextStage = '2_pa_review'; // PA revisa las fechas del cliente o pasa a Carrier
+      } else if (proposedBy === 'pa') {
+        nextStage = '3_insured_selection'; // PA dio opciones -> van al cliente
+      } else {
+        nextStage = '2_pa_review'; // Carrier dio opciones -> van a PA
+      }
+    }
+
     const { error: stageErr } = await supabase
       .from('events')
       .update({ 
-        coordination_stage: '2_pa_review',
+        coordination_stage: nextStage,
         updated_at: new Date().toISOString()
       })
       .eq('id', eventId);
     if (stageErr) throw stageErr;
 
     // 4. Registrar en la bitácora de auditoría
+    const authorLabels: Record<string, string> = {
+      carrier: 'Carrier / Aseguradora',
+      insured: 'Cliente / Asegurado',
+      pa: 'Public Adjuster',
+      office: 'Coordinación Oficina',
+    };
+    const authorName = authorLabels[proposedBy] || proposedBy;
     const dateSummary = slots.map((s, idx) => `Opt #${idx + 1}: ${s.slotDate} (${s.startTime.slice(0, 5)}-${s.endTime.slice(0, 5)})`).join(', ');
+
     await supabase.from('coordination_logs').insert({
       event_id: eventId,
-      contact_target: 'carrier_rep',
-      contact_target_name: 'Carrier Representative',
+      contact_target: proposedBy === 'carrier' ? 'carrier_rep' : proposedBy === 'insured' ? 'insured' : 'pa',
+      contact_target_name: authorName,
       channel: 'email',
-      notes: `📅 Carrier offered ${slots.length} proposed dates: ${dateSummary}. Forwarded to PA for review.`
+      notes: `📅 ${authorName} propuso ${slots.length} fecha(s): ${dateSummary}.${options?.notes ? ` Notas: ${options.notes}` : ''}`
     });
 
-    // 5. Enviar automáticamente notificación por correo al PA con el diseño corporativo
-    supabase.functions.invoke('notify-pa-slots', {
-      body: { eventId }
-    }).then((res) => {
-      console.log("Notificación por correo enviada al PA con éxito:", res);
-    }).catch(err => {
-      console.error("Error al disparar notificación al PA:", err);
-    });
+    // 5. Si fue el carrier y va a PA, enviar notificación al PA
+    if (proposedBy === 'carrier' && nextStage === '2_pa_review') {
+      supabase.functions.invoke('notify-pa-slots', {
+        body: { eventId }
+      }).catch(err => console.error("Error al disparar notificación al PA:", err));
+    }
+  },
+
+  // Alias semántico para mayor claridad en el código
+  async recordEventSlots(
+    eventId: string, 
+    slots: Array<{ slotDate: string; startTime: string; endTime: string }>,
+    options?: {
+      proposedBy?: 'carrier' | 'insured' | 'pa' | 'office';
+      targetStage?: CoordinationStage;
+      directConfirmSingleSlot?: boolean;
+      notes?: string;
+    }
+  ) {
+    return this.recordCarrierSlots(eventId, slots, options);
   },
 
   // 6.2 PA escoge 2 de las fechas propuestas y avanza a Etapa 3: Insured Selection
@@ -585,23 +802,48 @@ export const schedulingService = {
   async updateEventStage(
     eventId: string, 
     stage: CoordinationStage, 
-    finalDetails?: { date: string; startTime: string; endTime: string }
+    finalDetails?: { date: string; startTime: string; endTime: string },
+    options?: { reason?: string; sendCalendarInvite?: boolean; operatorName?: string }
   ) {
     if (!isSupabaseConfigured) return;
     const updatePayload: any = {
       coordination_stage: stage,
+      updated_at: new Date().toISOString(),
     };
-    if (stage === '4_confirmed' && finalDetails) {
+    if (stage === '4_confirmed') {
       updatePayload.status = 'scheduled';
-      updatePayload.final_date = finalDetails.date;
-      updatePayload.final_start_time = finalDetails.startTime;
-      updatePayload.final_end_time = finalDetails.endTime;
+      if (finalDetails) {
+        updatePayload.final_date = finalDetails.date;
+        updatePayload.final_start_time = finalDetails.startTime;
+        updatePayload.final_end_time = finalDetails.endTime;
+      }
     }
     const { error } = await supabase
       .from('events')
       .update(updatePayload)
       .eq('id', eventId);
     if (error) throw error;
+
+    // Registrar en auditoría el cambio de etapa
+    const stageTitles: Record<CoordinationStage, string> = {
+      '1_awaiting_carrier_slots': '1. Esperando Fechas',
+      '2_pa_review': '2. Revisión PA',
+      '3_insured_selection': '3. Selección / Aprobación',
+      '4_confirmed': '4. Confirmado',
+    };
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'internal',
+      contact_target_name: options?.operatorName || 'Coordinator',
+      channel: 'other',
+      notes: `🔄 Etapa actualizada a "${stageTitles[stage] || stage}".${options?.reason ? ` Motivo: ${options.reason}` : ''}`,
+    });
+
+    if (stage === '4_confirmed' && options?.sendCalendarInvite) {
+      supabase.functions.invoke('send-calendar-invite', {
+        body: { eventId },
+      }).catch(err => console.error("Error triggering calendar invite:", err));
+    }
   },
 
   // 8. Agregar Registro a la Bitácora de Contacto
@@ -1039,6 +1281,13 @@ export const schedulingService = {
     lockboxCode?: string;
     gateCode?: string;
     accessInstructions?: string;
+    finalDate?: string;
+    finalStartTime?: string;
+    finalEndTime?: string;
+    sendCalendarInvite?: boolean;
+    openAvailabilityActor?: 'insured' | 'pa' | 'carrier' | null;
+    openAvailabilityNotes?: string | null;
+    slotsOriginator?: 'carrier' | 'insured' | 'pa' | 'office' | null;
     participants?: {
       participantType: 'insured' | 'public_adjuster' | 'carrier_representative' | 'external_actor' | 'office';
       roleType?: ParticipantRole;
@@ -1053,18 +1302,36 @@ export const schedulingService = {
   }) {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
 
+    const isDirectConfirm = Boolean(eventData.finalDate && eventData.finalStartTime) || eventData.coordinationStage === '4_confirmed';
+    const finalStage: CoordinationStage = isDirectConfirm ? '4_confirmed' : (eventData.coordinationStage || '1_awaiting_carrier_slots');
+    const finalStatus: EventStatus = isDirectConfirm ? 'scheduled' : (eventData.status || 'coordinating');
+
+    // Build notes with open availability & slots originator if provided
+    let combinedNotes = eventData.notes || '';
+    if (eventData.openAvailabilityActor) {
+      const openTag = `[OpenAvailability: ${eventData.openAvailabilityActor}${eventData.openAvailabilityNotes ? ` | ${eventData.openAvailabilityNotes}` : ''}]`;
+      combinedNotes = combinedNotes ? `${combinedNotes}\n${openTag}` : openTag;
+    }
+    if (eventData.slotsOriginator) {
+      const origTag = `[SlotsOriginator: ${eventData.slotsOriginator}]`;
+      combinedNotes = combinedNotes ? `${combinedNotes}\n${origTag}` : origTag;
+    }
+
     const { data: newEvent, error: eventErr } = await supabase
       .from('events')
       .insert({
         claim_id: eventData.claimId,
         event_type: eventData.eventType || 'Initial Inspection',
-        status: eventData.status || 'coordinating',
-        coordination_stage: eventData.coordinationStage || '1_awaiting_carrier_slots',
+        status: finalStatus,
+        coordination_stage: finalStage,
         location: eventData.location,
         lockbox_code: eventData.lockboxCode || null,
         gate_code: eventData.gateCode || null,
         access_instructions: eventData.accessInstructions || null,
-        notes: eventData.notes || '',
+        notes: combinedNotes,
+        final_date: isDirectConfirm ? eventData.finalDate || null : null,
+        final_start_time: isDirectConfirm ? eventData.finalStartTime || null : null,
+        final_end_time: isDirectConfirm ? (eventData.finalEndTime || '12:00:00') : null,
       })
       .select()
       .single();
@@ -1087,6 +1354,31 @@ export const schedulingService = {
 
       const { error: partErr } = await supabase.from('event_participants').insert(payload);
       if (partErr) console.warn('Error inserting participants:', partErr);
+    }
+
+    // Registrar en auditoría
+    if (isDirectConfirm) {
+      await supabase.from('coordination_logs').insert({
+        event_id: newEvent.id,
+        contact_target: 'internal',
+        contact_target_name: 'Coordinator',
+        channel: 'other',
+        notes: `⚡ Evento creado directamente como Confirmado para el ${eventData.finalDate} (${eventData.finalStartTime?.slice(0, 5)} - ${eventData.finalEndTime ? eventData.finalEndTime.slice(0, 5) : 'Fin'}).`,
+      });
+
+      if (eventData.sendCalendarInvite !== false) {
+        supabase.functions.invoke('send-calendar-invite', {
+          body: { eventId: newEvent.id }
+        }).catch(err => console.error("Error triggering calendar invite edge function:", err));
+      }
+    } else {
+      await supabase.from('coordination_logs').insert({
+        event_id: newEvent.id,
+        contact_target: 'internal',
+        contact_target_name: 'System',
+        channel: 'other',
+        notes: `📋 Nuevo evento de coordinación iniciado (${eventData.eventType || 'Initial Inspection'}).`,
+      });
     }
 
     return newEvent;

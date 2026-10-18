@@ -5,6 +5,7 @@ import {
   RefreshCw, 
   Copy, 
   Check, 
+  CheckCircle2,
   Send, 
   Plus,
   Kanban,
@@ -35,6 +36,7 @@ import { ConfirmationPortal } from './components/ConfirmationPortal';
 import { NewClaimModal } from './components/NewClaimModal';
 import { ClaimDetailView } from './components/ClaimDetailView';
 import { RecordCarrierSlotsModal } from './components/RecordCarrierSlotsModal';
+import { DirectConfirmModal } from './components/DirectConfirmModal';
 import { SlaSettingsModal } from './components/SlaSettingsModal';
 import { ResetCoordinationModal } from './components/ResetCoordinationModal';
 import { EventHistoryModal } from './components/EventHistoryModal';
@@ -200,6 +202,7 @@ export function App() {
   };
 
   // Funnel Flow States for Kanban View
+  const [directConfirmingEvent, setDirectConfirmingEvent] = useState<CoordinationEvent | null>(null);
   const [recordingSlotsEvent, setRecordingSlotsEvent] = useState<CoordinationEvent | null>(null);
   const [paSelectedSlotIds, setPaSelectedSlotIds] = useState<Record<string, string[]>>({});
   const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
@@ -280,6 +283,16 @@ export function App() {
     }
   };
 
+  const handleSetSlotsOriginator = async (eventId: string, originator: 'carrier' | 'pa' | 'insured') => {
+    try {
+      await schedulingService.setEventSlotsOriginator(eventId, originator, authRole || 'Coordinador');
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to update slots originator:', err);
+      alert('Error al actualizar quién propone las fechas: ' + (err.message || 'Error desconocido'));
+    }
+  };
+
   // Delete Claim State & Handler
   const [claimToDelete, setClaimToDelete] = useState<Claim | null>(null);
   const [isDeletingClaim, setIsDeletingClaim] = useState(false);
@@ -302,36 +315,36 @@ export function App() {
     }
   };
 
-  // Pipeline Stages in English with solid colors
+  // Pipeline Stages (Modelo Flexible)
   const stages: { key: CoordinationStage; title: string; desc: string; badgeBg: string; badgeText: string; headerBorder: string }[] = [
     { 
       key: '1_awaiting_carrier_slots', 
-      title: '1. Carrier Dates', 
-      desc: 'Carrier offers 3 dates', 
+      title: '1. Esperando Fechas', 
+      desc: 'Carrier, Cliente o PA ofrecen opciones', 
       badgeBg: 'bg-amber-100', 
       badgeText: 'text-amber-800',
       headerBorder: 'border-amber-400'
     },
     { 
       key: '2_pa_review', 
-      title: '2. PA Review', 
-      desc: 'PA picks 2 of 3 dates', 
+      title: '2. Revisión PA', 
+      desc: 'PA valida ventanas de inspección', 
       badgeBg: 'bg-tealBrand-100', 
       badgeText: 'text-tealBrand-800',
       headerBorder: 'border-tealBrand-500'
     },
     { 
       key: '3_insured_selection', 
-      title: '3. Client Choice', 
-      desc: 'Insured picks 1 of 2 dates', 
+      title: '3. Selección / Aprobación', 
+      desc: 'Cliente o Aseguradora eligen/validan', 
       badgeBg: 'bg-maroon-100', 
       badgeText: 'text-maroon-800',
       headerBorder: 'border-maroon-700'
     },
     { 
       key: '4_confirmed', 
-      title: '4. Confirmed', 
-      desc: 'Event locked & scheduled', 
+      title: '4. Confirmado', 
+      desc: 'Cita cerrada y en calendario', 
       badgeBg: 'bg-emerald-100', 
       badgeText: 'text-emerald-800',
       headerBorder: 'border-emerald-500'
@@ -741,7 +754,7 @@ export function App() {
                     </div>
 
                     {/* Cards List */}
-                    <div className="space-y-3 flex-1 overflow-y-auto">
+                    <div className="space-y-4 flex-1 overflow-y-auto pr-1 pb-4">
                       {stageEvents.length === 0 ? (
                         <div className="p-6 rounded-lg border border-dashed border-slate-200 text-center text-xs text-slate-400 bg-slate-50">
                           No events in this stage
@@ -761,14 +774,14 @@ export function App() {
                           return (
                             <div 
                               key={`${stage.key}-${evt.id}`} 
-                              className={`border rounded-xl p-3.5 flex flex-col justify-between h-[570px] min-h-[570px] shadow-xs transition-colors ${
+                              className={`rounded-2xl p-3.5 flex flex-col justify-between shadow-xs hover:shadow-md transition-all relative overflow-hidden bg-white ${
                                 isHistorical
-                                  ? 'bg-slate-50/75 border-slate-200 hover:bg-white hover:border-slate-300'
+                                  ? 'bg-slate-50/75 border border-slate-200 hover:bg-white hover:border-slate-300'
                                   : sla.alertLevel === 'critical'
-                                  ? 'bg-white border-red-400 border-l-4 border-l-red-600 hover:border-red-500'
+                                  ? 'bg-white border border-red-300 border-l-4 border-l-red-600 hover:border-red-400'
                                   : sla.alertLevel === 'warning'
-                                  ? 'bg-white border-amber-400 border-l-4 border-l-amber-500 hover:border-amber-500'
-                                  : 'bg-white border-slate-300 hover:border-maroon-700'
+                                  ? 'bg-white border border-amber-300 border-l-4 border-l-amber-500 hover:border-amber-400'
+                                  : 'bg-white border border-slate-300 hover:border-maroon-700'
                               }`}
                             >
                               {/* 1. TOP METADATA BLOCK (Aligned across columns) */}
@@ -851,6 +864,15 @@ export function App() {
                                       {evt.claim?.carrier}
                                     </span>
                                   </div>
+
+                                  {evt.openAvailabilityActor && (
+                                    <div className="mt-1">
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 w-fit">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                                        <span>{evt.openAvailabilityActor === 'insured' ? 'Cliente' : evt.openAvailabilityActor === 'pa' ? 'PA' : 'Carrier'}: Cualquier Día</span>
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Visual Bottleneck Alert Box if Stalled or Warning (Only when actively in this stage) */}
@@ -887,7 +909,7 @@ export function App() {
                                       )}
                                     </div>
                                     <p className="text-[11px] text-slate-600 leading-tight line-clamp-1">
-                                      📅 <strong>Availability:</strong> {evt.claim.insured.generalAvailability || 'Not recorded'}
+                                      📅 <strong>Disponibilidad:</strong> {evt.claim.insured.generalAvailability || 'No registrada'}
                                     </p>
                                   </div>
                                 )}
@@ -910,7 +932,7 @@ export function App() {
                                     </span>
                                   ) : (
                                     <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-medium">
-                                      No PA assigned
+                                      Sin PA asignado
                                     </span>
                                   )}
 
@@ -933,27 +955,86 @@ export function App() {
                                 {/* Stage 1: Awaiting Carrier Slots OR Historical Dates */}
                                 {stage.key === '1_awaiting_carrier_slots' && (
                                   <div className="flex flex-col justify-between flex-1">
+                                    {/* Selector Rápido: ¿Quién Propone las Fechas? */}
+                                    {!isHistorical && (
+                                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 mb-2.5 space-y-1.5 shadow-2xs">
+                                        <div className="flex items-center justify-between text-[11px]">
+                                          <span className="font-bold text-slate-700 flex items-center gap-1">
+                                            <User className="w-3 h-3 text-maroon-800" />
+                                            <span>¿Quién da las fechas?</span>
+                                          </span>
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-300 text-tealBrand-800 uppercase">
+                                            {evt.slotsOriginator === 'pa' ? '⚖️ PA' : evt.slotsOriginator === 'insured' ? '👤 Cliente' : '🏢 Carrier'}
+                                          </span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSetSlotsOriginator(evt.id, 'carrier')}
+                                            className={`py-1 px-1 rounded-lg text-[10px] font-bold transition-all text-center border cursor-pointer ${
+                                              (evt.slotsOriginator || 'carrier') === 'carrier'
+                                                ? 'bg-maroon-800 text-white border-maroon-900 shadow-2xs'
+                                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                                            }`}
+                                            title="La Aseguradora / Ajustador propone las fechas"
+                                          >
+                                            🏢 Carrier
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSetSlotsOriginator(evt.id, 'pa')}
+                                            className={`py-1 px-1 rounded-lg text-[10px] font-bold transition-all text-center border cursor-pointer ${
+                                              evt.slotsOriginator === 'pa'
+                                                ? 'bg-tealBrand-700 text-white border-tealBrand-800 shadow-2xs'
+                                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                                            }`}
+                                            title="El Public Adjuster propone primero sus fechas disponibles"
+                                          >
+                                            ⚖️ PA
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSetSlotsOriginator(evt.id, 'insured')}
+                                            className={`py-1 px-1 rounded-lg text-[10px] font-bold transition-all text-center border cursor-pointer ${
+                                              evt.slotsOriginator === 'insured'
+                                                ? 'bg-tealBrand-700 text-white border-tealBrand-800 shadow-2xs'
+                                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                                            }`}
+                                            title="El Cliente / Asegurado propone primero sus fechas disponibles"
+                                          >
+                                            👤 Cliente
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {isHistorical || (evt.slots && evt.slots.length > 0) ? (
                                       <>
                                         <div className="space-y-2">
                                           {/* Slot Header */}
                                           <div className="flex items-center justify-between text-[11px] min-h-[22px]">
-                                            <span className="font-bold text-slate-700">Carrier Offered 3 Dates:</span>
+                                            <span className="font-bold text-slate-700">
+                                              {evt.slotsOriginator === 'pa'
+                                                ? 'Fechas Ofrecidas por el PA:'
+                                                : evt.slotsOriginator === 'insured'
+                                                ? 'Fechas Ofrecidas por el Cliente:'
+                                                : 'Opciones Ofrecidas por Carrier:'}
+                                            </span>
                                             <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                               isHistorical 
                                                 ? 'text-slate-600 bg-slate-100 border-slate-300' 
                                                 : 'text-tealBrand-800 bg-tealBrand-50 border-tealBrand-200'
                                             }`}>
-                                              {isHistorical ? '✓ Passed' : '3 / 3'}
+                                              {isHistorical ? '✓ Pasado' : `${evt.slots?.length || 0} Fechas`}
                                             </span>
                                           </div>
 
-                                          {/* 3 Slots (Standardized min-h-[46px]) */}
-                                          <div className="space-y-1.5 min-h-[150px]">
+                                          {/* Slots */}
+                                          <div className="space-y-1.5">
                                             {(evt.slots || []).map((s, idx) => (
                                               <div 
                                                 key={s.id || idx} 
-                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between min-h-[46px] ${
+                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between min-h-[44px] ${
                                                   isHistorical ? 'border-slate-200 bg-white/70 text-slate-700' : 'border-slate-200 bg-slate-50 text-slate-800'
                                                 }`}
                                               >
@@ -962,43 +1043,52 @@ export function App() {
                                                   <span className="text-slate-500 font-mono text-[10px] block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
                                                 </div>
                                                 <span className="text-[10px] font-bold text-tealBrand-700 bg-tealBrand-50 px-2 py-0.5 rounded border border-tealBrand-200">
-                                                  Opt #{idx + 1}
+                                                  Opción #{idx + 1}
                                                 </span>
                                               </div>
                                             ))}
                                           </div>
                                         </div>
 
-                                        {/* Action Buttons Pinned at Bottom */}
-                                        <div className="space-y-1.5 pt-3">
+                                        {/* Action Buttons in Delimited Card Footer */}
+                                        <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
                                           <button
                                             type="button"
                                             onClick={() => setRecordingSlotsEvent(evt)}
-                                            className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 h-9 ${
+                                            className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 h-8.5 cursor-pointer ${
                                               isHistorical
                                                 ? 'bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 shadow-2xs font-semibold'
                                                 : 'bg-tealBrand-800 hover:bg-tealBrand-900 text-white shadow-xs'
                                             }`}
-                                            title="Click to modify or edit the dates provided by the carrier"
+                                            title="Modificar las fechas ofrecidas"
                                           >
                                             <Pencil className="w-3.5 h-3.5 text-slate-500" />
-                                            <span>Modify Carrier Dates</span>
+                                            <span>Modificar Opciones de Fecha</span>
                                           </button>
 
-                                          {adjusterPhone ? (
-                                            <a
-                                              href={getNextivaTelUri(adjusterPhone) || '#'}
-                                              className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
-                                              title={`Call adjuster ${formatPhoneNumber(adjusterPhone)} via Nextiva`}
-                                            >
-                                              <Phone className="w-3.5 h-3.5 text-tealBrand-800" />
-                                              <span>Call Adjuster (Nextiva)</span>
-                                            </a>
-                                          ) : (
-                                            <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic">
-                                              No adjuster phone on file
-                                            </div>
-                                          )}
+                                          {/* Dynamic Contact Calling Button */}
+                                          {(() => {
+                                            const originator = evt.slotsOriginator || 'carrier';
+                                            const targetPhone = originator === 'pa' ? paPhone : originator === 'insured' ? insuredPhone : adjusterPhone;
+                                            const targetLabel = originator === 'pa'
+                                              ? `Llamar al PA (${paParticipant?.publicAdjuster?.name?.split(' ')[0] || 'PA'})`
+                                              : originator === 'insured'
+                                              ? `Llamar al Cliente (${evt.claim?.insured?.name?.split(' ')[0] || 'Cliente'})`
+                                              : 'Llamar al Ajustador';
+
+                                            if (!targetPhone) return null;
+
+                                            return (
+                                              <a
+                                                href={getNextivaTelUri(targetPhone) || '#'}
+                                                className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
+                                                title={`Llamar vía Nextiva: ${formatPhoneNumber(targetPhone)}`}
+                                              >
+                                                <Phone className="w-3.5 h-3.5 text-tealBrand-800 shrink-0" />
+                                                <span className="truncate">{targetLabel}: <strong className="font-mono text-slate-900">{formatPhoneNumber(targetPhone)}</strong></span>
+                                              </a>
+                                            );
+                                          })()}
                                         </div>
                                       </>
                                     ) : (
@@ -1006,56 +1096,88 @@ export function App() {
                                         <div className="space-y-2">
                                           {/* Slot Header */}
                                           <div className="flex items-center justify-between text-[11px] min-h-[22px]">
-                                            <span className="font-bold text-amber-800">Awaiting Carrier Dates</span>
+                                            <span className="font-bold text-amber-800">
+                                              {evt.slotsOriginator === 'pa'
+                                                ? 'Esperando Fechas del PA'
+                                                : evt.slotsOriginator === 'insured'
+                                                ? 'Esperando Fechas del Cliente'
+                                                : 'Esperando Fechas de Aseguradora'}
+                                            </span>
                                             <span className="font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                                               0 / 3
                                             </span>
                                           </div>
 
-                                          {/* 3 Placeholder slots (Standardized min-h-[46px]) */}
-                                          <div className="space-y-1.5 min-h-[150px]">
+                                          {/* 3 Placeholder slots */}
+                                          <div className="space-y-1.5">
                                             {[1, 2, 3].map((optNum) => (
                                               <div 
                                                 key={optNum} 
-                                                className="p-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/30 text-xs flex items-center justify-between min-h-[46px]"
+                                                className="p-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/30 text-xs flex items-center justify-between min-h-[44px]"
                                               >
                                                 <div>
-                                                  <span className="font-medium text-amber-900 block">Option #{optNum}</span>
-                                                  <span className="text-[10px] text-amber-600 block">Pending date from carrier</span>
+                                                  <span className="font-medium text-amber-900 block">Opción #{optNum}</span>
+                                                  <span className="text-[10px] text-amber-600 block">Pendiente de fecha</span>
                                                 </div>
                                                 <span className="text-[10px] font-bold text-amber-700 bg-white px-2 py-0.5 rounded border border-amber-200">
-                                                  Pending
+                                                  Pendiente
                                                 </span>
                                               </div>
                                             ))}
                                           </div>
                                         </div>
 
-                                        {/* Action Buttons Pinned at Bottom */}
-                                        <div className="space-y-1.5 pt-3">
+                                        {/* Action Buttons in Delimited Card Footer */}
+                                        <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
                                           <button
                                             type="button"
                                             onClick={() => setRecordingSlotsEvent(evt)}
-                                            className="w-full bg-maroon-800 hover:bg-maroon-900 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs h-9"
+                                            className="w-full bg-maroon-800 hover:bg-maroon-900 text-white py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-98"
+                                            title="Proponer opciones de fecha o registrar disponibilidad"
                                           >
                                             <Calendar className="w-3.5 h-3.5" />
-                                            <span>+ Record 3 Dates Offered</span>
+                                            <span>+ Proponer Fechas / Agenda</span>
                                           </button>
 
-                                          {adjusterPhone ? (
-                                            <a
-                                              href={getNextivaTelUri(adjusterPhone) || '#'}
-                                              className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
-                                              title={`Call adjuster ${formatPhoneNumber(adjusterPhone)} via Nextiva`}
-                                            >
-                                              <Phone className="w-3.5 h-3.5 text-maroon-800" />
-                                              <span>Call Adjuster (Nextiva)</span>
-                                            </a>
-                                          ) : (
-                                            <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic">
-                                              No adjuster phone on file
-                                            </div>
-                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => setDirectConfirmingEvent(evt)}
+                                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-98"
+                                            title="Confirmar cita directamente sin pasar por el funnel"
+                                          >
+                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                            <span>⚡ Confirmar Cita Directa</span>
+                                          </button>
+
+                                          {/* Dynamic Contact Calling Button */}
+                                          {(() => {
+                                            const originator = evt.slotsOriginator || 'carrier';
+                                            const targetPhone = originator === 'pa' ? paPhone : originator === 'insured' ? insuredPhone : adjusterPhone;
+                                            const targetLabel = originator === 'pa'
+                                              ? `Llamar al PA (${paParticipant?.publicAdjuster?.name?.split(' ')[0] || 'PA'})`
+                                              : originator === 'insured'
+                                              ? `Llamar al Cliente (${evt.claim?.insured?.name?.split(' ')[0] || 'Cliente'})`
+                                              : 'Llamar al Ajustador';
+
+                                            if (!targetPhone) {
+                                              return (
+                                                <div className="text-[11px] text-slate-400 text-center italic py-0.5">
+                                                  Sin teléfono registrado para {originator === 'pa' ? 'PA' : originator === 'insured' ? 'Cliente' : 'Ajustador'}
+                                                </div>
+                                              );
+                                            }
+
+                                            return (
+                                              <a
+                                                href={getNextivaTelUri(targetPhone) || '#'}
+                                                className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-2xs group"
+                                                title={`Llamar vía Nextiva: ${formatPhoneNumber(targetPhone)}`}
+                                              >
+                                                <Phone className="w-3.5 h-3.5 text-tealBrand-700 group-hover:scale-110 transition-transform shrink-0" />
+                                                <span className="truncate">{targetLabel}: <strong className="font-mono text-slate-900">{formatPhoneNumber(targetPhone)}</strong></span>
+                                              </a>
+                                            );
+                                          })()}
                                         </div>
                                       </>
                                     )}
@@ -1079,14 +1201,14 @@ export function App() {
                                         </span>
                                       </div>
 
-                                      <div className="space-y-1.5 min-h-[150px]">
+                                      <div className="space-y-1.5">
                                         {isHistorical ? (
                                           (evt.slots || []).map((s) => {
                                             const isApproved = s.status === 'pa_accepted' || s.status === 'insured_chosen';
                                             return (
                                               <div
                                                 key={s.id}
-                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between min-h-[46px] ${
+                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between min-h-[44px] ${
                                                   isApproved
                                                     ? 'bg-tealBrand-50/40 border-tealBrand-300 text-tealBrand-950 font-semibold'
                                                     : 'bg-white/50 border-slate-200 text-slate-400 opacity-60'
@@ -1112,7 +1234,7 @@ export function App() {
                                                 key={s.id}
                                                 type="button"
                                                 onClick={() => handleTogglePaSlot(evt.id, s.id)}
-                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between transition-all min-h-[46px] ${
+                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between transition-all min-h-[44px] ${
                                                   isSelected
                                                     ? 'bg-tealBrand-50 border-tealBrand-600 text-tealBrand-950 font-bold'
                                                     : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -1134,9 +1256,10 @@ export function App() {
                                       </div>
                                     </div>
 
-                                    <div className="space-y-1.5 pt-3">
+                                    {/* Action Buttons in Delimited Card Footer */}
+                                    <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
                                       {isHistorical ? (
-                                        <div className="h-9 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
+                                        <div className="h-8.5 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
                                           <Check className="w-3.5 h-3.5 text-tealBrand-700" />
                                           <span>Forwarded to Client ✓</span>
                                         </div>
@@ -1145,7 +1268,7 @@ export function App() {
                                           type="button"
                                           disabled={(paSelectedSlotIds[evt.id] || []).length !== 2 || paConfirmingEventId === evt.id}
                                           onClick={() => handlePaConfirmSlots(evt)}
-                                          className="w-full bg-tealBrand-800 hover:bg-tealBrand-900 disabled:opacity-40 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors shadow-xs h-9 flex items-center justify-center gap-1.5"
+                                          className="w-full bg-tealBrand-800 hover:bg-tealBrand-900 disabled:opacity-40 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors shadow-xs h-8.5 flex items-center justify-center gap-1.5 cursor-pointer"
                                         >
                                           <span>{paConfirmingEventId === evt.id ? 'Saving...' : 'Confirm 2 & Send to Client ➔'}</span>
                                         </button>
@@ -1156,7 +1279,7 @@ export function App() {
                                           type="button"
                                           onClick={() => setRecordingSlotsEvent(evt)}
                                           className="flex-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
-                                          title="Modify or update the 3 dates offered by the carrier"
+                                          title="Modify or update the dates offered"
                                         >
                                           <Pencil className="w-3.5 h-3.5 text-slate-500" />
                                           <span>Modify Dates</span>
@@ -1165,14 +1288,14 @@ export function App() {
                                         {paPhone ? (
                                           <a
                                             href={getNextivaTelUri(paPhone) || '#'}
-                                            className="flex-1 bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
+                                            className="flex-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
                                             title={`Call PA ${formatPhoneNumber(paPhone)} via Nextiva`}
                                           >
                                             <Phone className="w-3.5 h-3.5 text-tealBrand-700" />
                                             <span>Call PA</span>
                                           </a>
                                         ) : (
-                                          <div className="flex-1 h-8 flex items-center justify-center text-[10px] text-slate-400 italic">
+                                          <div className="flex-1 h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
                                             No PA phone
                                           </div>
                                         )}
@@ -1187,25 +1310,25 @@ export function App() {
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                         <span className="font-bold text-slate-700">
-                                          {isHistorical ? 'Client Selected Option:' : 'Client must pick 1 option:'}
+                                          {isHistorical ? 'Opción Seleccionada:' : 'Cliente debe elegir 1 opción:'}
                                         </span>
                                         <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                           isHistorical 
                                             ? 'text-emerald-800 bg-emerald-50 border-emerald-200' 
                                             : 'text-purple-800 bg-purple-50 border-purple-200'
                                         }`}>
-                                          {isHistorical ? '✓ Confirmed' : '1 of 2'}
+                                          {isHistorical ? '✓ Confirmado' : '1 de 2'}
                                         </span>
                                       </div>
 
-                                      <div className="space-y-1.5 min-h-[150px]">
+                                      <div className="space-y-1.5">
                                         {isHistorical ? (
                                           (evt.slots || []).map((s) => {
                                             const isChosen = s.slotDate === evt.finalDate || s.status === 'insured_chosen';
                                             return (
                                               <div
                                                 key={s.id}
-                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1 min-h-[46px] ${
+                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1 min-h-[44px] ${
                                                   isChosen
                                                     ? 'border-emerald-400 bg-emerald-50/70 text-emerald-950 font-bold'
                                                     : 'border-slate-200 bg-white/50 text-slate-400 opacity-60'
@@ -1218,7 +1341,7 @@ export function App() {
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                                                   isChosen ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-100 text-slate-400 border-slate-200'
                                                 }`}>
-                                                  {isChosen ? '✓ Client Picked' : 'Not chosen'}
+                                                  {isChosen ? '✓ Elegida' : 'No elegida'}
                                                 </span>
                                               </div>
                                             );
@@ -1230,7 +1353,7 @@ export function App() {
                                               .map((s) => (
                                                 <div
                                                   key={s.id}
-                                                  className="p-2 rounded-lg border border-tealBrand-300 bg-tealBrand-50/70 text-xs flex items-center justify-between gap-1 min-h-[46px]"
+                                                  className="p-2 rounded-lg border border-tealBrand-300 bg-tealBrand-50/70 text-xs flex items-center justify-between gap-1 min-h-[44px]"
                                                 >
                                                   <div>
                                                     <span className="font-bold text-slate-900 block">📅 {s.slotDate}</span>
@@ -1240,9 +1363,9 @@ export function App() {
                                                     type="button"
                                                     disabled={insuredConfirmingSlotId === s.id}
                                                     onClick={() => handleInsuredConfirmSlot(evt, s)}
-                                                    className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-xs shrink-0"
+                                                    className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-xs shrink-0 cursor-pointer"
                                                   >
-                                                    {insuredConfirmingSlotId === s.id ? '...' : 'Client Picked ➔'}
+                                                    {insuredConfirmingSlotId === s.id ? '...' : 'Cliente Eligió ➔'}
                                                   </button>
                                                 </div>
                                               ))}
@@ -1252,15 +1375,15 @@ export function App() {
                                               .map((s) => (
                                                 <div
                                                   key={s.id}
-                                                  className="p-2 rounded-lg border border-slate-200 bg-slate-50/50 text-xs flex items-center justify-between gap-1 min-h-[46px] opacity-60"
-                                                  title="Option was not selected by PA"
+                                                  className="p-2 rounded-lg border border-slate-200 bg-slate-50/50 text-xs flex items-center justify-between gap-1 min-h-[44px] opacity-60"
+                                                  title="Opción no seleccionada por el PA"
                                                 >
                                                   <div>
                                                     <span className="font-medium text-slate-500 block">📅 {s.slotDate}</span>
                                                     <span className="text-[10px] text-slate-400 font-mono block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
                                                   </div>
                                                   <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                                    Not chosen by PA
+                                                    No elegida por PA
                                                   </span>
                                                 </div>
                                               ))}
@@ -1269,25 +1392,26 @@ export function App() {
                                       </div>
                                     </div>
 
-                                    <div className="space-y-1.5 pt-3">
+                                    {/* Action Buttons in Delimited Card Footer */}
+                                    <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
                                       {isHistorical ? (
-                                        <div className="h-9 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
+                                        <div className="h-8.5 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
                                           <Check className="w-3.5 h-3.5 text-emerald-700" />
-                                          <span>Client Confirmed & Locked ✓</span>
+                                          <span>Cliente Confirmó & Agendado ✓</span>
                                         </div>
                                       ) : (
                                         insuredPhone ? (
                                           <a
                                             href={getNextivaTelUri(insuredPhone) || '#'}
-                                            className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-9"
-                                            title={`Call Insured ${formatPhoneNumber(insuredPhone)} via Nextiva`}
+                                            className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                            title={`Llamar cliente vía Nextiva: ${formatPhoneNumber(insuredPhone)}`}
                                           >
-                                            <Phone className="w-3.5 h-3.5 text-tealBrand-700" />
-                                            <span>Call Insured (Nextiva)</span>
+                                            <Phone className="w-3.5 h-3.5 text-tealBrand-700 shrink-0" />
+                                            <span className="truncate">Llamar al Cliente: <strong className="font-mono text-slate-900">{formatPhoneNumber(insuredPhone)}</strong></span>
                                           </a>
                                         ) : (
-                                          <div className="h-9 flex items-center justify-center text-[10px] text-slate-400 italic">
-                                            No client phone on file
+                                          <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
+                                            Sin teléfono de cliente registrado
                                           </div>
                                         )
                                       )}
@@ -1298,19 +1422,19 @@ export function App() {
                                           <a
                                             href={getNextivaTelUri(insuredPhone) || '#'}
                                             className="w-full bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
-                                            title={`Call Insured ${formatPhoneNumber(insuredPhone)} via Nextiva`}
+                                            title={`Llamar cliente vía Nextiva: ${formatPhoneNumber(insuredPhone)}`}
                                           >
                                             <Phone className="w-3.5 h-3.5 text-slate-500" />
-                                            <span>Call Insured (Nextiva)</span>
+                                            <span className="truncate">Llamar Cliente ({formatPhoneNumber(insuredPhone)})</span>
                                           </a>
                                         ) : (
                                           <>
                                             <button
                                               onClick={() => copyToClipboard(messageText, evt.id)}
-                                              className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 py-1 px-2 rounded-lg transition-colors h-8"
+                                              className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 py-1 px-2 rounded-lg transition-colors h-8"
                                             >
                                               {copiedId === evt.id ? <Check className="w-3.5 h-3.5 text-tealBrand-700" /> : <Copy className="w-3.5 h-3.5" />}
-                                              <span>{copiedId === evt.id ? 'Copied!' : 'Copy Msg'}</span>
+                                              <span>{copiedId === evt.id ? '¡Copiado!' : 'Copiar'}</span>
                                             </button>
 
                                             <button
@@ -1318,8 +1442,8 @@ export function App() {
                                                 const phone = evt.claim?.insured?.phone?.replace(/\D/g, '');
                                                 if (phone) window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(messageText)}`, '_blank');
                                               }}
-                                              className="h-8 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 transition-colors flex items-center justify-center"
-                                              title="Open WhatsApp directly"
+                                              className="h-8 px-2.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 transition-colors flex items-center justify-center"
+                                              title="Abrir WhatsApp directamente"
                                             >
                                               <Send className="w-3.5 h-3.5 text-tealBrand-700" />
                                             </button>
@@ -1329,7 +1453,7 @@ export function App() {
                                               onClick={() => handleSendInsuredEmail(evt.id)}
                                               disabled={sendingEmailEventId === evt.id}
                                               className="h-8 px-2.5 rounded-lg bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-300 text-tealBrand-800 transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold"
-                                              title="Send or resend 1-click email invitation to Insured"
+                                              title="Enviar o reenviar invitación por email al Asegurado"
                                             >
                                               <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
                                               <span>{sendingEmailEventId === evt.id ? '...' : 'Email'}</span>
@@ -1346,16 +1470,16 @@ export function App() {
                                   <div className="flex flex-col justify-between flex-1">
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
-                                        <span className="font-bold text-emerald-800">Inspection Scheduled</span>
+                                        <span className="font-bold text-emerald-800">Inspección Agendada</span>
                                         <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                          ✓ Locked
+                                          ✓ Agendado
                                         </span>
                                       </div>
 
-                                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1 min-h-[150px] flex flex-col justify-center">
+                                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1 min-h-[120px] flex flex-col justify-center">
                                         <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
                                           <Check className="w-4 h-4 text-emerald-600" />
-                                          <span>Confirmed Appointment</span>
+                                          <span>Cita Confirmada</span>
                                         </div>
                                         <p className="text-[12px] text-emerald-800 font-bold pl-5.5">
                                           📅 {evt.finalDate}
@@ -1364,24 +1488,25 @@ export function App() {
                                           ⏰ {evt.finalStartTime?.slice(0, 5)} - {evt.finalEndTime?.slice(0, 5)}
                                         </p>
                                         <p className="text-[10px] text-emerald-700 pl-5.5 pt-1 font-medium">
-                                          All parties locked & verified
+                                          Todas las partes confirmadas
                                         </p>
                                       </div>
                                     </div>
 
-                                    <div className="space-y-1.5 pt-3">
-                                      <div className="h-9 w-full bg-emerald-700 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 shadow-xs">
+                                    {/* Action Buttons in Delimited Card Footer */}
+                                    <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
+                                      <div className="h-8.5 w-full bg-emerald-700 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 shadow-xs">
                                         <Check className="w-4 h-4" />
-                                        <span>Inspection Scheduled ✓</span>
+                                        <span>Inspección Agendada ✓</span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => setEventToReset(evt)}
-                                        className="w-full h-8 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
-                                        title="Cancel inspection and reset flow back to Stage 1"
+                                        className="w-full h-8 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                                        title="Cancelar cita y regresar evento a la primera etapa"
                                       >
                                         <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
-                                        <span>Cancel / Reset Flow</span>
+                                        <span>Cancelar / Reiniciar Flujo</span>
                                       </button>
                                     </div>
                                   </div>
@@ -1886,6 +2011,21 @@ export function App() {
             ({ claimNumber: 'Unknown', carrier: 'Carrier' } as any)
           }
           onSaved={loadData}
+        />
+      )}
+
+      {/* Direct Confirm Modal (Fast-Track) */}
+      {directConfirmingEvent && (
+        <DirectConfirmModal
+          isOpen={Boolean(directConfirmingEvent)}
+          onClose={() => setDirectConfirmingEvent(null)}
+          event={directConfirmingEvent}
+          claim={
+            claims.find((c) => c.id === directConfirmingEvent.claimId) ||
+            directConfirmingEvent.claim ||
+            ({ claimNumber: 'Unknown', carrier: 'Carrier' } as any)
+          }
+          onConfirmed={loadData}
         />
       )}
 

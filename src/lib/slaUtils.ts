@@ -153,8 +153,13 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
     }
   }
 
-  // 1. Awaiting Carrier Slots
+  // 1. Awaiting Slots / Fechas Iniciales (Carrier, PA o Cliente)
   if (event.coordinationStage === '1_awaiting_carrier_slots') {
+    const isClientOpenAvail = event.openAvailabilityActor === 'insured';
+    const originator = event.slotsOriginator || 'carrier';
+    const actorLabel = originator === 'pa' ? 'PA' : originator === 'insured' ? 'Cliente' : 'Aseguradora';
+    const targetActorType: 'carrier' | 'pa' | 'insured' = originator === 'pa' ? 'pa' : originator === 'insured' ? 'insured' : 'carrier';
+
     if (hoursElapsed >= config.stage1CriticalHours) {
       return {
         minutesElapsed,
@@ -163,9 +168,11 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: true,
         alertLevel: 'critical',
-        alertMessage: `Carrier bottleneck (${timeLabel} waiting for dates). Overdue (Limit: ${config.stage1CriticalHours}h)!`,
-        actionRecommendation: 'Call insurance adjuster via Nextiva to demand 3 inspection dates.',
-        targetActorType: 'carrier',
+        alertMessage: `${actorLabel} demorado/a (${timeLabel} sin responder). Límite superado (${config.stage1CriticalHours}h)!`,
+        actionRecommendation: isClientOpenAvail && originator !== 'insured'
+          ? `El cliente tiene disponibilidad total ("cualquier día"). Llama al ${actorLabel} vía Nextiva para pedir fecha fija y confirmar.`
+          : `Llama al ${actorLabel} vía Nextiva para solicitar opciones de fecha.`,
+        targetActorType,
       };
     } else if (hoursElapsed >= config.stage1WarningHours) {
       return {
@@ -175,9 +182,11 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: true,
         alertLevel: 'warning',
-        alertMessage: `Follow-up needed (${timeLabel} waiting for carrier dates, SLA: ${config.stage1WarningHours}h)`,
-        actionRecommendation: 'Send reminder or call adjuster via Nextiva.',
-        targetActorType: 'carrier',
+        alertMessage: `Seguimiento requerido (${timeLabel} esperando fechas de ${actorLabel}, SLA: ${config.stage1WarningHours}h)`,
+        actionRecommendation: isClientOpenAvail && originator !== 'insured'
+          ? `El cliente puede cualquier día. Solicita fecha al ${actorLabel} para cerrar la cita directamente.`
+          : `Enviar recordatorio o llamar al ${actorLabel} vía Nextiva.`,
+        targetActorType,
       };
     } else {
       return {
@@ -187,9 +196,11 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: false,
         alertLevel: 'normal',
-        alertMessage: `Clock running: ${timeLabel} waiting for carrier dates (SLA: ${config.stage1WarningHours}h)`,
-        actionRecommendation: `Waiting for carrier dates (SLA: ${config.stage1WarningHours}h-${config.stage1CriticalHours}h).`,
-        targetActorType: 'carrier',
+        alertMessage: `Reloj activo: ${timeLabel} esperando fechas de ${actorLabel} (SLA: ${config.stage1WarningHours}h)`,
+        actionRecommendation: isClientOpenAvail && originator !== 'insured'
+          ? `Cliente con agenda abierta. En espera de fecha de inspección por ${actorLabel}.`
+          : `Esperando fechas propuestas por ${actorLabel} (SLA: ${config.stage1WarningHours}h-${config.stage1CriticalHours}h).`,
+        targetActorType,
       };
     }
   }

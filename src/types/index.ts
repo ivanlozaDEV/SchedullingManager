@@ -102,6 +102,7 @@ export interface EventSlot {
   status: SlotStatus;
   rejectionReason?: string;
   deadlineAt?: string;
+  proposedBy?: 'carrier' | 'insured' | 'pa' | 'office' | string;
 }
 
 export interface EventParticipant {
@@ -149,6 +150,9 @@ export interface CoordinationEvent {
   accessInstructions?: string;
   noticeSentAt?: string;
   notes?: string;
+  openAvailabilityActor?: 'insured' | 'pa' | 'carrier' | null;
+  openAvailabilityNotes?: string | null;
+  slotsOriginator?: 'carrier' | 'insured' | 'pa' | 'office' | null;
   createdAt: string;
   updatedAt: string;
   // Joins
