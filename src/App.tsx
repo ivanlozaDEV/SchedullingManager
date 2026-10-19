@@ -292,6 +292,51 @@ export function App() {
     }
   };
 
+  const [revertingStageEventId, setRevertingStageEventId] = useState<string | null>(null);
+
+  const handleReturnToInsuredSelection = async (evt: CoordinationEvent) => {
+    const confirmMsg = `¿Deseas regresar este evento a la Etapa 3 (Selección del Asegurado)?\n\n` +
+      `• Se liberará la cita actual fijada (${evt.finalDate} ${evt.finalStartTime?.slice(0, 5)} - ${evt.finalEndTime?.slice(0, 5)}).\n` +
+      `• Las opciones de fechas aprobadas volverán a estar activas para que el cliente o el coordinador elija otra opción.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setRevertingStageEventId(evt.id);
+    try {
+      await schedulingService.returnToInsuredSelection(evt.id);
+      toast.success(
+        'Regresado a Selección del Cliente',
+        'La cita ha sido liberada y las fechas aprobadas vuelven a estar disponibles para escoger.'
+      );
+      await loadData();
+    } catch (err: any) {
+      toast.error('Error al regresar de etapa', err.message || String(err));
+    } finally {
+      setRevertingStageEventId(null);
+    }
+  };
+
+  const handleReturnToPaReview = async (evt: CoordinationEvent) => {
+    const confirmMsg = `¿Deseas regresar este evento a la Etapa 2 (Revisión de PA)?\n\n` +
+      `• El Public Adjuster podrá volver a evaluar y seleccionar cuáles fechas enviar al cliente.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setRevertingStageEventId(evt.id);
+    try {
+      await schedulingService.returnToPaReview(evt.id);
+      toast.success(
+        'Regresado a Revisión de PA',
+        'Las fechas vuelven a estar en estado propuesto para revisión del PA.'
+      );
+      await loadData();
+    } catch (err: any) {
+      toast.error('Error al regresar de etapa', err.message || String(err));
+    } finally {
+      setRevertingStageEventId(null);
+    }
+  };
+
   const handleTogglePaSlot = (eventId: string, slotId: string) => {
     const current = paSelectedSlotIds[eventId] || [];
     if (current.includes(slotId)) {
@@ -1427,6 +1472,19 @@ export function App() {
                                           </div>
                                         )}
                                       </div>
+
+                                      {!isHistorical && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReturnToPaReview(evt)}
+                                          disabled={revertingStageEventId === evt.id}
+                                          className="w-full h-7 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs mt-1"
+                                          title="Return to Stage 2 for PA to re-evaluate or change options"
+                                        >
+                                          <RotateCcw className="w-3 h-3 text-slate-500" />
+                                          <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to PA Review (Stage 2)'}</span>
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 )}
@@ -1658,6 +1716,16 @@ export function App() {
                                       >
                                         <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
                                         <span>{sendingCalendarEventId === evt.id ? 'Sending Update...' : 'Send Update to All ✉️'}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleReturnToInsuredSelection(evt)}
+                                        disabled={revertingStageEventId === evt.id}
+                                        className="w-full h-8 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                                        title="Release appointment and return to Stage 3 for the client to choose another date"
+                                      >
+                                        <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                                        <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to Client Choice (Stage 3)'}</span>
                                       </button>
                                       <button
                                         type="button"

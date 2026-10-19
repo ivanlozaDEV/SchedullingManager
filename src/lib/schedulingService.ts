@@ -811,6 +811,102 @@ export const schedulingService = {
     return data;
   },
 
+  // 6.3c Regresar de Etapa 4 (Confirmed) a Etapa 3 (Insured Selection) para que el cliente elija otra fecha
+  async returnToInsuredSelection(eventId: string) {
+    if (!isSupabaseConfigured) return;
+
+    // 1. Obtener detalles previos
+    const { data: event } = await supabase
+      .from('events')
+      .select('final_date, final_start_time, final_end_time, slots:event_slots(*)')
+      .eq('id', eventId)
+      .single();
+
+    const prevDate = event?.final_date;
+    const prevStart = event?.final_start_time;
+    const prevEnd = event?.final_end_time;
+
+    // 2. Actualizar evento a Etapa 3 y limpiar cita final fijada
+    const { error: eventErr } = await supabase
+      .from('events')
+      .update({
+        coordination_stage: '3_insured_selection',
+        status: 'coordinating',
+        final_date: null,
+        final_start_time: null,
+        final_end_time: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId);
+    if (eventErr) throw eventErr;
+
+    // 3. Reactivar los slots de la selección (el elegido y los descartados)
+    // Aquellos que fueron rechazados por el PA ('pa_rejected') se mantienen rechazados si existían
+    const rawSlots = event?.slots || [];
+    const slotsToReactivate = rawSlots.filter(
+      (s: any) => s.status === 'insured_chosen' || (s.status === 'discarded' && s.rejection_reason !== '[By: pa]')
+    );
+
+    if (slotsToReactivate.length > 0) {
+      const ids = slotsToReactivate.map((s: any) => s.id);
+      await supabase
+        .from('event_slots')
+        .update({ status: 'pa_accepted' })
+        .in('id', ids);
+    } else {
+      await supabase
+        .from('event_slots')
+        .update({ status: 'pa_accepted' })
+        .eq('event_id', eventId)
+        .in('status', ['insured_chosen', 'discarded']);
+    }
+
+    // 4. Registrar en la bitácora
+    const scheduleInfo = prevDate ? ` (Cita anterior liberada: ${prevDate} ${prevStart?.slice(0, 5) || ''} - ${prevEnd?.slice(0, 5) || ''}).` : '';
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'insured',
+      contact_target_name: 'Insured / Client',
+      channel: 'other',
+      notes: `↩️ Event returned 1 step back to Stage 3 (Insured Selection). Client requested to choose another available date option.${scheduleInfo}`
+    });
+
+    return true;
+  },
+
+  // 6.3d Regresar de Etapa 3 (Insured Selection) a Etapa 2 (PA Review) para que el PA vuelva a evaluar opciones
+  async returnToPaReview(eventId: string) {
+    if (!isSupabaseConfigured) return;
+
+    // 1. Actualizar evento a Etapa 2
+    const { error: eventErr } = await supabase
+      .from('events')
+      .update({
+        coordination_stage: '2_pa_review',
+        status: 'coordinating',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId);
+    if (eventErr) throw eventErr;
+
+    // 2. Regresar todos los slots a 'proposed'
+    await supabase
+      .from('event_slots')
+      .update({ status: 'proposed' })
+      .eq('event_id', eventId);
+
+    // 3. Bitácora
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'pa',
+      contact_target_name: 'Public Adjuster',
+      channel: 'other',
+      notes: `↩️ Event returned 1 step back to Stage 2 (PA Review). PA can re-select or adjust date options for the client.`
+    });
+
+    return true;
+  },
+
   // 6.4 Resetear / Cancelar el Flujo de Coordinación y regresar a Etapa 1
   async resetCoordinationEvent(
     eventId: string,
