@@ -417,12 +417,23 @@ export const schedulingService = {
     }
 
     // 3. Record in audit log
+    const { data: currentEvent } = await supabase
+      .from('events')
+      .select('coordination_stage, final_date, final_start_time, final_end_time')
+      .eq('id', eventId)
+      .single();
+
+    const isReschedule = currentEvent?.coordination_stage === '4_confirmed';
+    const logNote = isReschedule
+      ? `🕒 Inspection schedule updated to: ${details.finalDate} (${details.finalStartTime.slice(0, 5)} - ${details.finalEndTime.slice(0, 5)}). Previous: ${currentEvent?.final_date || 'N/A'} (${currentEvent?.final_start_time?.slice(0, 5) || 'N/A'} - ${currentEvent?.final_end_time?.slice(0, 5) || 'N/A'}).${details.notes ? ` Notes: ${details.notes}` : ''}`
+      : `⚡ Appointment confirmed and locked: ${details.finalDate} (${details.finalStartTime.slice(0, 5)} - ${details.finalEndTime.slice(0, 5)}). Fast-Track / Direct Confirmation.${details.notes ? ` Notes: ${details.notes}` : ''}`;
+
     await supabase.from('coordination_logs').insert({
       event_id: eventId,
       contact_target: 'internal',
       contact_target_name: details.confirmedByActor || 'Coordinator',
       channel: 'other',
-      notes: `⚡ Appointment confirmed and locked: ${details.finalDate} (${details.finalStartTime.slice(0, 5)} - ${details.finalEndTime.slice(0, 5)}). Fast-Track / Direct Confirmation.${details.notes ? ` Notes: ${details.notes}` : ''}`,
+      notes: logNote,
     });
 
     // 4. Trigger calendar invites if not disabled
@@ -772,6 +783,32 @@ export const schedulingService = {
       if (error) console.warn('⚠️ Note on calendar invitation:', error.message);
       else if (data?.warning) console.warn('⚠️ Email sending warning:', data.warning);
     }).catch(err => console.warn("Note: calendar edge function not available:", err));
+  },
+
+  // 6.3b Enviar manualmente invitaciones / actualización de calendario (.ics) a todos los participantes
+  async sendCalendarInvites(eventId: string) {
+    if (!isSupabaseConfigured) return;
+    const { data, error } = await supabase.functions.invoke('send-calendar-invite', {
+      body: { eventId }
+    });
+    if (error) throw error;
+    if (data && data.success === false) {
+      throw new Error(data.warning || data.message || 'No se pudieron enviar las invitaciones de calendario.');
+    }
+
+    // Registrar en auditoría
+    const recipientsSummary = Array.isArray(data?.sentTo) && data.sentTo.length > 0 
+      ? ` Recipientes: ${data.sentTo.join(', ')}.`
+      : '';
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'internal',
+      contact_target_name: 'Coordinator',
+      channel: 'email',
+      notes: `📧 Calendar update invitations (.ics) sent manually to all participants.${recipientsSummary}`
+    });
+
+    return data;
   },
 
   // 6.4 Resetear / Cancelar el Flujo de Coordinación y regresar a Etapa 1

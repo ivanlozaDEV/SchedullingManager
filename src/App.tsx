@@ -243,6 +243,42 @@ export function App() {
     }
   };
 
+  const [sendingCalendarEventId, setSendingCalendarEventId] = useState<string | null>(null);
+
+  const handleSendCalendarUpdateToAll = async (evt: CoordinationEvent) => {
+    const insuredEmail = evt.claim?.insured?.email;
+    const paEmail = evt.claim?.public_adjuster?.email;
+    const participants = evt.participants || [];
+    const otherEmails = participants
+      .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
+      .filter((em): em is string => Boolean(em && em.trim()));
+
+    const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
+
+    if (allEmails.length === 0) {
+      alert('⚠️ No hay correos registrados para ninguno de los participantes de este evento.');
+      return;
+    }
+
+    const confirmMsg = `¿Deseas enviar la actualización de la cita por correo (.ics) a los siguientes participantes?\n\n` +
+      allEmails.map((em) => `• ${em}`).join('\n') +
+      `\n\n📅 Fecha: ${evt.finalDate}\n⏰ Hora: ${evt.finalStartTime?.slice(0, 5)} - ${evt.finalEndTime?.slice(0, 5)}`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setSendingCalendarEventId(evt.id);
+    try {
+      const res = await schedulingService.sendCalendarInvites(evt.id);
+      const sentList = res?.sentTo?.join(', ') || allEmails.join(', ');
+      alert(`✓ ¡Actualización de calendario enviada con éxito a:\n${sentList}`);
+      await loadData();
+    } catch (err: any) {
+      alert('Error enviando actualización de calendario: ' + (err.message || err));
+    } finally {
+      setSendingCalendarEventId(null);
+    }
+  };
+
   const handleTogglePaSlot = (eventId: string, slotId: string) => {
     const current = paSelectedSlotIds[eventId] || [];
     if (current.includes(slotId)) {
@@ -1591,10 +1627,25 @@ export function App() {
 
                                     {/* Action Buttons in Delimited Card Footer */}
                                     <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
-                                      <div className="h-8.5 w-full bg-emerald-700 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 shadow-xs">
-                                        <Check className="w-4 h-4" />
-                                        <span>Inspection Scheduled ✓</span>
-                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDirectConfirmingEvent(evt)}
+                                        className="w-full h-8.5 bg-tealBrand-800 hover:bg-tealBrand-900 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 shadow-xs cursor-pointer transition-colors"
+                                        title="Modify confirmed inspection date or time"
+                                      >
+                                        <Clock className="w-3.5 h-3.5 text-tealBrand-200" />
+                                        <span>Update Date / Time 🕒</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSendCalendarUpdateToAll(evt)}
+                                        disabled={sendingCalendarEventId === evt.id}
+                                        className="w-full h-8 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                                        title="Send updated calendar invitations (.ics) to all participants"
+                                      >
+                                        <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
+                                        <span>{sendingCalendarEventId === evt.id ? 'Sending Update...' : 'Send Update to All ✉️'}</span>
+                                      </button>
                                       <button
                                         type="button"
                                         onClick={() => setEventToReset(evt)}

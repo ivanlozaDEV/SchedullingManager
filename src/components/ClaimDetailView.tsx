@@ -248,6 +248,42 @@ export function ClaimDetailView({
     }
   };
 
+  const [sendingCalendarEventId, setSendingCalendarEventId] = useState<string | null>(null);
+
+  const handleSendCalendarUpdateToAll = async (evt: CoordinationEvent) => {
+    const insuredEmail = claim.insured?.email;
+    const paEmail = claim.publicAdjuster?.email;
+    const participants = evt.participants || [];
+    const otherEmails = participants
+      .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
+      .filter((em): em is string => Boolean(em && em.trim()));
+
+    const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
+
+    if (allEmails.length === 0) {
+      alert('⚠️ No hay correos registrados para ninguno de los participantes de este evento.');
+      return;
+    }
+
+    const confirmMsg = `¿Deseas enviar la actualización de la cita por correo (.ics) a los siguientes participantes?\n\n` +
+      allEmails.map((em) => `• ${em}`).join('\n') +
+      `\n\n📅 Fecha: ${evt.finalDate}\n⏰ Hora: ${evt.finalStartTime?.slice(0, 5)} - ${evt.finalEndTime?.slice(0, 5)}`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setSendingCalendarEventId(evt.id);
+    try {
+      const res = await schedulingService.sendCalendarInvites(evt.id);
+      const sentList = res?.sentTo?.join(', ') || allEmails.join(', ');
+      alert(`✓ ¡Actualización de calendario enviada con éxito a:\n${sentList}`);
+      if (onEventCreated) onEventCreated();
+    } catch (err: any) {
+      alert('Error enviando actualización de calendario: ' + (err.message || err));
+    } finally {
+      setSendingCalendarEventId(null);
+    }
+  };
+
   // Actor Edit Modal State
   const [editingActor, setEditingActor] = useState<ActorEditTarget | null>(null);
   const [actorForm, setActorForm] = useState<any>({});
@@ -2273,6 +2309,17 @@ export function ClaimDetailView({
                       </div>
 
                       <div className="flex items-center gap-1.5">
+                        {evt.coordinationStage === '4_confirmed' && (
+                          <button
+                            type="button"
+                            onClick={() => setDirectConfirmingEvent(evt)}
+                            title="Change confirmed inspection date or time"
+                            className="text-xs font-bold text-tealBrand-800 hover:text-white bg-tealBrand-50 hover:bg-tealBrand-800 border border-tealBrand-300 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>Update Time</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setHistoryEventTarget(evt)}
@@ -2766,12 +2813,33 @@ export function ClaimDetailView({
                               Step 4: Confirmed
                             </span>
                           </div>
-                          <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-xs font-medium text-emerald-900 flex items-center justify-between">
+                          <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-xs font-medium text-emerald-900 flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-4">
                               <span>📅 Date: <strong>{evt.finalDate}</strong></span>
                               <span>⏰ Time: <strong>{evt.finalStartTime?.slice(0, 5)} - {evt.finalEndTime?.slice(0, 5)}</strong></span>
                             </div>
-                            <span className="text-[11px] text-emerald-700 font-semibold">Locked on Calendar</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] text-emerald-700 font-semibold">Locked on Calendar</span>
+                              <button
+                                type="button"
+                                onClick={() => setDirectConfirmingEvent(evt)}
+                                className="px-2.5 py-1 bg-tealBrand-800 hover:bg-tealBrand-900 text-white rounded-md text-xs font-bold transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
+                                title="Change confirmed inspection date or time"
+                              >
+                                <Clock className="w-3.5 h-3.5 text-tealBrand-200" />
+                                <span>Update Date / Time 🕒</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendCalendarUpdateToAll(evt)}
+                                disabled={sendingCalendarEventId === evt.id}
+                                className="px-2.5 py-1 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-md text-xs font-bold transition-colors shadow-2xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                title="Send updated calendar invitations (.ics) to all participants"
+                              >
+                                <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
+                                <span>{sendingCalendarEventId === evt.id ? 'Sending...' : 'Send Update to All ✉️'}</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}

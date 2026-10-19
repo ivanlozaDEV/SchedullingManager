@@ -24,7 +24,7 @@ export function DirectConfirmModal({
   const [finalEndTime, setFinalEndTime] = useState('11:00');
   const [confirmedByActor, setConfirmedByActor] = useState('Coordinator');
   const [notes, setNotes] = useState('');
-  const [sendCalendarInvite, setSendCalendarInvite] = useState(true);
+  const [sendCalendarInvite, setSendCalendarInvite] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +37,7 @@ export function DirectConfirmModal({
       setFinalEndTime(event.finalEndTime?.slice(0, 5) || proposedSlot?.endTime?.slice(0, 5) || '11:00');
       setNotes(event.notes || '');
       setConfirmedByActor('Coordinator');
-      setSendCalendarInvite(true);
+      setSendCalendarInvite(false);
       setError(null);
     }
   }, [isOpen, event]);
@@ -82,23 +82,29 @@ export function DirectConfirmModal({
     }
   };
 
+  const isReschedule = event?.coordinationStage === '4_confirmed';
+
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4 max-h-[95vh] overflow-y-auto">
         <div className="flex items-start justify-between border-b border-slate-100 pb-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase tracking-wide flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                <span>Fast-Track / Direct Confirmation</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide flex items-center gap-1 ${
+                isReschedule ? 'bg-tealBrand-100 text-tealBrand-900' : 'bg-emerald-100 text-emerald-800'
+              }`}>
+                {isReschedule ? <Clock className="w-3 h-3 text-tealBrand-700" /> : <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
+                <span>{isReschedule ? 'Reschedule / Update Time' : 'Fast-Track / Direct Confirmation'}</span>
               </span>
               <span className="text-xs text-slate-500 font-mono font-semibold">{claim.claimNumber}</span>
             </div>
             <h3 className="text-base font-bold text-slate-900">
-              Directly Confirm Appointment
+              {isReschedule ? 'Update Appointment Date & Time' : 'Directly Confirm Appointment'}
             </h3>
             <p className="text-xs text-slate-500">
-              Locks the appointment immediately without going through funnel steps. Advances directly to Confirmed.
+              {isReschedule
+                ? 'Update the scheduled date and time for this confirmed inspection.'
+                : 'Locks the appointment immediately without going through funnel steps. Advances directly to Confirmed.'}
             </p>
           </div>
           <button
@@ -250,21 +256,21 @@ export function DirectConfirmModal({
             />
           </div>
 
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2.5">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start gap-2.5">
             <input
               type="checkbox"
               id="sendCalendarInvite"
               checked={sendCalendarInvite}
               onChange={(e) => setSendCalendarInvite(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-tealBrand-600 focus:ring-tealBrand-500 cursor-pointer"
             />
-            <label htmlFor="sendCalendarInvite" className="text-xs text-emerald-950 font-medium cursor-pointer">
-              <span className="font-bold flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-emerald-700" />
+            <label htmlFor="sendCalendarInvite" className="text-xs text-slate-800 font-medium cursor-pointer">
+              <span className="font-bold flex items-center gap-1.5 text-slate-900">
+                <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
                 <span>Send calendar invitations (.ics) immediately</span>
               </span>
-              <span className="block text-[11px] text-emerald-800 mt-0.5">
-                Automatically notifies {claim.insured?.email ? 'Insured' : 'Participants'} and Public Adjuster.
+              <span className="block text-[11px] text-slate-500 mt-0.5">
+                Unchecked by default so you can save schedule changes safely without sending automatic emails. You can also send the update manually whenever ready.
               </span>
             </label>
           </div>
@@ -284,7 +290,11 @@ export function DirectConfirmModal({
               className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{saving ? 'Saving & Confirming...' : 'Confirm Appointment Now ➔'}</span>
+              <span>
+                {saving
+                  ? isReschedule ? 'Updating Schedule...' : 'Saving & Confirming...'
+                  : isReschedule ? 'Save New Schedule ➔' : 'Confirm Appointment Now ➔'}
+              </span>
             </button>
           </div>
         </form>
