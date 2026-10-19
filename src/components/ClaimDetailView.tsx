@@ -35,6 +35,7 @@ import { RecordCarrierSlotsModal } from './RecordCarrierSlotsModal';
 import { DirectConfirmModal } from './DirectConfirmModal';
 import { ResetCoordinationModal } from './ResetCoordinationModal';
 import { EventHistoryModal } from './EventHistoryModal';
+import { useToast } from '../context/ToastContext';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from '../lib/slaUtils';
 import { appSettingsService } from '../lib/appSettingsService';
 import { 
@@ -226,10 +227,14 @@ export function ClaimDetailView({
   // Copied slot message state
   const [copiedSlotId, setCopiedSlotId] = useState<string | null>(null);
   const [sendingEmailEventId, setSendingEmailEventId] = useState<string | null>(null);
+  const toast = useToast();
 
   const handleSendInsuredEmail = async (eventId: string) => {
     if (!claim.insured?.email || !claim.insured.email.trim()) {
-      alert(`⚠️ El cliente asegurado (${claim.insured?.name || 'Asegurado'}) no tiene un correo electrónico registrado.\n\nPor favor, haz clic en editar cliente para ingresar su correo antes de enviar.`);
+      toast.warning(
+        'Falta correo del asegurado',
+        `El cliente (${claim.insured?.name || 'Asegurado'}) no tiene un correo registrado. Haz clic en editar cliente para ingresarlo.`
+      );
       return;
     }
 
@@ -237,12 +242,15 @@ export function ClaimDetailView({
     try {
       const res = await schedulingService.notifyInsuredSlots(eventId);
       if (res && res.success === false) {
-        alert('⚠️ No se pudo enviar el correo: ' + (res.message || 'Error desconocido'));
+        toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
       } else {
-        alert(`✓ ¡Correo enviado con éxito a ${claim.insured.name} (${claim.insured.email})!`);
+        toast.success(
+          '¡Correo enviado con éxito!',
+          `Se enviaron las opciones de fechas a ${claim.insured.name} (${claim.insured.email})`
+        );
       }
     } catch (err: any) {
-      alert('Error enviando correo: ' + (err.message || err));
+      toast.error('Error enviando correo', err.message || String(err));
     } finally {
       setSendingEmailEventId(null);
     }
@@ -261,7 +269,7 @@ export function ClaimDetailView({
     const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
 
     if (allEmails.length === 0) {
-      alert('⚠️ No hay correos registrados para ninguno de los participantes de este evento.');
+      toast.warning('Sin destinatarios', 'No hay correos registrados para ninguno de los participantes de este evento.');
       return;
     }
 
@@ -275,10 +283,13 @@ export function ClaimDetailView({
     try {
       const res = await schedulingService.sendCalendarInvites(evt.id);
       const sentList = res?.sentTo?.join(', ') || allEmails.join(', ');
-      alert(`✓ ¡Actualización de calendario enviada con éxito a:\n${sentList}`);
+      toast.success(
+        '¡Actualización enviada con éxito!',
+        `Invitaciones de calendario enviadas a:\n${sentList}`
+      );
       if (onEventCreated) onEventCreated();
     } catch (err: any) {
-      alert('Error enviando actualización de calendario: ' + (err.message || err));
+      toast.error('Error enviando actualización', err.message || String(err));
     } finally {
       setSendingCalendarEventId(null);
     }

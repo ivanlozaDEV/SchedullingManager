@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Calendar, Clock, CheckCircle2, AlertCircle, Mail, User } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { formatTimeRangeWithDualTimezone } from '../lib/timezoneUtils';
+import { useToast } from '../context/ToastContext';
 import type { CoordinationEvent, Claim } from '../types';
 
 interface DirectConfirmModalProps {
@@ -19,6 +20,7 @@ export function DirectConfirmModal({
   claim,
   onConfirmed,
 }: DirectConfirmModalProps) {
+  const toast = useToast();
   const [finalDate, setFinalDate] = useState('');
   const [finalStartTime, setFinalStartTime] = useState('09:00');
   const [finalEndTime, setFinalEndTime] = useState('11:00');
@@ -71,6 +73,11 @@ export function DirectConfirmModal({
         notes: notes.trim() || undefined,
         sendCalendarInvite,
       });
+
+      toast.success(
+        isReschedule ? '✓ Horario actualizado' : '✓ Cita confirmada',
+        `📅 ${finalDate} (${finalStartTime} - ${finalEndTime})${sendCalendarInvite ? ' · Invitaciones enviadas.' : ''}`
+      );
 
       onConfirmed();
       onClose();
