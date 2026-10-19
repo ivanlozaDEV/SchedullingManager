@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Calendar, Plus, Trash2, AlertCircle, CheckCircle2, User, Sparkles } from 'lucide-react';
+import { X, Calendar, Plus, Trash2, AlertCircle, CheckCircle2, User, Sparkles, Layers, Check } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { formatTimeRangeWithDualTimezone } from '../lib/timezoneUtils';
 import type { CoordinationEvent, Claim, CoordinationStage } from '../types';
@@ -314,19 +314,54 @@ export function RecordCarrierSlotsModal({
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Suggested Next Stage
-              </label>
-              <select
-                value={targetStage}
-                onChange={(e) => setTargetStage(e.target.value as CoordinationStage)}
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
-              >
-                <option value="1_awaiting_carrier_slots">1. Awaiting Dates (Carrier or Counterpart)</option>
-                <option value="2_pa_review">2. PA Review Pending</option>
-                <option value="3_insured_selection">3. Insured Choice Pending</option>
-              </select>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-tealBrand-800" />
+                  <span>¿Qué paso sigue al guardar?</span>
+                </label>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-300 text-tealBrand-800">
+                  {targetStage === '3_insured_selection' ? '⚡ Flujo Rápido (Salta a Cliente)' : 'Flujo Estándar (Revisión)'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTargetStage('2_pa_review')}
+                  className={`text-left p-2.5 rounded-lg border text-xs transition-all cursor-pointer ${
+                    targetStage === '2_pa_review'
+                      ? 'bg-tealBrand-800 text-white border-tealBrand-900 shadow-xs ring-1 ring-tealBrand-800'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  <div className="font-bold flex items-center justify-between">
+                    <span>⚖️ Enviar a Revisión de PA</span>
+                    {targetStage === '2_pa_review' && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                  </div>
+                  <p className={`text-[11px] mt-0.5 leading-snug ${targetStage === '2_pa_review' ? 'text-tealBrand-100' : 'text-slate-500'}`}>
+                    El PA valida las fechas antes de enviarlas al cliente.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetStage('3_insured_selection')}
+                  className={`text-left p-2.5 rounded-lg border text-xs transition-all cursor-pointer ${
+                    targetStage === '3_insured_selection'
+                      ? 'bg-purple-800 text-white border-purple-900 shadow-xs ring-1 ring-purple-800'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  <div className="font-bold flex items-center justify-between">
+                    <span>⚡ Saltar Paso ➔ Directo a Cliente</span>
+                    {targetStage === '3_insured_selection' && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                  </div>
+                  <p className={`text-[11px] mt-0.5 leading-snug ${targetStage === '3_insured_selection' ? 'text-purple-100' : 'text-slate-500'}`}>
+                    Carrier y PA ya están de acuerdo. El cliente elige de inmediato.
+                  </p>
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
@@ -456,19 +491,54 @@ export function RecordCarrierSlotsModal({
               </span>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Target Stage
-              </label>
-              <select
-                value={targetStage}
-                onChange={(e) => setTargetStage(e.target.value as CoordinationStage)}
-                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
-              >
-                <option value="2_pa_review">2. PA Review (Filter options)</option>
-                <option value="3_insured_selection">3. Insured Choice (Offer options)</option>
-                <option value="1_awaiting_carrier_slots">1. Awaiting Carrier</option>
-              </select>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-tealBrand-800" />
+                  <span>¿Qué paso sigue al guardar estas opciones?</span>
+                </label>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-300 text-tealBrand-800">
+                  {targetStage === '3_insured_selection' ? '⚡ Flujo Rápido (Salta a Cliente)' : 'Flujo Estándar (3 Pasos)'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTargetStage('2_pa_review')}
+                  className={`text-left p-2.5 rounded-lg border text-xs transition-all cursor-pointer ${
+                    targetStage === '2_pa_review'
+                      ? 'bg-tealBrand-800 text-white border-tealBrand-900 shadow-xs ring-1 ring-tealBrand-800'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  <div className="font-bold flex items-center justify-between">
+                    <span>⚖️ Enviar a Revisión de PA</span>
+                    {targetStage === '2_pa_review' && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                  </div>
+                  <p className={`text-[11px] mt-0.5 leading-snug ${targetStage === '2_pa_review' ? 'text-tealBrand-100' : 'text-slate-500'}`}>
+                    El PA revisa y filtra 2 opciones antes de enviarlas al cliente (Flujo completo).
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetStage('3_insured_selection')}
+                  className={`text-left p-2.5 rounded-lg border text-xs transition-all cursor-pointer ${
+                    targetStage === '3_insured_selection'
+                      ? 'bg-purple-800 text-white border-purple-900 shadow-xs ring-1 ring-purple-800'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  <div className="font-bold flex items-center justify-between">
+                    <span>⚡ Fechas Acordadas (Saltar Paso)</span>
+                    {targetStage === '3_insured_selection' && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                  </div>
+                  <p className={`text-[11px] mt-0.5 leading-snug ${targetStage === '3_insured_selection' ? 'text-purple-100' : 'text-slate-500'}`}>
+                    Carrier y PA ya están de acuerdo. Enviar directo al Cliente para que elija.
+                  </p>
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 flex-wrap">
@@ -496,9 +566,17 @@ export function RecordCarrierSlotsModal({
               <button
                 type="submit"
                 disabled={saving}
-                className="px-4 py-2 text-xs font-bold text-white bg-tealBrand-800 hover:bg-tealBrand-900 disabled:opacity-50 rounded-lg transition-colors shadow-xs cursor-pointer"
+                className={`px-4 py-2 text-xs font-bold text-white disabled:opacity-50 rounded-lg transition-colors shadow-xs cursor-pointer ${
+                  targetStage === '3_insured_selection'
+                    ? 'bg-purple-800 hover:bg-purple-900'
+                    : 'bg-tealBrand-800 hover:bg-tealBrand-900'
+                }`}
               >
-                {saving ? 'Saving...' : 'Save Proposed Options ➔'}
+                {saving
+                  ? 'Guardando...'
+                  : targetStage === '3_insured_selection'
+                  ? '⚡ Guardar y Enviar Directo a Selección de Cliente ➔'
+                  : 'Guardar y Enviar a Revisión de PA ➔'}
               </button>
             </div>
           </form>

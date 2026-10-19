@@ -20,6 +20,8 @@ export type SlotStatus =
 
 export type ParticipantRole = 'actor' | 'informed';
 
+export type CoordinationParty = 'carrier' | 'pa' | 'insured';
+
 export type ContactChannel = 
   | 'call_unanswered' 
   | 'call_answered' 
@@ -154,6 +156,7 @@ export interface CoordinationEvent {
   openAvailabilityActor?: 'insured' | 'pa' | 'carrier' | null;
   openAvailabilityNotes?: string | null;
   slotsOriginator?: 'carrier' | 'insured' | 'pa' | 'office' | null;
+  coordinationSequence?: CoordinationParty[] | null;
   timezone?: 'CT' | 'ET' | null;
   createdAt: string;
   updatedAt: string;

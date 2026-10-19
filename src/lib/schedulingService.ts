@@ -254,7 +254,23 @@ export const schedulingService = {
         const m = row.notes?.match(/\[OpenAvailability:\s*[a-zA-Z0-9_-]+\s*\|\s*([^\]]*)\]/);
         return m ? m[1].trim() : null;
       })(),
+      coordinationSequence: (() => {
+        const m = row.notes?.match(/\[CoordinationOrder:\s*([a-zA-Z0-9_, -]+)\]/i);
+        if (m) {
+          const parts = m[1].split(/->|,|\s+/).map((s: string) => s.trim().toLowerCase()).filter((s: string) => ['carrier', 'pa', 'insured'].includes(s));
+          if (parts.length > 0) return parts as ('carrier' | 'pa' | 'insured')[];
+        }
+        const orig = row.notes?.match(/\[SlotsOriginator:\s*([a-zA-Z0-9_-]+)\]/)?.[1];
+        if (orig === 'insured') return ['insured', 'pa', 'carrier'] as ('carrier' | 'pa' | 'insured')[];
+        if (orig === 'pa') return ['pa', 'insured', 'carrier'] as ('carrier' | 'pa' | 'insured')[];
+        return ['carrier', 'pa', 'insured'] as ('carrier' | 'pa' | 'insured')[];
+      })(),
       slotsOriginator: (() => {
+        const mOrder = row.notes?.match(/\[CoordinationOrder:\s*([a-zA-Z0-9_, -]+)\]/i);
+        if (mOrder) {
+          const parts = mOrder[1].split(/->|,|\s+/).map((s: string) => s.trim().toLowerCase()).filter((s: string) => ['carrier', 'pa', 'insured'].includes(s));
+          if (parts.length > 0) return parts[0] as 'carrier' | 'insured' | 'pa';
+        }
         const m = row.notes?.match(/\[SlotsOriginator:\s*([a-zA-Z0-9_-]+)\]/);
         return m ? (m[1] as 'carrier' | 'insured' | 'pa' | 'office') : 'carrier';
       })(),
@@ -530,6 +546,80 @@ export const schedulingService = {
     });
   },
 
+  // 5.4 Configurar el orden completo de coordinación de fechas (ej: Cliente -> PA -> Carrier)
+  async setEventCoordinationOrder(
+    eventId: string,
+    sequence: ('carrier' | 'pa' | 'insured')[],
+    actorName?: string
+  ) {
+    if (!isSupabaseConfigured || !sequence || sequence.length === 0) return;
+
+    const { data: currentEvent } = await supabase
+      .from('events')
+      .select('notes')
+      .eq('id', eventId)
+      .single();
+
+    const cleanExisting = (currentEvent?.notes || '')
+      .replace(/\[CoordinationOrder:[^\]]*\]/g, '')
+      .replace(/\[SlotsOriginator:[^\]]*\]/g, '')
+      .trim();
+
+    const orderTag = `[CoordinationOrder: ${sequence.join(' -> ')}]`;
+    const origTag = `[SlotsOriginator: ${sequence[0]}]`;
+    const updatedNotes = cleanExisting ? `${cleanExisting}\n${orderTag}\n${origTag}` : `${orderTag}\n${origTag}`;
+
+    await supabase
+      .from('events')
+      .update({
+        notes: updatedNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', eventId);
+
+    const labels: Record<string, string> = {
+      pa: 'PA',
+      carrier: 'Carrier',
+      insured: 'Client',
+    };
+    const seqStr = sequence.map(s => labels[s] || s).join(' ➔ ');
+
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'internal',
+      contact_target_name: actorName || 'Coordinator',
+      channel: 'internal',
+      notes: `Updated date coordination sequence order: ${seqStr}`,
+    });
+  },
+
+  // 5.5 Saltar revisión (Etapa 2) cuando dos partes ya están de acuerdo y pasar directo a selección final (Etapa 3)
+  async skipToFinalSelection(eventId: string, actorName?: string) {
+    if (!isSupabaseConfigured) return;
+
+    // Actualizar todos los slots existentes a 'pa_accepted' para que estén disponibles para el cliente / parte final
+    await supabase
+      .from('event_slots')
+      .update({ status: 'pa_accepted' })
+      .eq('event_id', eventId);
+
+    await supabase
+      .from('events')
+      .update({
+        coordination_stage: '3_insured_selection',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', eventId);
+
+    await supabase.from('coordination_logs').insert({
+      event_id: eventId,
+      contact_target: 'internal',
+      contact_target_name: actorName || 'Coordinator',
+      channel: 'internal',
+      notes: `⚡ Paso 2 saltado: Fechas acordadas entre partes y enviadas directamente a selección final (Etapa 3).`,
+    });
+  },
+
   async setEventTimezone(
     eventId: string,
     timezone: 'CT' | 'ET',
@@ -597,19 +687,7 @@ export const schedulingService = {
     // 1. Eliminar slots previos si existieran
     await supabase.from('event_slots').delete().eq('event_id', eventId);
     
-    // 2. Insertar los nuevos slots propuestos guardando autor en tag
-    const insertData = slots.map((s) => ({
-      event_id: eventId,
-      slot_date: s.slotDate,
-      start_time: s.startTime,
-      end_time: s.endTime,
-      status: 'proposed' as const,
-      rejection_reason: `[By: ${proposedBy}]`,
-    }));
-    const { error: insertErr } = await supabase.from('event_slots').insert(insertData);
-    if (insertErr) throw insertErr;
-
-    // 3. Determinar siguiente etapa lógica según quién propuso las fechas
+    // 3. Determinar siguiente etapa lógica según quién propuso las fechas o si se salta paso
     let nextStage: CoordinationStage = options?.targetStage || '2_pa_review';
     if (!options?.targetStage) {
       if (proposedBy === 'insured') {
@@ -620,6 +698,20 @@ export const schedulingService = {
         nextStage = '2_pa_review'; // Carrier dio opciones -> van a PA
       }
     }
+
+    // 2. Insertar los nuevos slots propuestos. Si la etapa destino es directamente la 3 (elección final / saltar paso),
+    // se marcan como 'pa_accepted' para que estén inmediatamente disponibles para que el cliente elija.
+    const slotStatus = nextStage === '3_insured_selection' ? 'pa_accepted' : 'proposed';
+    const insertData = slots.map((s) => ({
+      event_id: eventId,
+      slot_date: s.slotDate,
+      start_time: s.startTime,
+      end_time: s.endTime,
+      status: slotStatus as any,
+      rejection_reason: `[By: ${proposedBy}]`,
+    }));
+    const { error: insertErr } = await supabase.from('event_slots').insert(insertData);
+    if (insertErr) throw insertErr;
 
     const { error: stageErr } = await supabase
       .from('events')
@@ -1477,6 +1569,7 @@ export const schedulingService = {
     openAvailabilityActor?: 'insured' | 'pa' | 'carrier' | null;
     openAvailabilityNotes?: string | null;
     slotsOriginator?: 'carrier' | 'insured' | 'pa' | 'office' | null;
+    coordinationSequence?: ('carrier' | 'pa' | 'insured')[] | null;
     participants?: {
       participantType: 'insured' | 'public_adjuster' | 'carrier_representative' | 'external_actor' | 'office';
       roleType?: ParticipantRole;
@@ -1495,11 +1588,18 @@ export const schedulingService = {
     const finalStage: CoordinationStage = isDirectConfirm ? '4_confirmed' : (eventData.coordinationStage || '1_awaiting_carrier_slots');
     const finalStatus: EventStatus = isDirectConfirm ? 'scheduled' : (eventData.status || 'coordinating');
 
-    // Build notes with open availability & slots originator if provided
+    // Build notes with open availability & slots originator & coordination order if provided
     let combinedNotes = eventData.notes || '';
     if (eventData.openAvailabilityActor) {
       const openTag = `[OpenAvailability: ${eventData.openAvailabilityActor}${eventData.openAvailabilityNotes ? ` | ${eventData.openAvailabilityNotes}` : ''}]`;
       combinedNotes = combinedNotes ? `${combinedNotes}\n${openTag}` : openTag;
+    }
+    if (eventData.coordinationSequence && eventData.coordinationSequence.length > 0) {
+      const orderTag = `[CoordinationOrder: ${eventData.coordinationSequence.join(' -> ')}]`;
+      combinedNotes = combinedNotes ? `${combinedNotes}\n${orderTag}` : orderTag;
+      if (!eventData.slotsOriginator) {
+        eventData.slotsOriginator = eventData.coordinationSequence[0];
+      }
     }
     if (eventData.slotsOriginator) {
       const origTag = `[SlotsOriginator: ${eventData.slotsOriginator}]`;
@@ -1589,6 +1689,8 @@ export const schedulingService = {
     finalDate?: string;
     finalStartTime?: string;
     finalEndTime?: string;
+    slotsOriginator?: 'carrier' | 'insured' | 'pa' | 'office' | null;
+    coordinationSequence?: ('carrier' | 'pa' | 'insured')[] | null;
     participants?: {
       participantType: 'insured' | 'public_adjuster' | 'carrier_representative' | 'external_actor' | 'office';
       roleType?: ParticipantRole;
@@ -1603,6 +1705,25 @@ export const schedulingService = {
   }) {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
 
+    let updatedNotes = eventData.notes;
+    if (eventData.coordinationSequence !== undefined || eventData.slotsOriginator !== undefined) {
+      let baseNotes = (eventData.notes !== undefined ? eventData.notes : '')
+        .replace(/\[CoordinationOrder:[^\]]*\]/g, '')
+        .replace(/\[SlotsOriginator:[^\]]*\]/g, '')
+        .trim();
+      const tags: string[] = [];
+      if (eventData.coordinationSequence && eventData.coordinationSequence.length > 0) {
+        tags.push(`[CoordinationOrder: ${eventData.coordinationSequence.join(' -> ')}]`);
+        if (!eventData.slotsOriginator) {
+          tags.push(`[SlotsOriginator: ${eventData.coordinationSequence[0]}]`);
+        }
+      }
+      if (eventData.slotsOriginator) {
+        tags.push(`[SlotsOriginator: ${eventData.slotsOriginator}]`);
+      }
+      updatedNotes = baseNotes ? `${baseNotes}\n${tags.join('\n')}` : tags.join('\n');
+    }
+
     const updatePayload: any = {
       updated_at: new Date().toISOString(),
     };
@@ -1613,7 +1734,7 @@ export const schedulingService = {
     if (eventData.lockboxCode !== undefined) updatePayload.lockbox_code = eventData.lockboxCode || null;
     if (eventData.gateCode !== undefined) updatePayload.gate_code = eventData.gateCode || null;
     if (eventData.accessInstructions !== undefined) updatePayload.access_instructions = eventData.accessInstructions || null;
-    if (eventData.notes !== undefined) updatePayload.notes = eventData.notes || '';
+    if (updatedNotes !== undefined) updatePayload.notes = updatedNotes;
     if (eventData.finalDate !== undefined) updatePayload.final_date = eventData.finalDate || null;
     if (eventData.finalStartTime !== undefined) updatePayload.final_start_time = eventData.finalStartTime || null;
     if (eventData.finalEndTime !== undefined) updatePayload.final_end_time = eventData.finalEndTime || null;

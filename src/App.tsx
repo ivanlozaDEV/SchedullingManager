@@ -26,7 +26,8 @@ import {
   Mail,
   LogOut,
   Trash2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Zap
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { schedulingService } from './lib/schedulingService';
@@ -51,6 +52,7 @@ import type {
   CarrierRepresentative, 
   ExternalActor,
   CoordinationStage,
+  CoordinationParty,
   Claim
 } from './types';
 
@@ -368,6 +370,32 @@ export function App() {
     }
   };
 
+  const [skippingStage2EventId, setSkippingStage2EventId] = useState<string | null>(null);
+
+  const handleSkipToStage3 = async (evt: CoordinationEvent) => {
+    const seq = evt.coordinationSequence || (
+      evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+      evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+      ['carrier', 'pa', 'insured']
+    );
+    const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
+    const confirmSkip = window.confirm(
+      `¿Confirmas que las partes ya están de acuerdo y deseas saltar la etapa intermedia para pasar directamente todas las fechas a elección final de ${p3Name}?`
+    );
+    if (!confirmSkip) return;
+
+    setSkippingStage2EventId(evt.id);
+    try {
+      await schedulingService.skipToFinalSelection(evt.id, 'Coordinator');
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to skip to Stage 3:', err);
+      alert('Error al saltar a etapa 3: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setSkippingStage2EventId(null);
+    }
+  };
+
   const handleInsuredConfirmSlot = async (evt: CoordinationEvent, slot: any) => {
     setInsuredConfirmingSlotId(slot.id);
     try {
@@ -399,13 +427,26 @@ export function App() {
     }
   };
 
-  const handleSetSlotsOriginator = async (eventId: string, originator: 'carrier' | 'pa' | 'insured') => {
+  const handleSetSlotsOriginator = async (eventId: string, originator: 'carrier' | 'pa' | 'insured', currentSequence?: CoordinationParty[]) => {
     try {
-      await schedulingService.setEventSlotsOriginator(eventId, originator, authRole || 'Coordinator');
+      const current = currentSequence ? [...currentSequence] : ['carrier', 'pa', 'insured'];
+      const oldIdx = current.indexOf(originator);
+      if (oldIdx > 0) {
+        const temp = current[0];
+        current[0] = originator;
+        current[oldIdx] = temp;
+      } else if (oldIdx === -1) {
+        current[0] = originator;
+      }
+      await schedulingService.setEventCoordinationOrder(eventId, current as any, authRole || 'Coordinator');
       await loadData();
+      toast.success(
+        'Propositor de fechas actualizado',
+        `Se configuró a ${originator === 'insured' ? 'Cliente' : originator.toUpperCase()} (${current.map(s => s === 'insured' ? 'Client' : s.toUpperCase()).join(' ➔ ')})`
+      );
     } catch (err: any) {
       console.error('Failed to update slots originator:', err);
-      alert('Error updating date options proposer: ' + (err.message || 'Unknown error'));
+      toast.error('Error al actualizar propositor', err.message || 'Error desconocido');
     }
   };
 
@@ -1031,14 +1072,34 @@ export function App() {
                                     </div>
                                   </div>
 
-                                  {evt.openAvailabilityActor && (
-                                    <div className="mt-1">
-                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 w-fit">
+                                  {/* Order Sequence & Open Availability Badges */}
+                                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                                    {evt.coordinationStage !== '4_confirmed' && (() => {
+                                      const seq = evt.coordinationSequence || (
+                                        evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+                                        evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+                                        ['carrier', 'pa', 'insured']
+                                      );
+                                      const partyShort: Record<string, string> = { carrier: '🏢 Carrier', pa: '⚖️ PA', insured: '👤 Client' };
+                                      return (
+                                        <span className="inline-flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded text-[9.5px] font-bold text-slate-700 border border-slate-200" title="Date coordination sequence">
+                                          <span className="text-slate-400 font-normal">Order:</span>
+                                          <span>{partyShort[seq[0]]}</span>
+                                          <span className="text-slate-300">➔</span>
+                                          <span>{partyShort[seq[1]]}</span>
+                                          <span className="text-slate-300">➔</span>
+                                          <span>{partyShort[seq[2]]}</span>
+                                        </span>
+                                      );
+                                    })()}
+
+                                    {evt.openAvailabilityActor && (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
                                         <span>{evt.openAvailabilityActor === 'insured' ? 'Client' : evt.openAvailabilityActor === 'pa' ? 'PA' : 'Carrier'}: Any Day</span>
                                       </span>
-                                    </div>
-                                  )}
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Visual Bottleneck Alert Box if Stalled or Warning (Only when actively in this stage) */}
@@ -1136,7 +1197,7 @@ export function App() {
                                         <div className="grid grid-cols-3 gap-1">
                                           <button
                                             type="button"
-                                            onClick={() => handleSetSlotsOriginator(evt.id, 'carrier')}
+                                            onClick={() => handleSetSlotsOriginator(evt.id, 'carrier', evt.coordinationSequence || undefined)}
                                             className={`py-1 px-1 rounded-lg text-[10px] font-bold transition-all text-center border cursor-pointer ${
                                               (evt.slotsOriginator || 'carrier') === 'carrier'
                                                 ? 'bg-maroon-800 text-white border-maroon-900 shadow-2xs'
@@ -1148,7 +1209,7 @@ export function App() {
                                           </button>
                                           <button
                                             type="button"
-                                            onClick={() => handleSetSlotsOriginator(evt.id, 'pa')}
+                                            onClick={() => handleSetSlotsOriginator(evt.id, 'pa', evt.coordinationSequence || undefined)}
                                             className={`py-1 px-1 rounded-lg text-[10px] font-bold transition-all text-center border cursor-pointer ${
                                               evt.slotsOriginator === 'pa'
                                                 ? 'bg-tealBrand-700 text-white border-tealBrand-800 shadow-2xs'
@@ -1160,7 +1221,7 @@ export function App() {
                                           </button>
                                           <button
                                             type="button"
-                                            onClick={() => handleSetSlotsOriginator(evt.id, 'insured')}
+                                            onClick={() => handleSetSlotsOriginator(evt.id, 'insured', evt.coordinationSequence || undefined)}
                                             className={`py-1 px-1 rounded-lg text-[10px] font-bold transition-all text-center border cursor-pointer ${
                                               evt.slotsOriginator === 'insured'
                                                 ? 'bg-tealBrand-700 text-white border-tealBrand-800 shadow-2xs'
@@ -1352,13 +1413,21 @@ export function App() {
                                   </div>
                                 )}
 
-                                {/* Stage 2: PA Review (Pick 2 of 3) */}
-                                {stage.key === '2_pa_review' && (
+                                {/* Stage 2: Review (Pick 2 of 3) */}
+                                {stage.key === '2_pa_review' && (() => {
+                                  const seq = evt.coordinationSequence || (
+                                    evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+                                    evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+                                    ['carrier', 'pa', 'insured']
+                                  );
+                                  const p2Name = seq[1] === 'insured' ? 'Client' : seq[1] === 'pa' ? 'PA' : 'Carrier';
+                                  const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
+                                  return (
                                   <div className="flex flex-col justify-between flex-1">
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                         <span className="font-bold text-slate-700">
-                                          {isHistorical ? 'PA Selected 2 Options:' : 'PA: Select 2 options'}
+                                          {isHistorical ? `${p2Name} Selected 2 Options:` : `${p2Name}: Select 2 options`}
                                         </span>
                                         <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                           isHistorical 
@@ -1433,17 +1502,29 @@ export function App() {
                                       {isHistorical ? (
                                         <div className="h-8.5 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
                                           <Check className="w-3.5 h-3.5 text-tealBrand-700" />
-                                          <span>Forwarded to Client ✓</span>
+                                          <span>Forwarded to {p3Name} ✓</span>
                                         </div>
                                       ) : (
+                                        <>
                                         <button
                                           type="button"
                                           disabled={(paSelectedSlotIds[evt.id] || []).length !== 2 || paConfirmingEventId === evt.id}
                                           onClick={() => handlePaConfirmSlots(evt)}
                                           className="w-full bg-tealBrand-800 hover:bg-tealBrand-900 disabled:opacity-40 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors shadow-xs h-8.5 flex items-center justify-center gap-1.5 cursor-pointer"
                                         >
-                                          <span>{paConfirmingEventId === evt.id ? 'Saving...' : 'Confirm 2 & Send to Client ➔'}</span>
+                                          <span>{paConfirmingEventId === evt.id ? 'Saving...' : `Confirm 2 & Send to ${p3Name} ➔`}</span>
                                         </button>
+                                        <button
+                                          type="button"
+                                          disabled={skippingStage2EventId === evt.id || paConfirmingEventId === evt.id}
+                                          onClick={() => handleSkipToStage3(evt)}
+                                          className="w-full bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 py-1.5 px-3 rounded-lg text-xs font-bold transition-colors shadow-2xs h-8.5 flex items-center justify-center gap-1.5 cursor-pointer"
+                                          title={`Carrier y ${p2Name} ya están de acuerdo. Saltar revisión intermedia y enviar todas las opciones directo a elección de ${p3Name}.`}
+                                        >
+                                          <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
+                                          <span>{skippingStage2EventId === evt.id ? 'Saltando...' : `⚡ Fechas Acordadas / Saltar a ${p3Name} ➔`}</span>
+                                        </button>
+                                        </>
                                       )}
 
                                       <div className="flex items-center gap-1.5 h-8">
@@ -1461,41 +1542,37 @@ export function App() {
                                           <a
                                             href={getNextivaTelUri(paPhone) || '#'}
                                             className="flex-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
-                                            title={`Call PA ${formatPhoneNumber(paPhone)} via Nextiva`}
+                                            title={`Call ${p2Name} ${formatPhoneNumber(paPhone)} via Nextiva`}
                                           >
                                             <Phone className="w-3.5 h-3.5 text-tealBrand-700" />
-                                            <span>Call PA</span>
+                                            <span>Call {p2Name}</span>
                                           </a>
                                         ) : (
                                           <div className="flex-1 h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
-                                            No PA phone
+                                            No phone
                                           </div>
                                         )}
                                       </div>
 
-                                      {!isHistorical && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleReturnToPaReview(evt)}
-                                          disabled={revertingStageEventId === evt.id}
-                                          className="w-full h-7 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs mt-1"
-                                          title="Return to Stage 2 for PA to re-evaluate or change options"
-                                        >
-                                          <RotateCcw className="w-3 h-3 text-slate-500" />
-                                          <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to PA Review (Stage 2)'}</span>
-                                        </button>
-                                      )}
                                     </div>
                                   </div>
-                                )}
+                                  );
+                                })()}
 
-                                {/* Stage 3: Insured Selection (Pick 1 of 2) */}
-                                {stage.key === '3_insured_selection' && (
+                                {/* Stage 3: Selection / Approval (Pick 1 of 2) */}
+                                {stage.key === '3_insured_selection' && (() => {
+                                  const seq = evt.coordinationSequence || (
+                                    evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+                                    evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+                                    ['carrier', 'pa', 'insured']
+                                  );
+                                  const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
+                                  return (
                                   <div className="flex flex-col justify-between flex-1">
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                         <span className="font-bold text-slate-700">
-                                          {isHistorical ? 'Selected Option:' : 'Client must choose 1 option:'}
+                                          {isHistorical ? `${p3Name} Selected Option:` : `${p3Name} must choose 1 option:`}
                                         </span>
                                         <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                           isHistorical 
@@ -1554,7 +1631,7 @@ export function App() {
                                                     onClick={() => handleInsuredConfirmSlot(evt, s)}
                                                     className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-xs shrink-0 cursor-pointer"
                                                   >
-                                                    {insuredConfirmingSlotId === s.id ? '...' : 'Client Picked ➔'}
+                                                    {insuredConfirmingSlotId === s.id ? '...' : `${p3Name} Picked ➔`}
                                                   </button>
                                                 </div>
                                               ))}
@@ -1586,7 +1663,7 @@ export function App() {
                                       {isHistorical ? (
                                         <div className="h-8.5 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
                                           <Check className="w-3.5 h-3.5 text-emerald-700" />
-                                          <span>Client Confirmed & Scheduled ✓</span>
+                                          <span>{p3Name} Confirmed & Scheduled ✓</span>
                                         </div>
                                       ) : (
                                         insuredPhone ? (
@@ -1664,9 +1741,23 @@ export function App() {
                                           </>
                                         )}
                                       </div>
+
+                                      {!isHistorical && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReturnToPaReview(evt)}
+                                          disabled={revertingStageEventId === evt.id}
+                                          className="w-full h-7 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs mt-1"
+                                          title="Return to Stage 2 to re-evaluate options"
+                                        >
+                                          <RotateCcw className="w-3 h-3 text-slate-500" />
+                                          <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to Stage 2 Review'}</span>
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
-                                )}
+                                  );
+                                })()}
 
                                 {/* Stage 4: Confirmed */}
                                 {stage.key === '4_confirmed' && (
