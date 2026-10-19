@@ -740,12 +740,12 @@ export function ClaimDetailView({
 
       if (isDirectScheduleMode) {
         if (!directFinalDate) {
-          setEventError('Por favor indica la fecha confirmada para la cita directa.');
+          setEventError('Please enter the confirmed date for the direct appointment.');
           setSubmittingEvent(false);
           return;
         }
         if (!directFinalStartTime || !directFinalEndTime) {
-          setEventError('Por favor indica hora de inicio y fin para la cita directa.');
+          setEventError('Please enter start and end time for the direct appointment.');
           setSubmittingEvent(false);
           return;
         }
@@ -1553,12 +1553,12 @@ export function ClaimDetailView({
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-emerald-950 flex items-center gap-1">
                           <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                          <span>Datos de la Cita Confirmada</span>
+                          <span>Confirmed Appointment Details</span>
                         </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Fecha Confirmada *</label>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Confirmed Date *</label>
                           <input
                             type="date"
                             required={isDirectScheduleMode}
@@ -1568,7 +1568,7 @@ export function ClaimDetailView({
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Hora Inicio *</label>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Start Time *</label>
                           <input
                             type="time"
                             required={isDirectScheduleMode}
@@ -1578,7 +1578,7 @@ export function ClaimDetailView({
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Hora Fin *</label>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">End Time *</label>
                           <input
                             type="time"
                             required={isDirectScheduleMode}
@@ -1597,7 +1597,7 @@ export function ClaimDetailView({
                           className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                         />
                         <label htmlFor="directSendCalendarInvite" className="text-xs text-emerald-950 font-medium cursor-pointer">
-                          Enviar invitaciones de calendario (.ics) inmediatamente a los participantes
+                          Send calendar invitations (.ics) immediately to participants
                         </label>
                       </div>
                     </div>
@@ -1647,10 +1647,10 @@ export function ClaimDetailView({
                           onChange={(e) => setCoordinationStage(e.target.value as CoordinationStage)}
                           className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
                         >
-                          <option value="1_awaiting_carrier_slots">1. Esperando Fechas</option>
-                          <option value="2_pa_review">2. Revisión PA</option>
-                          <option value="3_insured_selection">3. Selección Asegurado</option>
-                          <option value="4_confirmed">4. Confirmado</option>
+                          <option value="1_awaiting_carrier_slots">1. Awaiting Dates</option>
+                          <option value="2_pa_review">2. PA Review</option>
+                          <option value="3_insured_selection">3. Insured Selection</option>
+                          <option value="4_confirmed">4. Confirmed</option>
                         </select>
                       </div>
                     )}
@@ -1658,16 +1658,16 @@ export function ClaimDetailView({
                     {!isDirectScheduleMode && (
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          ¿Quién debe dar las fechas primero? <span className="text-red-500">*</span>
+                          Who provides the initial dates first? <span className="text-red-500">*</span>
                         </label>
                         <select
                           value={slotsOriginator}
                           onChange={(e) => setSlotsOriginator(e.target.value as any)}
                           className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
                         >
-                          <option value="carrier">🏢 Aseguradora (Ajustador)</option>
+                          <option value="carrier">🏢 Carrier (Adjuster)</option>
                           <option value="pa">⚖️ Public Adjuster (PA)</option>
-                          <option value="insured">👤 Cliente / Asegurado</option>
+                          <option value="insured">👤 Client / Insured</option>
                         </select>
                       </div>
                     )}
@@ -2321,10 +2321,10 @@ export function ClaimDetailView({
                               type="button"
                               onClick={() => setDirectConfirmingEvent(evt)}
                               className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                              title="Confirmar fecha y hora fija de inmediato sin pasar por el funnel"
+                              title="Confirm fixed date and time immediately without going through the funnel"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>⚡ Confirmar Cita Directamente</span>
+                              <span>⚡ Confirm Appointment Directly</span>
                             </button>
                           )}
 
@@ -2332,15 +2332,15 @@ export function ClaimDetailView({
                             type="button"
                             onClick={() => setRecordingSlotsEvent(evt)}
                             className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                            title="Proponer fechas (Carrier, Cliente o PA) o registrar agenda abierta"
+                            title="Propose dates (Carrier, Client or PA) or record open availability"
                           >
                             <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
-                            <span>{evt.slots && evt.slots.length > 0 ? 'Modificar Fechas / Agenda' : '+ Proponer Fechas / Agenda'}</span>
+                            <span>{evt.slots && evt.slots.length > 0 ? 'Modify Dates / Availability' : '+ Propose Dates / Availability'}</span>
                           </button>
                         </div>
 
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-semibold text-slate-500">Etapa:</span>
+                          <span className="text-[11px] font-semibold text-slate-500">Stage:</span>
                           <select
                             value={evt.coordinationStage}
                             onChange={async (e) => {
@@ -2348,15 +2348,15 @@ export function ClaimDetailView({
                                 await schedulingService.updateEventStage(evt.id, e.target.value as CoordinationStage);
                                 onEventCreated();
                               } catch (err: any) {
-                                alert('Error al actualizar etapa: ' + err.message);
+                                alert('Error updating stage: ' + err.message);
                               }
                             }}
                             className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-maroon-800 cursor-pointer shadow-2xs"
                           >
-                            <option value="1_awaiting_carrier_slots">1. Esperando Fechas</option>
-                            <option value="2_pa_review">2. Revisión PA</option>
-                            <option value="3_insured_selection">3. Selección Asegurado</option>
-                            <option value="4_confirmed">4. Confirmado</option>
+                            <option value="1_awaiting_carrier_slots">1. Awaiting Dates</option>
+                            <option value="2_pa_review">2. PA Review</option>
+                            <option value="3_insured_selection">3. Insured Selection</option>
+                            <option value="4_confirmed">4. Confirmed</option>
                           </select>
                         </div>
                       </div>
@@ -2368,11 +2368,11 @@ export function ClaimDetailView({
                             <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse inline-block mt-1 shrink-0" />
                             <div>
                               <span className="text-xs font-bold text-emerald-950 block">
-                                🟢 Disponibilidad Total ("Cualquier día") - {evt.openAvailabilityActor === 'insured' ? 'Cliente / Asegurado' : evt.openAvailabilityActor === 'pa' ? 'Public Adjuster' : 'Aseguradora'}
+                                🟢 Open Availability ("Any day") - {evt.openAvailabilityActor === 'insured' ? 'Client / Insured' : evt.openAvailabilityActor === 'pa' ? 'Public Adjuster' : 'Carrier'}
                               </span>
                               <p className="text-[11px] text-emerald-800">
-                                {evt.openAvailabilityNotes ? `Detalle: "${evt.openAvailabilityNotes}". ` : ''}
-                                La cita puede ser confirmada directamente en cuanto se acuerde fecha con la contraparte.
+                                {evt.openAvailabilityNotes ? `Note: "${evt.openAvailabilityNotes}". ` : ''}
+                                The appointment can be confirmed directly as soon as a date is agreed with the counterpart.
                               </p>
                             </div>
                           </div>
@@ -2383,7 +2383,7 @@ export function ClaimDetailView({
                               className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs shrink-0 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Confirmar Fecha Acordada ➔</span>
+                              <span>Confirm Agreed Date ➔</span>
                             </button>
                           )}
                         </div>
@@ -2392,19 +2392,19 @@ export function ClaimDetailView({
                       {/* Step Indicator Bar */}
                       <div className="flex items-center justify-between text-[11px] font-semibold bg-slate-100 p-2 rounded-lg border border-slate-200">
                         <span className={`flex items-center gap-1 ${evt.coordinationStage === '1_awaiting_carrier_slots' ? 'text-maroon-800 font-bold' : 'text-slate-500'}`}>
-                          <span>1. Esperando Fechas</span>
+                          <span>1. Awaiting Dates</span>
                         </span>
                         <span className="text-slate-300">➔</span>
                         <span className={`flex items-center gap-1 ${evt.coordinationStage === '2_pa_review' ? 'text-tealBrand-800 font-bold' : 'text-slate-500'}`}>
-                          <span>2. Revisión PA</span>
+                          <span>2. PA Review</span>
                         </span>
                         <span className="text-slate-300">➔</span>
                         <span className={`flex items-center gap-1 ${evt.coordinationStage === '3_insured_selection' ? 'text-tealBrand-800 font-bold' : 'text-slate-500'}`}>
-                          <span>3. Selección / Visto Bueno</span>
+                          <span>3. Insured Choice</span>
                         </span>
                         <span className="text-slate-300">➔</span>
                         <span className={`flex items-center gap-1 ${evt.coordinationStage === '4_confirmed' ? 'text-emerald-700 font-bold' : 'text-slate-500'}`}>
-                          <span>4. Confirmado</span>
+                          <span>4. Confirmed</span>
                         </span>
                       </div>
 
@@ -2485,7 +2485,7 @@ export function ClaimDetailView({
                               className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shrink-0 shadow-xs flex items-center gap-1.5 cursor-pointer"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>⚡ Confirmar Cita Directa</span>
+                              <span>⚡ Direct Confirm Appointment</span>
                             </button>
                             <button
                               type="button"
@@ -2493,7 +2493,7 @@ export function ClaimDetailView({
                               className="px-3 py-1.5 bg-maroon-800 hover:bg-maroon-900 text-white rounded-lg text-xs font-bold transition-colors shrink-0 shadow-xs flex items-center gap-1.5 cursor-pointer"
                             >
                               <Calendar className="w-3.5 h-3.5" />
-                              <span>+ Proponer Fechas / Agenda</span>
+                              <span>+ Propose Dates / Availability</span>
                             </button>
                           </div>
                         </div>
@@ -2504,10 +2504,10 @@ export function ClaimDetailView({
                         <div className="p-3 bg-tealBrand-50/40 border border-tealBrand-200 rounded-xl space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-slate-900">Opciones Propuestas ({evt.slots.length})</span>
+                              <span className="text-xs font-bold text-slate-900">Proposed Options ({evt.slots.length})</span>
                               {evt.slots[0]?.proposedBy && (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-tealBrand-100 text-tealBrand-800 border border-tealBrand-200">
-                                  Propuesto por: {evt.slots[0].proposedBy === 'insured' ? 'Cliente' : evt.slots[0].proposedBy === 'pa' ? 'PA' : 'Carrier'}
+                                  Proposed by: {evt.slots[0].proposedBy === 'insured' ? 'Client' : evt.slots[0].proposedBy === 'pa' ? 'PA' : 'Carrier'}
                                 </span>
                               )}
                             </div>
@@ -2515,10 +2515,10 @@ export function ClaimDetailView({
                               type="button"
                               onClick={() => setRecordingSlotsEvent(evt)}
                               className="text-xs font-bold text-tealBrand-800 hover:text-tealBrand-900 bg-white hover:bg-slate-50 border border-tealBrand-300 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
-                              title="Modificar o agregar fechas propuestas"
+                              title="Modify or add proposed dates"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
-                              <span>Modificar Fechas</span>
+                              <span>Modify Dates</span>
                             </button>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -2526,9 +2526,9 @@ export function ClaimDetailView({
                               <div key={s.id || idx} className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs flex flex-col justify-between gap-2 shadow-2xs">
                                 <div>
                                   <div className="flex items-center justify-between">
-                                    <span className="font-bold text-slate-800 block">Opción #{idx + 1}: 📅 {s.slotDate}</span>
+                                    <span className="font-bold text-slate-800 block">Option #{idx + 1}: 📅 {s.slotDate}</span>
                                     {s.status === 'insured_chosen' && (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">Elegida</span>
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">Chosen</span>
                                     )}
                                   </div>
                                   <span className="text-[11px] text-slate-500 font-mono mt-0.5 block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
@@ -2550,10 +2550,10 @@ export function ClaimDetailView({
                                       }
                                     }}
                                     className="w-full py-1 px-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
-                                    title="Confirmar directamente esta opción como la cita definitiva"
+                                    title="Directly confirm this option as the final appointment"
                                   >
                                     <Check className="w-3 h-3" />
-                                    <span>Confirmar Esta Fecha ➔</span>
+                                    <span>Confirm This Date ➔</span>
                                   </button>
                                 )}
                               </div>

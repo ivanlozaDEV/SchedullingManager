@@ -16,78 +16,108 @@ serve(async (req) => {
   try {
     const { 
       eventId, 
-      cancelledBy, 
-      cancellationReason, 
+      cancelledBy: inputCancelledBy, 
+      cancellationReason: inputReason, 
       previousDate, 
       previousStartTime, 
-      previousEndTime 
+      previousEndTime,
+      isTest,
+      testEmail
     } = await req.json()
 
-    if (!eventId) throw new Error("eventId is required")
+    if (!eventId && !isTest) throw new Error("eventId is required")
 
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 1. Fetch Event, Claim, Insured, PA, Carrier Reps, and Participants
-    const { data: event, error: eventErr } = await supabaseAdmin
-      .from('events')
-      .select(`
-        *,
-        claim:claims (
+    let event = null
+    let claimNumber = ''
+    let insuredName = ''
+    let carrier = ''
+    let propertyAddress = ''
+    let eventType = ''
+    let cancelDate = ''
+    let cancelStartTime = ''
+    let cancelEndTime = ''
+    let cancelledBy = inputCancelledBy || 'Coordinator'
+    let cancellationReason = inputReason || 'Rescheduling requested'
+    let uniqueRecipients: { email: string, name: string }[] = []
+
+    if (isTest && (!eventId || eventId === 'test')) {
+      claimNumber = 'HO0526444000'
+      insuredName = 'Albert & Carmelita Kling'
+      carrier = 'Monarch National Insurance'
+      propertyAddress = '6539 Bellview Pines Rd, Pensacola, FL 32526'
+      eventType = 'Initial Inspection'
+      cancelDate = '2026-10-30'
+      cancelStartTime = '10:00'
+      cancelEndTime = '12:00'
+      cancelledBy = inputCancelledBy || 'Client Request'
+      cancellationReason = inputReason || 'Weather delay - Rescheduling needed'
+      uniqueRecipients = [{ email: testEmail || 'ivanloza88@gmail.com', name: 'Iván Loza (Test Preview)' }]
+    } else {
+      // 1. Fetch Event, Claim, Insured, PA, Carrier Reps, and Participants
+      const { data: dbEvent, error: eventErr } = await supabaseAdmin
+        .from('events')
+        .select(`
           *,
-          insured:insureds (*),
-          public_adjuster:public_adjusters (*),
-          carrier_reps:claim_carrier_representatives (
+          claim:claims (
             *,
-            carrier_rep:carrier_representatives (*)
+            insured:insureds (*),
+            public_adjuster:public_adjusters (*),
+            carrier_reps:claim_carrier_representatives (
+              *,
+              carrier_rep:carrier_representatives (*)
+            )
           )
-        )
-      `)
-      .eq('id', eventId)
-      .single()
+        `)
+        .eq('id', eventId)
+        .single()
 
-    if (eventErr || !event) throw eventErr || new Error("Event not found")
+      if (eventErr || !dbEvent) throw eventErr || new Error("Event not found")
+      event = dbEvent
 
-    // 2. Fetch event participants
-    const { data: participants } = await supabaseAdmin
-      .from('event_participants')
-      .select(`*, carrier_rep:carrier_representatives(email, name), external_actor:external_actors(email, name)`)
-      .eq('event_id', eventId)
+      // 2. Fetch event participants
+      const { data: participants } = await supabaseAdmin
+        .from('event_participants')
+        .select(`*, carrier_rep:carrier_representatives(email, name), external_actor:external_actors(email, name)`)
+        .eq('event_id', eventId)
 
-    const claim = event.claim
-    const insured = claim?.insured
-    const pa = claim?.public_adjuster
-    const claimNumber = claim?.claim_number || 'N/A'
-    const insuredName = insured?.name || 'Insured Client'
-    const carrier = claim?.carrier || 'Carrier'
-    const propertyAddress = claim?.property_address || event.location || 'N/A'
-    const eventType = event.event_type || 'Inspection'
+      const claim = event.claim
+      const insured = claim?.insured
+      const pa = claim?.public_adjuster
+      claimNumber = claim?.claim_number || 'N/A'
+      insuredName = insured?.name || 'Insured Client'
+      carrier = claim?.carrier || 'Carrier'
+      propertyAddress = claim?.property_address || event.location || 'N/A'
+      eventType = event.event_type || 'Inspection'
 
-    // Determine cancelled date/time info
-    const cancelDate = previousDate || event.final_date
-    const cancelStartTime = (previousStartTime || event.final_start_time || '').slice(0, 5)
-    const cancelEndTime = (previousEndTime || event.final_end_time || '').slice(0, 5)
+      // Determine cancelled date/time info
+      cancelDate = previousDate || event.final_date
+      cancelStartTime = (previousStartTime || event.final_start_time || '').slice(0, 5)
+      cancelEndTime = (previousEndTime || event.final_end_time || '').slice(0, 5)
 
-    // 3. Collect unique email recipients
-    const emailRecipients: { email: string, name: string }[] = []
-    if (insured?.email) emailRecipients.push({ email: insured.email, name: insuredName })
-    if (pa?.email) emailRecipients.push({ email: pa.email, name: pa?.name || 'Public Adjuster' })
+      // Collect all recipients
+      const recipients: { email: string, name: string }[] = []
+      if (insured?.email) recipients.push({ email: insured.email, name: insured.name || 'Insured Client' })
+      if (pa?.email) recipients.push({ email: pa.email, name: pa.name || 'Public Adjuster' })
+      for (const cr of (claim?.carrier_reps || [])) {
+        if (cr.carrier_rep?.email) recipients.push({ email: cr.carrier_rep.email, name: cr.carrier_rep.name || 'Carrier Rep' })
+      }
+      for (const p of (participants || [])) {
+        if (p.custom_email) recipients.push({ email: p.custom_email, name: p.custom_name || 'Participant' })
+        if (p.carrier_rep?.email) recipients.push({ email: p.carrier_rep.email, name: p.carrier_rep.name || 'Carrier Rep' })
+        if (p.external_actor?.email) recipients.push({ email: p.external_actor.email, name: p.external_actor.name || 'Specialist' })
+      }
 
-    // Carrier reps from claim
-    for (const cr of (claim?.carrier_reps || [])) {
-      if (cr.carrier_rep?.email) emailRecipients.push({ email: cr.carrier_rep.email, name: cr.carrier_rep.name })
+      if (isTest && testEmail) {
+        uniqueRecipients = [{ email: testEmail, name: 'Iván Loza (Test Preview)' }]
+      } else {
+        uniqueRecipients = Array.from(new Map(recipients.filter(r => r.email).map(item => [item.email, item])).values())
+      }
     }
-
-    // Additional event participants
-    for (const p of (participants || [])) {
-      if (p.custom_email) emailRecipients.push({ email: p.custom_email, name: p.custom_name || 'Participant' })
-      if (p.carrier_rep?.email) emailRecipients.push({ email: p.carrier_rep.email, name: p.carrier_rep.name })
-      if (p.external_actor?.email) emailRecipients.push({ email: p.external_actor.email, name: p.external_actor.name })
-    }
-
-    const uniqueRecipients = Array.from(new Map(emailRecipients.filter(r => r.email && r.email.includes('@')).map(i => [i.email.toLowerCase().trim(), i])).values())
 
     if (uniqueRecipients.length === 0) {
       console.log("No valid email recipients for cancellation notice.")
@@ -107,8 +137,8 @@ serve(async (req) => {
         const d = new Date(`${dateStr}T${timeStr || '00:00:00'}`)
         return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
       }
-      const dtStart = formatIcsDate(cancelDate, previousStartTime || event.final_start_time || '09:00:00')
-      const dtEnd = formatIcsDate(cancelDate, previousEndTime || event.final_end_time || '11:00:00')
+      const dtStart = formatIcsDate(cancelDate, previousStartTime || event?.final_start_time || '09:00:00')
+      const dtEnd = formatIcsDate(cancelDate, previousEndTime || event?.final_end_time || '11:00:00')
       const icsTitle = `CANCELLED: ${eventType} - Claim ${claimNumber}`
       const icsDesc = `${eventType} appointment has been cancelled and returned to rescheduling.\nReason: ${cancellationReason || 'Reschedule requested'}\nCancelled by: ${cancelledBy || 'General'}`
 
@@ -118,7 +148,7 @@ serve(async (req) => {
         'PRODID:-//IP Scheduling Manager//EN',
         'METHOD:CANCEL',
         'BEGIN:VEVENT',
-        `UID:${event.id}@ipscheduling.com`,
+        `UID:${event?.id || 'test-cancellation-event'}@ipscheduling.com`,
         `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'}`,
         `STATUS:CANCELLED`,
         `DTSTART:${dtStart}`,
@@ -181,6 +211,17 @@ admin@ipadjustinggroup.com | (772) 282-0862
       .content, .footer { width:100% !important; }
       img { max-width:100% !important; height:auto !important; }
     }
+    a[x-apple-data-detectors] {
+      color: #ffffff !important;
+      text-decoration: none !important;
+      font-size: inherit !important;
+      font-family: inherit !important;
+      font-weight: inherit !important;
+      line-height: inherit !important;
+    }
+    .footer a, .footer a span, .footer span {
+      color: #ffffff !important;
+    }
   </style>
 </head>
 <body style="margin:0; padding:0; background-color:#d6d9e0; font-family: Arial, Helvetica, sans-serif;">
@@ -190,11 +231,11 @@ admin@ipadjustinggroup.com | (772) 282-0862
       <td align="center" style="padding: 25px 0;">
 
         <!-- Container (600px) -->
-        <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="border-radius:8px; overflow:hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+        <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#F0F0F0" style="border-radius:8px; overflow:hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12); background-color:#F0F0F0;">
 
           <!-- BRAND HEADER -->
           <tr>
-            <td align="center" bgcolor="#ffffff" style="padding:22px 20px 18px 20px; border-bottom:3px solid #dc2626;">
+            <td align="center" bgcolor="#F0F0F0" style="padding:22px 20px 18px 20px; border-bottom:3px solid #dc2626; background-color:#F0F0F0;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center">
@@ -291,9 +332,18 @@ admin@ipadjustinggroup.com | (772) 282-0862
               </p>
 
               <!-- Address and Contact -->
-              <p style="margin:20px 0 10px 0; font-size:13px;">
-                1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986<br>
-                admin@ipadjustinggroup.com | (772) 282-0862
+              <p style="margin:20px 0 10px 0; font-size:13px; color:#ffffff !important; line-height:1.6;">
+                <a href="https://maps.google.com/?q=1729+NW+Saint+Lucie+West+Blvd+%231269,+Port+Saint+Lucie+FL,+34986" target="_blank" style="color:#ffffff !important; text-decoration:none !important; font-weight:normal;">
+                  <span style="color:#ffffff !important; text-decoration:none !important;">1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986</span>
+                </a>
+                <br>
+                <a href="mailto:admin@ipadjustinggroup.com" style="color:#ffffff !important; text-decoration:underline !important; font-weight:normal;">
+                  <span style="color:#ffffff !important; text-decoration:underline !important;">admin@ipadjustinggroup.com</span>
+                </a>
+                <span style="color:#ffffff !important;"> | </span>
+                <a href="tel:17722820862" style="color:#ffffff !important; text-decoration:none !important; font-weight:normal;">
+                  <span style="color:#ffffff !important; text-decoration:none !important;">(772) 282-0862</span>
+                </a>
               </p>
 
               <!-- Legal text -->
@@ -334,7 +384,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
     const mailOptions = {
       from: `"IP Adjusting Group" <${smtpUser}>`,
       to: recipientList,
-      subject: subject,
+      subject: `${isTest ? '[TEST PREVIEW] ' : ''}${subject}`,
       text: plainText,
       html: htmlBody,
       attachments: attachments
@@ -343,14 +393,15 @@ admin@ipadjustinggroup.com | (772) 282-0862
     const info = await transporter.sendMail(mailOptions)
     console.log("Cancellation notice successfully sent to:", recipientList, "Message ID:", info.messageId)
 
-    // Log to coordination_logs
-    await supabaseAdmin.from('coordination_logs').insert({
-      event_id: eventId,
-      contact_target: 'all_parties',
-      contact_target_name: 'All Participants',
-      channel: 'email',
-      notes: `📧 Cancellation notice email sent to: [${recipientList}]. Reason: ${cancellationReason || 'Rescheduling requested'}.`
-    })
+    if (!isTest) {
+      await supabaseAdmin.from('coordination_logs').insert({
+        event_id: eventId,
+        contact_target: 'all_parties',
+        contact_target_name: 'All Participants',
+        channel: 'email',
+        notes: `📧 Cancellation notice email sent to: [${recipientList}]. Reason: ${cancellationReason || 'Rescheduling requested'}.`
+      })
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 

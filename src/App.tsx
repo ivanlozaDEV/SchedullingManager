@@ -294,21 +294,21 @@ export function App() {
 
   const handleSetSlotsOriginator = async (eventId: string, originator: 'carrier' | 'pa' | 'insured') => {
     try {
-      await schedulingService.setEventSlotsOriginator(eventId, originator, authRole || 'Coordinador');
+      await schedulingService.setEventSlotsOriginator(eventId, originator, authRole || 'Coordinator');
       await loadData();
     } catch (err: any) {
       console.error('Failed to update slots originator:', err);
-      alert('Error al actualizar quién propone las fechas: ' + (err.message || 'Error desconocido'));
+      alert('Error updating date options proposer: ' + (err.message || 'Unknown error'));
     }
   };
 
   const handleToggleEventTimezone = async (eventId: string, newTz: FloridaTimezone) => {
     try {
-      await schedulingService.setEventTimezone(eventId, newTz, authRole || 'Coordinador');
+      await schedulingService.setEventTimezone(eventId, newTz, authRole || 'Coordinator');
       await loadData();
     } catch (err: any) {
       console.error('Failed to update event timezone:', err);
-      alert('Error al cambiar zona horaria: ' + (err.message || 'Error desconocido'));
+      alert('Error changing timezone: ' + (err.message || 'Unknown error'));
     }
   };
 
@@ -334,36 +334,36 @@ export function App() {
     }
   };
 
-  // Pipeline Stages (Modelo Flexible)
+  // Pipeline Stages (Flexible Model)
   const stages: { key: CoordinationStage; title: string; desc: string; badgeBg: string; badgeText: string; headerBorder: string }[] = [
     { 
       key: '1_awaiting_carrier_slots', 
-      title: '1. Esperando Fechas', 
-      desc: 'Carrier, Cliente o PA ofrecen opciones', 
+      title: '1. Awaiting Dates', 
+      desc: 'Carrier, Client, or PA offer date options', 
       badgeBg: 'bg-amber-100', 
       badgeText: 'text-amber-800',
       headerBorder: 'border-amber-400'
     },
     { 
       key: '2_pa_review', 
-      title: '2. Revisión PA', 
-      desc: 'PA valida ventanas de inspección', 
+      title: '2. PA Review', 
+      desc: 'PA validates inspection windows', 
       badgeBg: 'bg-tealBrand-100', 
       badgeText: 'text-tealBrand-800',
       headerBorder: 'border-tealBrand-500'
     },
     { 
       key: '3_insured_selection', 
-      title: '3. Selección / Aprobación', 
-      desc: 'Cliente o Aseguradora eligen/validan', 
+      title: '3. Selection / Approval', 
+      desc: 'Client or Carrier chooses/validates', 
       badgeBg: 'bg-maroon-100', 
       badgeText: 'text-maroon-800',
       headerBorder: 'border-maroon-700'
     },
     { 
       key: '4_confirmed', 
-      title: '4. Confirmado', 
-      desc: 'Cita cerrada y en calendario', 
+      title: '4. Confirmed', 
+      desc: 'Appointment locked on calendar', 
       badgeBg: 'bg-emerald-100', 
       badgeText: 'text-emerald-800',
       headerBorder: 'border-emerald-500'
@@ -416,12 +416,12 @@ export function App() {
   const unassignedClaimsCount = claims.filter(c => !events.some(e => e.claimId === c.id)).length;
 
   const filteredClaims = claims.filter(c => {
-    // 1. Filtrar por estado de asignación de evento
+    // 1. Filter by event assignment status
     const hasEvent = events.some(e => e.claimId === c.id);
     if (claimsEventFilter === 'unassigned' && hasEvent) return false;
     if (claimsEventFilter === 'assigned' && !hasEvent) return false;
 
-    // 2. Filtrar por búsqueda de texto
+    // 2. Filter by search query text
     const q = searchQuery.toLowerCase();
     return (
       c.claimNumber.toLowerCase().includes(q) ||
@@ -487,7 +487,7 @@ export function App() {
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Clean Light Header */}
       <header className="border-b border-slate-200 bg-white sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
+        <div className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 h-18 flex items-center justify-between">
           
           {/* Brand Logo & Name */}
           <div className="flex items-center space-x-3.5">
@@ -506,19 +506,19 @@ export function App() {
 
           {/* Live Florida & Ecuador Operating Clocks for Coordinators & VAs */}
           <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] shadow-2xs font-mono">
-            <div className="flex items-center gap-1.5" title="Hora actual en Ecuador (Coordinadores / VAs en Guayaquil y Quito)">
+            <div className="flex items-center gap-1.5" title="Current time in Ecuador (Coordinators / VAs in Guayaquil and Quito)">
               <span className="text-xs">🇪🇨</span>
               <span className="text-slate-500 font-sans font-semibold text-[10px]">Ecuador:</span>
               <strong className="text-slate-800 font-bold">{liveTimes.ecuador}</strong>
             </div>
             <span className="text-slate-300">|</span>
-            <div className="flex items-center gap-1.5" title="Hora actual en Miami / South FL (Eastern Time - PAs y Oficina)">
+            <div className="flex items-center gap-1.5" title="Current time in Miami / South FL (Eastern Time - PAs and Office)">
               <span className="text-xs">🌴</span>
               <span className="text-slate-500 font-sans font-semibold text-[10px]">Miami (ET):</span>
               <strong className="text-tealBrand-800 font-bold">{liveTimes.miami}</strong>
             </div>
             <span className="text-slate-300">|</span>
-            <div className="flex items-center gap-1.5" title="Hora actual en Pensacola / Panhandle (Central Time - Reclamos del Norte)">
+            <div className="flex items-center gap-1.5" title="Current time in Pensacola / Panhandle (Central Time - Northern Claims)">
               <span className="text-xs">🏖️</span>
               <span className="text-slate-500 font-sans font-semibold text-[10px]">Pensacola (CT):</span>
               <strong className="text-amber-800 font-bold">{liveTimes.pensacola}</strong>
@@ -585,7 +585,7 @@ export function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-5">
+      <main className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 py-6 flex-1 space-y-5">
         
         {selectedClaim ? (
           <ClaimDetailView
@@ -642,9 +642,9 @@ export function App() {
               {unassignedClaimsCount > 0 && (
                 <span 
                   className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full border border-amber-300"
-                  title={`${unassignedClaimsCount} claims sin evento asignado`}
+                  title={`${unassignedClaimsCount} claims without assigned event`}
                 >
-                  {unassignedClaimsCount} sin evento
+                  {unassignedClaimsCount} unassigned
                 </span>
               )}
             </button>
@@ -781,7 +781,7 @@ export function App() {
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-500 truncate max-w-[170px]">{stage.desc}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{stage.desc}</p>
                       </div>
                       <div className="flex items-center gap-1">
                         <span 
@@ -901,7 +901,7 @@ export function App() {
                                   <div className="flex items-center justify-between mt-1">
                                     <h4 className="text-xs font-bold text-slate-900 leading-snug">{evt.eventType}</h4>
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] px-2 py-0.5 rounded bg-tealBrand-50 text-tealBrand-800 font-semibold border border-tealBrand-200 truncate max-w-[110px]">
+                                      <span className="text-[10px] px-2 py-0.5 rounded bg-tealBrand-50 text-tealBrand-800 font-semibold border border-tealBrand-200 truncate max-w-[150px]" title={evt.claim?.carrier}>
                                         {evt.claim?.carrier}
                                       </span>
                                       {/* Timezone Badge & Quick 1-Click Toggle */}
@@ -917,7 +917,7 @@ export function App() {
                                             ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
                                             : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
                                         }`}
-                                        title={`Zona Horaria: ${evt.timezone === 'CT' ? 'Central Time (Pensacola)' : 'Eastern Time (Miami)'}. Clic para alternar.`}
+                                        title={`Timezone: ${evt.timezone === 'CT' ? 'Central Time (Pensacola)' : 'Eastern Time (Miami)'}. Click to toggle.`}
                                       >
                                         <span>{evt.timezone === 'CT' ? '🏖️ CT' : '🌴 ET'}</span>
                                       </button>
@@ -928,7 +928,7 @@ export function App() {
                                     <div className="mt-1">
                                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 w-fit">
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                                        <span>{evt.openAvailabilityActor === 'insured' ? 'Cliente' : evt.openAvailabilityActor === 'pa' ? 'PA' : 'Carrier'}: Cualquier Día</span>
+                                        <span>{evt.openAvailabilityActor === 'insured' ? 'Client' : evt.openAvailabilityActor === 'pa' ? 'PA' : 'Carrier'}: Any Day</span>
                                       </span>
                                     </div>
                                   )}
@@ -968,7 +968,7 @@ export function App() {
                                       )}
                                     </div>
                                     <p className="text-[11px] text-slate-600 leading-tight line-clamp-1">
-                                      📅 <strong>Disponibilidad:</strong> {evt.claim.insured.generalAvailability || 'No registrada'}
+                                      📅 <strong>Availability:</strong> {evt.claim.insured.generalAvailability || 'Not recorded'}
                                     </p>
                                   </div>
                                 )}
@@ -991,7 +991,7 @@ export function App() {
                                     </span>
                                   ) : (
                                     <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-medium">
-                                      Sin PA asignado
+                                      No PA assigned
                                     </span>
                                   )}
 
@@ -1014,16 +1014,16 @@ export function App() {
                                 {/* Stage 1: Awaiting Carrier Slots OR Historical Dates */}
                                 {stage.key === '1_awaiting_carrier_slots' && (
                                   <div className="flex flex-col justify-between flex-1">
-                                    {/* Selector Rápido: ¿Quién Propone las Fechas? */}
+                                    {/* Quick Selector: Who Proposes the Dates? */}
                                     {!isHistorical && (
                                       <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 mb-2.5 space-y-1.5 shadow-2xs">
                                         <div className="flex items-center justify-between text-[11px]">
                                           <span className="font-bold text-slate-700 flex items-center gap-1">
                                             <User className="w-3 h-3 text-maroon-800" />
-                                            <span>¿Quién da las fechas?</span>
+                                            <span>Who offers dates?</span>
                                           </span>
                                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-300 text-tealBrand-800 uppercase">
-                                            {evt.slotsOriginator === 'pa' ? '⚖️ PA' : evt.slotsOriginator === 'insured' ? '👤 Cliente' : '🏢 Carrier'}
+                                            {evt.slotsOriginator === 'pa' ? '⚖️ PA' : evt.slotsOriginator === 'insured' ? '👤 Client' : '🏢 Carrier'}
                                           </span>
                                         </div>
                                         <div className="grid grid-cols-3 gap-1">
@@ -1035,7 +1035,7 @@ export function App() {
                                                 ? 'bg-maroon-800 text-white border-maroon-900 shadow-2xs'
                                                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                                             }`}
-                                            title="La Aseguradora / Ajustador propone las fechas"
+                                            title="Insurance Carrier / Adjuster proposes the dates"
                                           >
                                             🏢 Carrier
                                           </button>
@@ -1047,7 +1047,7 @@ export function App() {
                                                 ? 'bg-tealBrand-700 text-white border-tealBrand-800 shadow-2xs'
                                                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                                             }`}
-                                            title="El Public Adjuster propone primero sus fechas disponibles"
+                                            title="Public Adjuster proposes available dates first"
                                           >
                                             ⚖️ PA
                                           </button>
@@ -1059,9 +1059,9 @@ export function App() {
                                                 ? 'bg-tealBrand-700 text-white border-tealBrand-800 shadow-2xs'
                                                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                                             }`}
-                                            title="El Cliente / Asegurado propone primero sus fechas disponibles"
+                                            title="Client / Insured proposes available dates first"
                                           >
-                                            👤 Cliente
+                                            👤 Client
                                           </button>
                                         </div>
                                       </div>
@@ -1074,17 +1074,17 @@ export function App() {
                                           <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                             <span className="font-bold text-slate-700">
                                               {evt.slotsOriginator === 'pa'
-                                                ? 'Fechas Ofrecidas por el PA:'
+                                                ? 'Dates Offered by PA:'
                                                 : evt.slotsOriginator === 'insured'
-                                                ? 'Fechas Ofrecidas por el Cliente:'
-                                                : 'Opciones Ofrecidas por Carrier:'}
+                                                ? 'Dates Offered by Client:'
+                                                : 'Carrier Offered Options:'}
                                             </span>
                                             <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                               isHistorical 
                                                 ? 'text-slate-600 bg-slate-100 border-slate-300' 
                                                 : 'text-tealBrand-800 bg-tealBrand-50 border-tealBrand-200'
                                             }`}>
-                                              {isHistorical ? '✓ Pasado' : `${evt.slots?.length || 0} Fechas`}
+                                              {isHistorical ? '✓ Passed' : `${evt.slots?.length || 0} Dates`}
                                             </span>
                                           </div>
 
@@ -1104,7 +1104,7 @@ export function App() {
                                                   </span>
                                                 </div>
                                                 <span className="text-[10px] font-bold text-tealBrand-700 bg-tealBrand-50 px-2 py-0.5 rounded border border-tealBrand-200">
-                                                  Opción #{idx + 1}
+                                                  Option #{idx + 1}
                                                 </span>
                                               </div>
                                             ))}
@@ -1121,10 +1121,10 @@ export function App() {
                                                 ? 'bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 shadow-2xs font-semibold'
                                                 : 'bg-tealBrand-800 hover:bg-tealBrand-900 text-white shadow-xs'
                                             }`}
-                                            title="Modificar las fechas ofrecidas"
+                                            title="Modify offered dates"
                                           >
                                             <Pencil className="w-3.5 h-3.5 text-slate-500" />
-                                            <span>Modificar Opciones de Fecha</span>
+                                            <span>Modify Date Options</span>
                                           </button>
 
                                           {/* Dynamic Contact Calling Button */}
@@ -1132,10 +1132,10 @@ export function App() {
                                             const originator = evt.slotsOriginator || 'carrier';
                                             const targetPhone = originator === 'pa' ? paPhone : originator === 'insured' ? insuredPhone : adjusterPhone;
                                             const targetLabel = originator === 'pa'
-                                              ? `Llamar al PA (${paParticipant?.publicAdjuster?.name?.split(' ')[0] || 'PA'})`
+                                              ? `Call PA (${paParticipant?.publicAdjuster?.name?.split(' ')[0] || 'PA'})`
                                               : originator === 'insured'
-                                              ? `Llamar al Cliente (${evt.claim?.insured?.name?.split(' ')[0] || 'Cliente'})`
-                                              : 'Llamar al Ajustador';
+                                              ? `Call Client (${evt.claim?.insured?.name?.split(' ')[0] || 'Client'})`
+                                              : 'Call Adjuster';
 
                                             if (!targetPhone) return null;
 
@@ -1143,7 +1143,7 @@ export function App() {
                                               <a
                                                 href={getNextivaTelUri(targetPhone) || '#'}
                                                 className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
-                                                title={`Llamar vía Nextiva: ${formatPhoneNumber(targetPhone)}`}
+                                                title={`Call via Nextiva: ${formatPhoneNumber(targetPhone)}`}
                                               >
                                                 <Phone className="w-3.5 h-3.5 text-tealBrand-800 shrink-0" />
                                                 <span className="truncate">{targetLabel}: <strong className="font-mono text-slate-900">{formatPhoneNumber(targetPhone)}</strong></span>
@@ -1159,10 +1159,10 @@ export function App() {
                                           <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                             <span className="font-bold text-amber-800">
                                               {evt.slotsOriginator === 'pa'
-                                                ? 'Esperando Fechas del PA'
+                                                ? 'Awaiting Dates from PA'
                                                 : evt.slotsOriginator === 'insured'
-                                                ? 'Esperando Fechas del Cliente'
-                                                : 'Esperando Fechas de Aseguradora'}
+                                                ? 'Awaiting Dates from Client'
+                                                : 'Awaiting Carrier Dates'}
                                             </span>
                                             <span className="font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                                               0 / 3
@@ -1177,11 +1177,11 @@ export function App() {
                                                 className="p-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/30 text-xs flex items-center justify-between min-h-[44px]"
                                               >
                                                 <div>
-                                                  <span className="font-medium text-amber-900 block">Opción #{optNum}</span>
-                                                  <span className="text-[10px] text-amber-600 block">Pendiente de fecha</span>
+                                                  <span className="font-medium text-amber-900 block">Option #{optNum}</span>
+                                                  <span className="text-[10px] text-amber-600 block">Pending date</span>
                                                 </div>
                                                 <span className="text-[10px] font-bold text-amber-700 bg-white px-2 py-0.5 rounded border border-amber-200">
-                                                  Pendiente
+                                                  Pending
                                                 </span>
                                               </div>
                                             ))}
@@ -1194,20 +1194,20 @@ export function App() {
                                             type="button"
                                             onClick={() => setRecordingSlotsEvent(evt)}
                                             className="w-full bg-maroon-800 hover:bg-maroon-900 text-white py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-98"
-                                            title="Proponer opciones de fecha o registrar disponibilidad"
+                                            title="Propose date options or register availability"
                                           >
                                             <Calendar className="w-3.5 h-3.5" />
-                                            <span>+ Proponer Fechas / Agenda</span>
+                                            <span>+ Propose Dates / Availability</span>
                                           </button>
 
                                           <button
                                             type="button"
                                             onClick={() => setDirectConfirmingEvent(evt)}
                                             className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-98"
-                                            title="Confirmar cita directamente sin pasar por el funnel"
+                                            title="Directly confirm appointment without funnel"
                                           >
                                             <CheckCircle2 className="w-3.5 h-3.5" />
-                                            <span>⚡ Confirmar Cita Directa</span>
+                                            <span>⚡ Direct Confirm Appointment</span>
                                           </button>
 
                                           {/* Dynamic Contact Calling Button */}
@@ -1215,15 +1215,15 @@ export function App() {
                                             const originator = evt.slotsOriginator || 'carrier';
                                             const targetPhone = originator === 'pa' ? paPhone : originator === 'insured' ? insuredPhone : adjusterPhone;
                                             const targetLabel = originator === 'pa'
-                                              ? `Llamar al PA (${paParticipant?.publicAdjuster?.name?.split(' ')[0] || 'PA'})`
+                                              ? `Call PA (${paParticipant?.publicAdjuster?.name?.split(' ')[0] || 'PA'})`
                                               : originator === 'insured'
-                                              ? `Llamar al Cliente (${evt.claim?.insured?.name?.split(' ')[0] || 'Cliente'})`
-                                              : 'Llamar al Ajustador';
+                                              ? `Call Client (${evt.claim?.insured?.name?.split(' ')[0] || 'Client'})`
+                                              : 'Call Adjuster';
 
                                             if (!targetPhone) {
                                               return (
                                                 <div className="text-[11px] text-slate-400 text-center italic py-0.5">
-                                                  Sin teléfono registrado para {originator === 'pa' ? 'PA' : originator === 'insured' ? 'Cliente' : 'Ajustador'}
+                                                  No phone registered for {originator === 'pa' ? 'PA' : originator === 'insured' ? 'Client' : 'Adjuster'}
                                                 </div>
                                               );
                                             }
@@ -1232,7 +1232,7 @@ export function App() {
                                               <a
                                                 href={getNextivaTelUri(targetPhone) || '#'}
                                                 className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-2xs group"
-                                                title={`Llamar vía Nextiva: ${formatPhoneNumber(targetPhone)}`}
+                                                title={`Call via Nextiva: ${formatPhoneNumber(targetPhone)}`}
                                               >
                                                 <Phone className="w-3.5 h-3.5 text-tealBrand-700 group-hover:scale-110 transition-transform shrink-0" />
                                                 <span className="truncate">{targetLabel}: <strong className="font-mono text-slate-900">{formatPhoneNumber(targetPhone)}</strong></span>
@@ -1375,14 +1375,14 @@ export function App() {
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                         <span className="font-bold text-slate-700">
-                                          {isHistorical ? 'Opción Seleccionada:' : 'Cliente debe elegir 1 opción:'}
+                                          {isHistorical ? 'Selected Option:' : 'Client must choose 1 option:'}
                                         </span>
                                         <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                           isHistorical 
                                             ? 'text-emerald-800 bg-emerald-50 border-emerald-200' 
                                             : 'text-purple-800 bg-purple-50 border-purple-200'
                                         }`}>
-                                          {isHistorical ? '✓ Confirmado' : '1 de 2'}
+                                          {isHistorical ? '✓ Confirmed' : '1 of 2'}
                                         </span>
                                       </div>
 
@@ -1408,7 +1408,7 @@ export function App() {
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                                                   isChosen ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-100 text-slate-400 border-slate-200'
                                                 }`}>
-                                                  {isChosen ? '✓ Elegida' : 'No elegida'}
+                                                  {isChosen ? '✓ Selected' : 'Not selected'}
                                                 </span>
                                               </div>
                                             );
@@ -1434,7 +1434,7 @@ export function App() {
                                                     onClick={() => handleInsuredConfirmSlot(evt, s)}
                                                     className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-xs shrink-0 cursor-pointer"
                                                   >
-                                                    {insuredConfirmingSlotId === s.id ? '...' : 'Cliente Eligió ➔'}
+                                                    {insuredConfirmingSlotId === s.id ? '...' : 'Client Picked ➔'}
                                                   </button>
                                                 </div>
                                               ))}
@@ -1445,14 +1445,14 @@ export function App() {
                                                 <div
                                                   key={s.id}
                                                   className="p-2 rounded-lg border border-slate-200 bg-slate-50/50 text-xs flex items-center justify-between gap-1 min-h-[44px] opacity-60"
-                                                  title="Opción no seleccionada por el PA"
+                                                  title="Option not selected by PA"
                                                 >
                                                   <div>
                                                     <span className="font-medium text-slate-500 block">📅 {s.slotDate}</span>
                                                     <span className="text-[10px] text-slate-400 font-mono block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
                                                   </div>
                                                   <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                                    No elegida por PA
+                                                    Not picked by PA
                                                   </span>
                                                 </div>
                                               ))}
@@ -1466,21 +1466,21 @@ export function App() {
                                       {isHistorical ? (
                                         <div className="h-8.5 w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg flex items-center justify-center text-xs font-semibold gap-1.5 shadow-2xs">
                                           <Check className="w-3.5 h-3.5 text-emerald-700" />
-                                          <span>Cliente Confirmó & Agendado ✓</span>
+                                          <span>Client Confirmed & Scheduled ✓</span>
                                         </div>
                                       ) : (
                                         insuredPhone ? (
                                           <a
                                             href={getNextivaTelUri(insuredPhone) || '#'}
                                             className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
-                                            title={`Llamar cliente vía Nextiva: ${formatPhoneNumber(insuredPhone)}`}
+                                            title={`Call client via Nextiva: ${formatPhoneNumber(insuredPhone)}`}
                                           >
                                             <Phone className="w-3.5 h-3.5 text-tealBrand-700 shrink-0" />
-                                            <span className="truncate">Llamar al Cliente: <strong className="font-mono text-slate-900">{formatPhoneNumber(insuredPhone)}</strong></span>
+                                            <span className="truncate">Call Client: <strong className="font-mono text-slate-900">{formatPhoneNumber(insuredPhone)}</strong></span>
                                           </a>
                                         ) : (
                                           <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
-                                            Sin teléfono de cliente registrado
+                                            No client phone registered
                                           </div>
                                         )
                                       )}
@@ -1491,10 +1491,10 @@ export function App() {
                                           <a
                                             href={getNextivaTelUri(insuredPhone) || '#'}
                                             className="w-full bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs h-8"
-                                            title={`Llamar cliente vía Nextiva: ${formatPhoneNumber(insuredPhone)}`}
+                                            title={`Call client via Nextiva: ${formatPhoneNumber(insuredPhone)}`}
                                           >
                                             <Phone className="w-3.5 h-3.5 text-slate-500" />
-                                            <span className="truncate">Llamar Cliente ({formatPhoneNumber(insuredPhone)})</span>
+                                            <span className="truncate">Call Client ({formatPhoneNumber(insuredPhone)})</span>
                                           </a>
                                         ) : (
                                           <>
@@ -1503,7 +1503,7 @@ export function App() {
                                               className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 py-1 px-2 rounded-lg transition-colors h-8"
                                             >
                                               {copiedId === evt.id ? <Check className="w-3.5 h-3.5 text-tealBrand-700" /> : <Copy className="w-3.5 h-3.5" />}
-                                              <span>{copiedId === evt.id ? '¡Copiado!' : 'Copiar'}</span>
+                                              <span>{copiedId === evt.id ? 'Copied!' : 'Copy'}</span>
                                             </button>
 
                                             <button
@@ -1512,7 +1512,7 @@ export function App() {
                                                 if (phone) window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(messageText)}`, '_blank');
                                               }}
                                               className="h-8 px-2.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 transition-colors flex items-center justify-center"
-                                              title="Abrir WhatsApp directamente"
+                                              title="Open WhatsApp directly"
                                             >
                                               <Send className="w-3.5 h-3.5 text-tealBrand-700" />
                                             </button>
@@ -1522,7 +1522,7 @@ export function App() {
                                               onClick={() => handleSendInsuredEmail(evt.id)}
                                               disabled={sendingEmailEventId === evt.id}
                                               className="h-8 px-2.5 rounded-lg bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-300 text-tealBrand-800 transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold"
-                                              title="Enviar o reenviar invitación por email al Asegurado"
+                                              title="Send or resend email invitation to Insured"
                                             >
                                               <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
                                               <span>{sendingEmailEventId === evt.id ? '...' : 'Email'}</span>
@@ -1539,16 +1539,16 @@ export function App() {
                                   <div className="flex flex-col justify-between flex-1">
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
-                                        <span className="font-bold text-emerald-800">Inspección Agendada</span>
+                                        <span className="font-bold text-emerald-800">Inspection Scheduled</span>
                                         <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                          ✓ Agendado
+                                          ✓ Scheduled
                                         </span>
                                       </div>
 
                                       <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1 min-h-[120px] flex flex-col justify-center">
                                         <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
                                           <Check className="w-4 h-4 text-emerald-600" />
-                                          <span>Cita Confirmada</span>
+                                          <span>Appointment Confirmed</span>
                                         </div>
                                         <p className="text-[12px] text-emerald-800 font-bold pl-5.5">
                                           📅 {evt.finalDate}
@@ -1557,7 +1557,7 @@ export function App() {
                                           ⏰ {formatTimeRangeWithDualTimezone(evt.finalStartTime || '09:00', evt.finalEndTime || '11:00', evt.timezone || 'ET').displayFull}
                                         </p>
                                         <p className="text-[10px] text-emerald-700 pl-5.5 pt-1 font-medium">
-                                          Todas las partes confirmadas
+                                          All parties confirmed
                                         </p>
                                       </div>
                                     </div>
@@ -1566,16 +1566,16 @@ export function App() {
                                     <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
                                       <div className="h-8.5 w-full bg-emerald-700 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 shadow-xs">
                                         <Check className="w-4 h-4" />
-                                        <span>Inspección Agendada ✓</span>
+                                        <span>Inspection Scheduled ✓</span>
                                       </div>
                                       <button
                                         type="button"
                                         onClick={() => setEventToReset(evt)}
                                         className="w-full h-8 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                                        title="Cancelar cita y regresar evento a la primera etapa"
+                                        title="Cancel appointment and return event to first stage"
                                       >
                                         <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
-                                        <span>Cancelar / Reiniciar Flujo</span>
+                                        <span>Cancel / Reset Flow</span>
                                       </button>
                                     </div>
                                   </div>
@@ -1598,13 +1598,13 @@ export function App() {
         {/* ======================================================== */}
         {viewMode === 'claims' && (
           <div className="space-y-4">
-            {/* Claims Toolbar: Filtros de eventos y Switch de diseño Lista/Tarjetas */}
+            {/* Claims Toolbar: Event filters and List/Grid layout switch */}
             <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-              {/* Filtros por asignación de evento */}
+              {/* Event assignment filters */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1.5">
                   <Filter className="w-3.5 h-3.5 text-slate-400" />
-                  Filtrar:
+                  Filter:
                 </span>
                 <button
                   type="button"
@@ -1615,7 +1615,7 @@ export function App() {
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  Todos ({claims.length})
+                  All ({claims.length})
                 </button>
                 <button
                   type="button"
@@ -1629,7 +1629,7 @@ export function App() {
                   }`}
                 >
                   <AlertTriangle className={`w-3.5 h-3.5 ${claimsEventFilter === 'unassigned' ? 'text-white' : 'text-amber-600'}`} />
-                  <span>Sin evento asignado ({unassignedClaimsCount})</span>
+                  <span>Unassigned ({unassignedClaimsCount})</span>
                 </button>
                 <button
                   type="button"
@@ -1640,11 +1640,11 @@ export function App() {
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  Con evento activo ({claims.length - unassignedClaimsCount})
+                  Active Event ({claims.length - unassignedClaimsCount})
                 </button>
               </div>
 
-              {/* Botones de Vista: Lista vs Tarjetas */}
+              {/* View Buttons: List vs Grid */}
               <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 self-end md:self-auto">
                 <button
                   type="button"
@@ -1654,10 +1654,10 @@ export function App() {
                       ? 'bg-white text-maroon-800 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="Vista de Lista compacta"
+                  title="Compact List View"
                 >
                   <LayoutList className="w-3.5 h-3.5" />
-                  <span>Lista</span>
+                  <span>List</span>
                 </button>
                 <button
                   type="button"
@@ -1667,10 +1667,10 @@ export function App() {
                       ? 'bg-white text-maroon-800 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="Vista de Tarjetas en cuadrícula"
+                  title="Card Grid View"
                 >
                   <LayoutGrid className="w-3.5 h-3.5" />
-                  <span>Tarjetas</span>
+                  <span>Grid</span>
                 </button>
               </div>
             </div>
@@ -1679,13 +1679,13 @@ export function App() {
               <div className="bg-white border border-slate-200 rounded-xl p-12 text-center space-y-3">
                 <FolderOpen className="w-12 h-12 text-slate-300 mx-auto" />
                 <h3 className="text-sm font-bold text-slate-900">
-                  {claimsEventFilter === 'unassigned' ? '¡Excelente! Todos los claims tienen evento asignado' : 'No claims found'}
+                  {claimsEventFilter === 'unassigned' ? 'Great! All claims have an assigned event' : 'No claims found'}
                 </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
                   {searchQuery 
                     ? `No claims matching "${searchQuery}"` 
                     : claimsEventFilter === 'unassigned'
-                      ? 'No hay ningún claim pendiente de programar o inspeccionar.'
+                      ? 'No claims pending to be scheduled or inspected.'
                       : 'No claims have been entered into the system yet.'}
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-2">
@@ -1695,7 +1695,7 @@ export function App() {
                       onClick={() => setClaimsEventFilter('all')}
                       className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition-colors border border-slate-300"
                     >
-                      Mostrar Todos los Claims
+                      Show All Claims
                     </button>
                   )}
                   <button
@@ -1713,19 +1713,19 @@ export function App() {
               </div>
             ) : claimsLayoutMode === 'list' ? (
               /* ======================================================== */
-              /* TABLA / LISTA DE CLAIMS */
+              /* CLAIMS TABLE / LIST */
               /* ======================================================== */
               <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="py-3 px-4">Claim / Aseguradora</th>
-                        <th className="py-3 px-4">Asegurado (Cliente)</th>
-                        <th className="py-3 px-4">Propiedad & Pérdida</th>
+                        <th className="py-3 px-4">Claim / Carrier</th>
+                        <th className="py-3 px-4">Insured (Client)</th>
+                        <th className="py-3 px-4">Property & Loss</th>
                         <th className="py-3 px-4">Public Adjuster</th>
-                        <th className="py-3 px-4">Estado de Evento</th>
-                        <th className="py-3 px-4 text-right">Acciones</th>
+                        <th className="py-3 px-4">Event Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
@@ -1760,13 +1760,13 @@ export function App() {
                             <td className="py-3 px-4 align-top">
                               <div className="font-bold text-slate-900 flex items-center gap-1.5">
                                 <User className="w-3.5 h-3.5 text-maroon-800 shrink-0" />
-                                <span>{claim.insured?.name || 'Cliente sin nombre'}</span>
+                                <span>{claim.insured?.name || 'Unnamed Client'}</span>
                               </div>
                               <div className="text-[11px] text-slate-600 mt-1">
                                 📞 {claim.insured?.phone || 'No phone'}
                               </div>
                               {claim.insured?.email && (
-                                <div className="text-[11px] text-slate-500 mt-0.5 truncate max-w-[200px]" title={claim.insured.email}>
+                                <div className="text-[11px] text-slate-500 mt-0.5 truncate max-w-md" title={claim.insured.email}>
                                   ✉️ {claim.insured.email}
                                 </div>
                               )}
@@ -1774,7 +1774,7 @@ export function App() {
 
                             {/* Property & Loss */}
                             <td className="py-3 px-4 align-top">
-                              <div className="flex items-start gap-1 text-[11px] text-slate-700 max-w-[260px]">
+                              <div className="flex items-start gap-1 text-[11px] text-slate-700 max-w-lg">
                                 <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                                 <span className="line-clamp-2">
                                   {claim.propertyAddress}{claim.city ? `, ${claim.city}` : ''}{claim.state ? `, ${claim.state}` : ''}
@@ -1782,7 +1782,7 @@ export function App() {
                               </div>
                               <div className="text-[11px] text-slate-500 mt-1 font-medium">
                                 <span className="text-slate-700 font-semibold">{claim.typeOfLoss}</span>
-                                {claim.dateOfLoss && ` · Pérdida: ${claim.dateOfLoss}`}
+                                {claim.dateOfLoss && ` · Loss: ${claim.dateOfLoss}`}
                               </div>
                             </td>
 
@@ -1799,7 +1799,7 @@ export function App() {
                                   </span>
                                 </div>
                               ) : (
-                                <span className="text-[11px] text-slate-400 italic">No asignado</span>
+                                <span className="text-[11px] text-slate-400 italic">Unassigned</span>
                               )}
                             </td>
 
@@ -1822,7 +1822,7 @@ export function App() {
                               ) : (
                                 <div className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-2xs">
                                   <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                  <span>Sin evento asignado</span>
+                                  <span>No event assigned</span>
                                 </div>
                               )}
                             </td>
@@ -1835,10 +1835,10 @@ export function App() {
                                     type="button"
                                     onClick={() => setSelectedClaim(claim)}
                                     className="inline-flex items-center gap-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg shadow-xs transition-colors"
-                                    title="Abrir claim para crear inspección / evento"
+                                    title="Open claim to create inspection / event"
                                   >
                                     <Plus className="w-3.5 h-3.5" />
-                                    <span>Asignar Evento</span>
+                                    <span>Assign Event</span>
                                   </button>
                                 ) : (
                                   <button
@@ -1848,7 +1848,7 @@ export function App() {
                                       setSearchQuery(claim.claimNumber);
                                     }}
                                     className="p-1.5 text-tealBrand-700 hover:text-tealBrand-900 bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-200 rounded-lg transition-colors"
-                                    title="Ver evento en el Funnel"
+                                    title="View event in Funnel"
                                   >
                                     <ArrowRight className="w-3.5 h-3.5" />
                                   </button>
@@ -1858,13 +1858,13 @@ export function App() {
                                   onClick={() => setSelectedClaim(claim)}
                                   className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-maroon-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                                 >
-                                  <span>Ver Claim</span>
+                                  <span>View Claim</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setClaimToDelete(claim)}
                                   className="p-1.5 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
-                                  title="Eliminar claim"
+                                  title="Delete claim"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1879,7 +1879,7 @@ export function App() {
               </div>
             ) : (
               /* ======================================================== */
-              /* CUADRÍCULA DE TARJETAS (GRID) */
+              /* CARD GRID VIEW */
               /* ======================================================== */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredClaims.map((claim) => {
@@ -1955,7 +1955,7 @@ export function App() {
                           <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-xs text-amber-900 font-semibold">
                             <span className="flex items-center gap-1.5">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              Sin evento asignado
+                              No event assigned
                             </span>
                           </div>
                         ) : (
@@ -1993,7 +1993,7 @@ export function App() {
                             className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 py-2 rounded-lg transition-colors shadow-xs"
                           >
                             <Plus className="w-4 h-4" />
-                            <span>Asignar Evento</span>
+                            <span>Assign Event</span>
                           </button>
                         ) : (
                           <button
@@ -2021,7 +2021,7 @@ export function App() {
                           type="button"
                           onClick={() => setClaimToDelete(claim)}
                           className="p-2 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
-                          title="Eliminar claim"
+                          title="Delete claim"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -2134,16 +2134,16 @@ export function App() {
                 <Trash2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Eliminar Reclamo</h3>
-                <p className="text-xs text-slate-500">¿Estás seguro de eliminar este reclamo?</p>
+                <h3 className="text-sm font-bold text-slate-900">Delete Claim</h3>
+                <p className="text-xs text-slate-500">Are you sure you want to delete this claim?</p>
               </div>
             </div>
             
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1">
               <p className="font-bold text-slate-800 font-mono">Claim #{claimToDelete.claimNumber}</p>
-              <p className="text-slate-600 font-semibold">{claimToDelete.carrier} · {claimToDelete.insured?.name || 'Cliente sin nombre'}</p>
+              <p className="text-slate-600 font-semibold">{claimToDelete.carrier} · {claimToDelete.insured?.name || 'Unnamed Client'}</p>
               <p className="text-slate-500">{claimToDelete.propertyAddress}</p>
-              <p className="text-[11px] text-amber-700 font-medium pt-1">⚠️ Se eliminarán permanentemente el reclamo, sus eventos, fechas y bitácora de coordinación.</p>
+              <p className="text-[11px] text-amber-700 font-medium pt-1">⚠️ This claim, its events, dates, and coordination history will be permanently deleted.</p>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
@@ -2152,7 +2152,7 @@ export function App() {
                 onClick={() => setClaimToDelete(null)}
                 className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 type="button"
@@ -2160,7 +2160,7 @@ export function App() {
                 onClick={handleDeleteClaim}
                 className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
               >
-                {isDeletingClaim ? 'Eliminando...' : 'Sí, Eliminar Reclamo'}
+                {isDeletingClaim ? 'Deleting...' : 'Yes, Delete Claim'}
               </button>
             </div>
           </div>

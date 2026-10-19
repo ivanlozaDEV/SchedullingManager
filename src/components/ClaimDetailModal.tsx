@@ -138,12 +138,12 @@ export function ClaimDetailModal({
 
       if (isDirectScheduleMode) {
         if (!directFinalDate) {
-          setEventError('Por favor indica la fecha confirmada para la cita directa.');
+          setEventError('Please enter the confirmed date for the direct appointment.');
           setSubmittingEvent(false);
           return;
         }
         if (!directFinalStartTime || !directFinalEndTime) {
-          setEventError('Por favor indica hora de inicio y fin para la cita directa.');
+          setEventError('Please enter start and end time for the direct appointment.');
           setSubmittingEvent(false);
           return;
         }
@@ -508,11 +508,11 @@ export function ClaimDetailModal({
                       <div className="p-3 bg-emerald-50/80 border border-emerald-300 rounded-xl space-y-2.5">
                         <span className="text-xs font-bold text-emerald-950 flex items-center gap-1">
                           <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                          <span>Datos de la Cita Confirmada</span>
+                          <span>Confirmed Appointment Details</span>
                         </span>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Fecha *</label>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Date *</label>
                             <input
                               type="date"
                               required={isDirectScheduleMode}
@@ -522,7 +522,7 @@ export function ClaimDetailModal({
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora Inicio *</label>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Start Time *</label>
                             <input
                               type="time"
                               required={isDirectScheduleMode}
@@ -532,7 +532,7 @@ export function ClaimDetailModal({
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora Fin *</label>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">End Time *</label>
                             <input
                               type="time"
                               required={isDirectScheduleMode}
@@ -551,7 +551,7 @@ export function ClaimDetailModal({
                             className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                           />
                           <label htmlFor="modalDirectSendCalendarInvite" className="text-[11px] text-emerald-950 font-medium cursor-pointer">
-                            Enviar invitaciones de calendario (.ics) inmediatamente
+                            Send calendar invitations (.ics) immediately
                           </label>
                         </div>
                       </div>
@@ -583,10 +583,10 @@ export function ClaimDetailModal({
                             onChange={(e) => setCoordinationStage(e.target.value as CoordinationStage)}
                             className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
                           >
-                            <option value="1_awaiting_carrier_slots">1. Esperando Fechas</option>
-                            <option value="2_pa_review">2. Revisión PA</option>
-                            <option value="3_insured_selection">3. Selección Asegurado</option>
-                            <option value="4_confirmed">4. Confirmado</option>
+                            <option value="1_awaiting_carrier_slots">1. Awaiting Dates</option>
+                            <option value="2_pa_review">2. PA Review</option>
+                            <option value="3_insured_selection">3. Insured Selection</option>
+                            <option value="4_confirmed">4. Confirmed</option>
                           </select>
                         </div>
                       )}
@@ -594,16 +594,16 @@ export function ClaimDetailModal({
                       {!isDirectScheduleMode && (
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            ¿Quién debe dar las fechas primero? <span className="text-red-500">*</span>
+                            Who provides the initial dates first? <span className="text-red-500">*</span>
                           </label>
                           <select
                             value={slotsOriginator}
                             onChange={(e) => setSlotsOriginator(e.target.value as any)}
                             className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
                           >
-                            <option value="carrier">🏢 Aseguradora (Ajustador)</option>
+                            <option value="carrier">🏢 Carrier (Adjuster)</option>
                             <option value="pa">⚖️ Public Adjuster (PA)</option>
-                            <option value="insured">👤 Cliente / Asegurado</option>
+                            <option value="insured">👤 Client / Insured</option>
                           </select>
                         </div>
                       )}

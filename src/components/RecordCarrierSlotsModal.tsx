@@ -109,7 +109,7 @@ export function RecordCarrierSlotsModal({
     setSlots(slots.filter((_, i) => i !== index));
   };
 
-  // Submit Open Availability ("Cualquier día")
+  // Submit Open Availability ("Any day")
   const handleSaveOpenAvailability = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -117,10 +117,10 @@ export function RecordCarrierSlotsModal({
 
     try {
       const actorLabels: Record<string, string> = {
-        insured: claim.insured?.name || 'Cliente / Asegurado',
+        insured: claim.insured?.name || 'Insured / Client',
         pa: claim.publicAdjuster?.name || 'Public Adjuster',
-        carrier: `${claim.carrier} (Ajustador)`,
-        office: 'Coordinador',
+        carrier: `${claim.carrier} (Adjuster)`,
+        office: 'Coordinator',
       };
       const actorName = actorLabels[proposedBy] || proposedBy;
 
@@ -128,15 +128,15 @@ export function RecordCarrierSlotsModal({
         event.id,
         proposedBy as 'insured' | 'pa' | 'carrier',
         actorName,
-        openAvailNotes.trim() || 'Disponible cualquier día',
+        openAvailNotes.trim() || 'Available any day',
         targetStage
       );
 
       onSaved();
       onClose();
     } catch (err: any) {
-      console.error('Error al guardar disponibilidad total:', err);
-      setError(err.message || 'Error al guardar disponibilidad total');
+      console.error('Error saving open availability:', err);
+      setError(err.message || 'Error saving open availability');
     } finally {
       setSaving(false);
     }
@@ -150,15 +150,15 @@ export function RecordCarrierSlotsModal({
     // Validate that all slots have dates and logical times
     for (let i = 0; i < slots.length; i++) {
       if (!slots[i].slotDate) {
-        setError(`Por favor ingresa una fecha para la Opción #${i + 1}`);
+        setError(`Please enter a date for Option #${i + 1}`);
         return;
       }
       if (!slots[i].startTime || !slots[i].endTime) {
-        setError(`Por favor indica hora de inicio y fin para la Opción #${i + 1}`);
+        setError(`Please specify start and end times for Option #${i + 1}`);
         return;
       }
       if (slots[i].startTime >= slots[i].endTime) {
-        setError(`Opción #${i + 1}: La hora de fin (${slots[i].endTime}) debe ser posterior a la de inicio (${slots[i].startTime})`);
+        setError(`Option #${i + 1}: End time (${slots[i].endTime}) must be later than start time (${slots[i].startTime})`);
         return;
       }
     }
@@ -174,8 +174,8 @@ export function RecordCarrierSlotsModal({
       onSaved();
       onClose();
     } catch (err: any) {
-      console.error('Error al guardar opciones de fecha:', err);
-      setError(err.message || 'Error al guardar opciones de fecha');
+      console.error('Error saving date options:', err);
+      setError(err.message || 'Error saving date options');
     } finally {
       setSaving(false);
     }
@@ -188,15 +188,15 @@ export function RecordCarrierSlotsModal({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-tealBrand-100 text-tealBrand-800 uppercase tracking-wide">
-                Gestión Flexible de Fechas
+                Flexible Date Management
               </span>
               <span className="text-xs text-slate-500 font-mono font-semibold">{claim.claimNumber}</span>
             </div>
             <h3 className="text-base font-bold text-slate-900 mt-1">
-              {isEditing ? 'Modificar Fechas / Disponibilidad' : 'Proponer Fechas o Disponibilidad'}
+              {isEditing ? 'Modify Dates / Availability' : 'Propose Dates or Availability'}
             </h3>
             <p className="text-xs text-slate-500">
-              Cualquier parte (Aseguradora, Cliente o PA) puede proponer fechas o indicar agenda abierta.
+              Any party (Carrier, Insured, or PA) can propose dates or indicate open availability.
             </p>
           </div>
           <button
@@ -227,7 +227,7 @@ export function RecordCarrierSlotsModal({
             }`}
           >
             <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
-            <span>Opciones de Fecha (1-4)</span>
+            <span>Date Options (1-4)</span>
           </button>
           <button
             type="button"
@@ -239,7 +239,7 @@ export function RecordCarrierSlotsModal({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            <span>"Puede Cualquier Día"</span>
+            <span>"Available Any Day"</span>
           </button>
         </div>
 
@@ -247,7 +247,7 @@ export function RecordCarrierSlotsModal({
         <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
           <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
             <User className="w-3.5 h-3.5 text-maroon-800" />
-            <span>¿Quién está indicando las fechas o disponibilidad?</span>
+            <span>Who is offering the dates or availability?</span>
           </label>
           <div className="grid grid-cols-3 gap-2">
             <button
@@ -259,7 +259,7 @@ export function RecordCarrierSlotsModal({
                   : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
               }`}
             >
-              🏢 Aseguradora
+              🏢 Carrier
             </button>
             <button
               type="button"
@@ -270,7 +270,7 @@ export function RecordCarrierSlotsModal({
                   : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
               }`}
             >
-              👤 Cliente
+              👤 Insured
             </button>
             <button
               type="button"
@@ -293,39 +293,39 @@ export function RecordCarrierSlotsModal({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span className="text-xs font-bold text-emerald-950">
-                  {proposedBy === 'insured' ? 'El Cliente indicó que puede cualquier día' : proposedBy === 'pa' ? 'El PA tiene agenda abierta' : 'La Aseguradora tiene disponibilidad total'}
+                  {proposedBy === 'insured' ? 'Client indicated open availability (any day)' : proposedBy === 'pa' ? 'PA has open availability (any day)' : 'Carrier has open availability'}
                 </span>
               </div>
               <p className="text-[11px] text-emerald-800">
-                Al guardar disponibilidad total, la pelota pasa a la contraparte. Tan pronto como acuerden una fecha y hora exacta, podrás usar el botón <strong>"Confirmar Cita Directamente"</strong>.
+                By saving open availability, the next step moves to the other party. As soon as a specific date and time are agreed, you can use <strong>"Directly Confirm Appointment"</strong>.
               </p>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Acotaciones o Restricciones horarias (opcional)
+                Time constraints or notes (optional)
               </label>
               <textarea
                 rows={2}
                 value={openAvailNotes}
                 onChange={(e) => setOpenAvailNotes(e.target.value)}
-                placeholder="e.g. Puede cualquier día después de las 2:00 PM. Hay lockbox en la puerta."
+                placeholder="e.g. Available any day after 2:00 PM. Lockbox on front door."
                 className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Etapa siguiente sugerida
+                Suggested Next Stage
               </label>
               <select
                 value={targetStage}
                 onChange={(e) => setTargetStage(e.target.value as CoordinationStage)}
                 className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
               >
-                <option value="1_awaiting_carrier_slots">1. Esperando Fechas (Carrier o Contraparte)</option>
-                <option value="2_pa_review">2. Pendiente Revisión PA</option>
-                <option value="3_insured_selection">3. Pendiente Asegurado</option>
+                <option value="1_awaiting_carrier_slots">1. Awaiting Dates (Carrier or Counterpart)</option>
+                <option value="2_pa_review">2. PA Review Pending</option>
+                <option value="3_insured_selection">3. Insured Choice Pending</option>
               </select>
             </div>
 
@@ -335,7 +335,7 @@ export function RecordCarrierSlotsModal({
                 onClick={onClose}
                 className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 type="submit"
@@ -343,7 +343,7 @@ export function RecordCarrierSlotsModal({
                 className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>{saving ? 'Guardando...' : 'Guardar Disponibilidad Total ➔'}</span>
+                <span>{saving ? 'Saving...' : 'Save Open Availability ➔'}</span>
               </button>
             </div>
           </form>
@@ -360,12 +360,12 @@ export function RecordCarrierSlotsModal({
                 <span className="text-base">{event?.timezone === 'CT' ? '🏖️' : '🌴'}</span>
                 <div>
                   <span className="font-bold block">
-                    {event?.timezone === 'CT' ? 'Zona Horaria: Pensacola / Panhandle (Central Time - CT)' : 'Zona Horaria: Miami / Sur de la Florida (Eastern Time - ET)'}
+                    {event?.timezone === 'CT' ? 'Timezone: Pensacola / Panhandle (Central Time - CT)' : 'Timezone: Miami / South Florida (Eastern Time - ET)'}
                   </span>
                   <span className="text-[11px] opacity-80 block">
                     {event?.timezone === 'CT' 
-                      ? '💡 Ingresa la hora local de la casa. En Miami (PA) será 1 hora más tarde.' 
-                      : '💡 Las horas ingresadas son hora local de Miami (Eastern Time).'}
+                      ? '💡 Enter property local time. In Miami (PA) it will be 1 hour later.' 
+                      : '💡 Times entered are Miami local time (Eastern Time).'}
                   </span>
                 </div>
               </div>
@@ -383,13 +383,13 @@ export function RecordCarrierSlotsModal({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-maroon-800" />
-                      Opción #{idx + 1}
+                      Option #{idx + 1}
                     </span>
                     {slots.length > 1 && (
                       <button
                         type="button"
                         onClick={() => handleRemoveSlot(idx)}
-                        title="Eliminar esta opción"
+                        title="Remove this option"
                         className="text-slate-400 hover:text-red-600 p-1 rounded-md transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -399,7 +399,7 @@ export function RecordCarrierSlotsModal({
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Fecha *</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Date *</label>
                       <input
                         type="date"
                         required
@@ -409,7 +409,7 @@ export function RecordCarrierSlotsModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Hora Inicio *</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Start Time *</label>
                       <input
                         type="time"
                         required
@@ -419,7 +419,7 @@ export function RecordCarrierSlotsModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Hora Fin *</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">End Time *</label>
                       <input
                         type="time"
                         required
@@ -432,7 +432,7 @@ export function RecordCarrierSlotsModal({
 
                   {slot.startTime && slot.endTime && (
                     <div className="text-[11px] text-slate-600 font-mono bg-white px-2.5 py-1 rounded-lg border border-slate-200 flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500 font-sans">Equivalencia:</span>
+                      <span className="text-[10px] text-slate-500 font-sans">Timezone conversion:</span>
                       <strong className="text-tealBrand-800">
                         {formatTimeRangeWithDualTimezone(slot.startTime, slot.endTime, event?.timezone || 'ET').displayFull}
                       </strong>
@@ -449,25 +449,25 @@ export function RecordCarrierSlotsModal({
                 className="inline-flex items-center gap-1 text-xs text-tealBrand-700 hover:text-tealBrand-900 font-bold hover:underline cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ Agregar otra opción de fecha</span>
+                <span>+ Add another date option</span>
               </button>
               <span className="text-[11px] text-slate-500 font-medium">
-                {slots.length} {slots.length === 1 ? 'opción' : 'opciones'}
+                {slots.length} {slots.length === 1 ? 'option' : 'options'}
               </span>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Etapa de Destino
+                Target Stage
               </label>
               <select
                 value={targetStage}
                 onChange={(e) => setTargetStage(e.target.value as CoordinationStage)}
                 className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
               >
-                <option value="2_pa_review">2. Revisión PA (Filtrar opciones)</option>
-                <option value="3_insured_selection">3. Selección Asegurado (Ofrecer opciones)</option>
-                <option value="1_awaiting_carrier_slots">1. Esperando Aseguradora</option>
+                <option value="2_pa_review">2. PA Review (Filter options)</option>
+                <option value="3_insured_selection">3. Insured Choice (Offer options)</option>
+                <option value="1_awaiting_carrier_slots">1. Awaiting Carrier</option>
               </select>
             </div>
 
@@ -477,7 +477,7 @@ export function RecordCarrierSlotsModal({
                 onClick={onClose}
                 className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
-                Cancelar
+                Cancel
               </button>
 
               {slots.length === 1 && (
@@ -486,10 +486,10 @@ export function RecordCarrierSlotsModal({
                   disabled={saving}
                   onClick={(e) => handleSubmitSlots(e, true)}
                   className="px-3 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors shadow-xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                  title="Confirmar directamente esta única fecha como la cita definitiva"
+                  title="Directly confirm this single date as the final appointment"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Cerrar como Cita Confirmada ➔</span>
+                  <span>Close as Confirmed Appointment ➔</span>
                 </button>
               )}
 
@@ -498,7 +498,7 @@ export function RecordCarrierSlotsModal({
                 disabled={saving}
                 className="px-4 py-2 text-xs font-bold text-white bg-tealBrand-800 hover:bg-tealBrand-900 disabled:opacity-50 rounded-lg transition-colors shadow-xs cursor-pointer"
               >
-                {saving ? 'Guardando...' : 'Guardar Opciones Propuestas ➔'}
+                {saving ? 'Saving...' : 'Save Proposed Options ➔'}
               </button>
             </div>
           </form>

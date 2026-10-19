@@ -201,54 +201,78 @@ serve(async (req) => {
   // 2. POST HANDLER: SEND INVITATION EMAIL TO CLIENT WITH 1-CLICK DATES
   // =========================================================================
   try {
-    const { eventId } = await req.json()
-    if (!eventId) throw new Error("eventId is required")
+    const { eventId, isTest, testEmail } = await req.json()
+    if (!eventId && !isTest) throw new Error("eventId is required")
 
-    // Fetch Event, Claim, Insured, PA, and Slots
-    const { data: event, error: eventErr } = await supabaseAdmin
-      .from('events')
-      .select(`
-        *,
-        claim:claims (
+    let event = null
+    let insuredEmail = ''
+    let insuredName = ''
+    let paName = ''
+    let carrier = ''
+    let claimNumber = ''
+    let propertyAddress = ''
+    let eventType = ''
+    let sortedSlots: any[] = []
+
+    if (isTest && (!eventId || eventId === 'test')) {
+      insuredEmail = testEmail || 'ivanloza88@gmail.com'
+      insuredName = 'Albert & Carmelita Kling'
+      paName = 'Iván Hernández'
+      carrier = 'Monarch National Insurance'
+      claimNumber = 'HO0526444000'
+      propertyAddress = '6539 Bellview Pines Rd, Pensacola, FL 32526'
+      eventType = 'Initial Inspection'
+      sortedSlots = [
+        { id: 'test-slot-1', slot_date: '2026-10-29', start_time: '09:00:00', end_time: '11:00:00' },
+        { id: 'test-slot-2', slot_date: '2026-10-30', start_time: '14:00:00', end_time: '16:00:00' }
+      ]
+    } else {
+      // Fetch Event, Claim, Insured, PA, and Slots
+      const { data: dbEvent, error: eventErr } = await supabaseAdmin
+        .from('events')
+        .select(`
           *,
-          insured:insureds (*),
-          public_adjuster:public_adjusters (*)
-        ),
-        slots:event_slots (*)
-      `)
-      .eq('id', eventId)
-      .single()
+          claim:claims (
+            *,
+            insured:insureds (*),
+            public_adjuster:public_adjusters (*)
+          ),
+          slots:event_slots (*)
+        `)
+        .eq('id', eventId)
+        .single()
 
-    if (eventErr || !event) throw eventErr || new Error("Event not found")
+      if (eventErr || !dbEvent) throw eventErr || new Error("Event not found")
+      event = dbEvent
+      const claim = event.claim
+      const insured = claim?.insured
+      insuredEmail = isTest && testEmail ? testEmail : insured?.email
+      insuredName = insured?.name || 'Insured Client'
+      const pa = claim?.public_adjuster
+      paName = pa?.name || 'Your Public Adjuster'
+      carrier = claim?.carrier || 'the Insurance Carrier'
+      claimNumber = claim?.claim_number || 'N/A'
+      propertyAddress = claim?.property_address || event.location || 'N/A'
+      eventType = event.event_type || 'Inspection'
 
-    const claim = event.claim
-    const insured = claim?.insured
-    const insuredEmail = insured?.email
-    const insuredName = insured?.name || 'Insured Client'
-    const pa = claim?.public_adjuster
-    const paName = pa?.name || 'Your Public Adjuster'
-    const carrier = claim?.carrier || 'the Insurance Carrier'
-    const claimNumber = claim?.claim_number || 'N/A'
-    const propertyAddress = claim?.property_address || event.location || 'N/A'
-    const eventType = event.event_type || 'Inspection'
+      if (!insuredEmail) {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          message: "No email address found for the insured client." 
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        })
+      }
 
-    if (!insuredEmail) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        message: "No email address found for the insured client." 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      })
+      // Filter slots approved by PA (status === 'pa_accepted' or proposed fallback)
+      const rawSlots = event.slots || []
+      let availableSlots = rawSlots.filter((s: any) => s.status === 'pa_accepted')
+      if (availableSlots.length === 0) {
+        availableSlots = rawSlots.filter((s: any) => s.status === 'proposed')
+      }
+      sortedSlots = [...availableSlots].sort((a: any, b: any) => (a.slot_date > b.slot_date ? 1 : -1))
     }
-
-    // Filter slots approved by PA (status === 'pa_accepted' or proposed fallback)
-    const rawSlots = event.slots || []
-    let availableSlots = rawSlots.filter((s: any) => s.status === 'pa_accepted')
-    if (availableSlots.length === 0) {
-      availableSlots = rawSlots.filter((s: any) => s.status === 'proposed')
-    }
-    const sortedSlots = [...availableSlots].sort((a: any, b: any) => (a.slot_date > b.slot_date ? 1 : -1))
 
     if (sortedSlots.length === 0) {
       return new Response(JSON.stringify({
@@ -339,6 +363,17 @@ admin@ipadjustinggroup.com | (772) 282-0862
       .content, .footer { width:100% !important; }
       img { max-width:100% !important; height:auto !important; }
     }
+    a[x-apple-data-detectors] {
+      color: #ffffff !important;
+      text-decoration: none !important;
+      font-size: inherit !important;
+      font-family: inherit !important;
+      font-weight: inherit !important;
+      line-height: inherit !important;
+    }
+    .footer a, .footer a span, .footer span {
+      color: #ffffff !important;
+    }
   </style>
 </head>
 <body style="margin:0; padding:0; background-color:#d6d9e0; font-family: Arial, Helvetica, sans-serif;">
@@ -348,11 +383,11 @@ admin@ipadjustinggroup.com | (772) 282-0862
       <td align="center" style="padding: 25px 0;">
 
         <!-- Container (600px) -->
-        <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="border-radius:8px; overflow:hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+        <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#F0F0F0" style="border-radius:8px; overflow:hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12); background-color:#F0F0F0;">
 
           <!-- BRAND HEADER -->
           <tr>
-            <td align="center" bgcolor="#ffffff" style="padding:22px 20px 18px 20px; border-bottom:3px solid #0071bc;">
+            <td align="center" bgcolor="#F0F0F0" style="padding:22px 20px 18px 20px; border-bottom:3px solid #0071bc; background-color:#F0F0F0;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center">
@@ -451,9 +486,18 @@ admin@ipadjustinggroup.com | (772) 282-0862
               </p>
 
               <!-- Address and Contact -->
-              <p style="margin:20px 0 10px 0; font-size:13px;">
-                1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986<br>
-                admin@ipadjustinggroup.com | (772) 282-0862
+              <p style="margin:20px 0 10px 0; font-size:13px; color:#ffffff !important; line-height:1.6;">
+                <a href="https://maps.google.com/?q=1729+NW+Saint+Lucie+West+Blvd+%231269,+Port+Saint+Lucie+FL,+34986" target="_blank" style="color:#ffffff !important; text-decoration:none !important; font-weight:normal;">
+                  <span style="color:#ffffff !important; text-decoration:none !important;">1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986</span>
+                </a>
+                <br>
+                <a href="mailto:admin@ipadjustinggroup.com" style="color:#ffffff !important; text-decoration:underline !important; font-weight:normal;">
+                  <span style="color:#ffffff !important; text-decoration:underline !important;">admin@ipadjustinggroup.com</span>
+                </a>
+                <span style="color:#ffffff !important;"> | </span>
+                <a href="tel:17722820862" style="color:#ffffff !important; text-decoration:none !important; font-weight:normal;">
+                  <span style="color:#ffffff !important; text-decoration:none !important;">(772) 282-0862</span>
+                </a>
               </p>
 
               <!-- Legal text -->
@@ -492,7 +536,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
     const mailOptions = {
       from: `"IP Adjusting Group" <${smtpUser}>`,
       to: insuredEmail,
-      subject: subject,
+      subject: `${isTest ? '[TEST PREVIEW] ' : ''}${subject}`,
       text: plainText,
       html: htmlBody
     }
@@ -500,13 +544,15 @@ admin@ipadjustinggroup.com | (772) 282-0862
     const info = await transporter.sendMail(mailOptions)
     console.log("Email to Insured successfully sent:", info.messageId)
 
-    await supabaseAdmin.from('coordination_logs').insert({
-      event_id: eventId,
-      contact_target: 'insured',
-      contact_target_name: insuredName,
-      channel: 'email',
-      notes: `📧 Email notification sent to Insured (${insuredEmail}) with ${sortedSlots.length} pre-approved dates.`
-    })
+    if (!isTest) {
+      await supabaseAdmin.from('coordination_logs').insert({
+        event_id: eventId,
+        contact_target: 'insured',
+        contact_target_name: insuredName,
+        channel: 'email',
+        notes: `📧 Email notification sent to Insured (${insuredEmail}) with ${sortedSlots.length} pre-approved dates.`
+      })
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 

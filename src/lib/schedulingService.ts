@@ -416,20 +416,23 @@ export const schedulingService = {
       }
     }
 
-    // 3. Registrar en bitácora de auditoría
+    // 3. Record in audit log
     await supabase.from('coordination_logs').insert({
       event_id: eventId,
       contact_target: 'internal',
       contact_target_name: details.confirmedByActor || 'Coordinator',
       channel: 'other',
-      notes: `⚡ Cita confirmada y bloqueada: ${details.finalDate} (${details.finalStartTime.slice(0, 5)} - ${details.finalEndTime.slice(0, 5)}). Cierre directo / Fast-Track.${details.notes ? ` Notas: ${details.notes}` : ''}`,
+      notes: `⚡ Appointment confirmed and locked: ${details.finalDate} (${details.finalStartTime.slice(0, 5)} - ${details.finalEndTime.slice(0, 5)}). Fast-Track / Direct Confirmation.${details.notes ? ` Notes: ${details.notes}` : ''}`,
     });
 
-    // 4. Disparar invitaciones de calendario si no se desmarcó
+    // 4. Trigger calendar invites if not disabled
     if (details.sendCalendarInvite !== false) {
       supabase.functions.invoke('send-calendar-invite', {
         body: { eventId },
-      }).catch((err) => console.error('Error triggering calendar invite edge function:', err));
+      }).then(({ data, error }) => {
+        if (error) console.warn('⚠️ Calendar invite note:', error.message);
+        else if (data?.warning) console.warn('⚠️ Email send warning:', data.warning);
+      }).catch((err) => console.warn('Note: calendar edge function unavailable:', err));
     }
   },
 
@@ -465,13 +468,13 @@ export const schedulingService = {
       })
       .eq('id', eventId);
 
-    // Registrar en auditoría
+    // Record in audit log
     await supabase.from('coordination_logs').insert({
       event_id: eventId,
       contact_target: actor === 'carrier' ? 'carrier_rep' : actor,
       contact_target_name: actorName,
       channel: 'call_answered',
-      notes: `🟢 ${actorName} indicó Disponibilidad Total ("Cualquier día"). ${customNotes ? `Detalles: ${customNotes}. ` : ''}La cita se puede confirmar directamente en cuanto la contraparte dé fecha y hora.`,
+      notes: `🟢 ${actorName} indicated Open Availability ("Any day"). ${customNotes ? `Details: ${customNotes}. ` : ''}The appointment can be confirmed directly once the other party agrees on date and time.`,
     });
   },
 
@@ -502,9 +505,9 @@ export const schedulingService = {
       .eq('id', eventId);
 
     const labels: Record<string, string> = {
-      pa: 'el Public Adjuster (PA)',
-      carrier: 'la Aseguradora (Carrier)',
-      insured: 'el Cliente (Asegurado)',
+      pa: 'the Public Adjuster (PA)',
+      carrier: 'the Insurance Carrier',
+      insured: 'the Client (Insured)',
     };
 
     await supabase.from('coordination_logs').insert({
@@ -512,7 +515,7 @@ export const schedulingService = {
       contact_target: originator === 'carrier' ? 'carrier_rep' : originator,
       contact_target_name: actorName || originator,
       channel: 'internal',
-      notes: `Se configuró a ${labels[originator] || originator} como el responsable de proponer las fechas iniciales.`,
+      notes: `Configured ${labels[originator] || originator} as the party responsible for offering initial dates.`,
     });
   },
 
@@ -541,14 +544,14 @@ export const schedulingService = {
       })
       .eq('id', eventId);
 
-    const tzLabel = timezone === 'CT' ? 'Central Time (Pensacola / Panhandle)' : 'Eastern Time (Miami / Resto de FL)';
+    const tzLabel = timezone === 'CT' ? 'Central Time (Pensacola / Panhandle)' : 'Eastern Time (Miami / Rest of FL)';
 
     await supabase.from('coordination_logs').insert({
       event_id: eventId,
       contact_target: 'office',
-      contact_target_name: actorName || 'Coordinador',
+      contact_target_name: actorName || 'Coordinator',
       channel: 'internal',
-      notes: `Zona horaria de la propiedad ajustada a ${tzLabel}.`,
+      notes: `Property timezone adjusted to ${tzLabel}.`,
     });
   },
 
@@ -616,12 +619,12 @@ export const schedulingService = {
       .eq('id', eventId);
     if (stageErr) throw stageErr;
 
-    // 4. Registrar en la bitácora de auditoría
+    // 4. Record in audit log
     const authorLabels: Record<string, string> = {
-      carrier: 'Carrier / Aseguradora',
-      insured: 'Cliente / Asegurado',
+      carrier: 'Carrier / Adjuster',
+      insured: 'Client / Insured',
       pa: 'Public Adjuster',
-      office: 'Coordinación Oficina',
+      office: 'Office Coordination',
     };
     const authorName = authorLabels[proposedBy] || proposedBy;
     const dateSummary = slots.map((s, idx) => `Opt #${idx + 1}: ${s.slotDate} (${s.startTime.slice(0, 5)}-${s.endTime.slice(0, 5)})`).join(', ');
@@ -631,14 +634,14 @@ export const schedulingService = {
       contact_target: proposedBy === 'carrier' ? 'carrier_rep' : proposedBy === 'insured' ? 'insured' : 'pa',
       contact_target_name: authorName,
       channel: 'email',
-      notes: `📅 ${authorName} propuso ${slots.length} fecha(s): ${dateSummary}.${options?.notes ? ` Notas: ${options.notes}` : ''}`
+      notes: `📅 ${authorName} proposed ${slots.length} date option(s): ${dateSummary}.${options?.notes ? ` Notes: ${options.notes}` : ''}`
     });
 
-    // 5. Si fue el carrier y va a PA, enviar notificación al PA
+    // 5. If it was the carrier and moves to PA review, trigger PA notification
     if (proposedBy === 'carrier' && nextStage === '2_pa_review') {
       supabase.functions.invoke('notify-pa-slots', {
         body: { eventId }
-      }).catch(err => console.error("Error al disparar notificación al PA:", err));
+      }).catch(err => console.error("Error triggering PA notification:", err));
     }
   },
 
@@ -762,7 +765,10 @@ export const schedulingService = {
     // Enviar invitaciones de calendario automáticamente de forma asíncrona (sin bloquear el flujo)
     supabase.functions.invoke('send-calendar-invite', {
       body: { eventId }
-    }).catch(err => console.error("Error triggering calendar invite edge function:", err));
+    }).then(({ data, error }) => {
+      if (error) console.warn('⚠️ Note on calendar invitation:', error.message);
+      else if (data?.warning) console.warn('⚠️ Email sending warning:', data.warning);
+    }).catch(err => console.warn("Note: calendar edge function not available:", err));
   },
 
   // 6.4 Resetear / Cancelar el Flujo de Coordinación y regresar a Etapa 1
@@ -868,25 +874,28 @@ export const schedulingService = {
       .eq('id', eventId);
     if (error) throw error;
 
-    // Registrar en auditoría el cambio de etapa
+    // Record stage transition in audit log
     const stageTitles: Record<CoordinationStage, string> = {
-      '1_awaiting_carrier_slots': '1. Esperando Fechas',
-      '2_pa_review': '2. Revisión PA',
-      '3_insured_selection': '3. Selección / Aprobación',
-      '4_confirmed': '4. Confirmado',
+      '1_awaiting_carrier_slots': '1. Awaiting Dates',
+      '2_pa_review': '2. PA Review',
+      '3_insured_selection': '3. Insured Selection',
+      '4_confirmed': '4. Confirmed',
     };
     await supabase.from('coordination_logs').insert({
       event_id: eventId,
       contact_target: 'internal',
       contact_target_name: options?.operatorName || 'Coordinator',
       channel: 'other',
-      notes: `🔄 Etapa actualizada a "${stageTitles[stage] || stage}".${options?.reason ? ` Motivo: ${options.reason}` : ''}`,
+      notes: `🔄 Stage updated to "${stageTitles[stage] || stage}".${options?.reason ? ` Reason: ${options.reason}` : ''}`,
     });
 
     if (stage === '4_confirmed' && options?.sendCalendarInvite) {
       supabase.functions.invoke('send-calendar-invite', {
         body: { eventId },
-      }).catch(err => console.error("Error triggering calendar invite:", err));
+      }).then(({ data, error }) => {
+        if (error) console.warn('⚠️ Note on calendar invitation:', error.message);
+        else if (data?.warning) console.warn('⚠️ Email sending warning:', data.warning);
+      }).catch(err => console.warn("Note: calendar edge function:", err));
     }
   },
 
@@ -1400,20 +1409,23 @@ export const schedulingService = {
       if (partErr) console.warn('Error inserting participants:', partErr);
     }
 
-    // Registrar en auditoría
+    // Record in audit log
     if (isDirectConfirm) {
       await supabase.from('coordination_logs').insert({
         event_id: newEvent.id,
         contact_target: 'internal',
         contact_target_name: 'Coordinator',
         channel: 'other',
-        notes: `⚡ Evento creado directamente como Confirmado para el ${eventData.finalDate} (${eventData.finalStartTime?.slice(0, 5)} - ${eventData.finalEndTime ? eventData.finalEndTime.slice(0, 5) : 'Fin'}).`,
+        notes: `⚡ Event created directly as Confirmed for ${eventData.finalDate} (${eventData.finalStartTime?.slice(0, 5)} - ${eventData.finalEndTime ? eventData.finalEndTime.slice(0, 5) : 'End'}).`,
       });
 
       if (eventData.sendCalendarInvite !== false) {
         supabase.functions.invoke('send-calendar-invite', {
           body: { eventId: newEvent.id }
-        }).catch(err => console.error("Error triggering calendar invite edge function:", err));
+        }).then(({ data, error }) => {
+          if (error) console.warn('⚠️ Calendar invite note:', error.message);
+          else if (data?.warning) console.warn('⚠️ Email send warning:', data.warning);
+        }).catch(err => console.warn("Note: calendar edge function:", err));
       }
     } else {
       await supabase.from('coordination_logs').insert({
@@ -1421,7 +1433,7 @@ export const schedulingService = {
         contact_target: 'internal',
         contact_target_name: 'System',
         channel: 'other',
-        notes: `📋 Nuevo evento de coordinación iniciado (${eventData.eventType || 'Initial Inspection'}).`,
+        notes: `📋 New coordination event initiated (${eventData.eventType || 'Initial Inspection'}).`,
       });
     }
 

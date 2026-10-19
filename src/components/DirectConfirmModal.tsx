@@ -49,15 +49,15 @@ export function DirectConfirmModal({
     setError(null);
 
     if (!finalDate) {
-      setError('Por favor ingresa la fecha confirmada para la cita.');
+      setError('Please enter the confirmed appointment date.');
       return;
     }
     if (!finalStartTime || !finalEndTime) {
-      setError('Por favor indica hora de inicio y hora de fin.');
+      setError('Please specify start time and end time.');
       return;
     }
     if (finalStartTime >= finalEndTime) {
-      setError('La hora de fin debe ser posterior a la hora de inicio.');
+      setError('End time must be later than start time.');
       return;
     }
 
@@ -75,8 +75,8 @@ export function DirectConfirmModal({
       onConfirmed();
       onClose();
     } catch (err: any) {
-      console.error('Error al confirmar cita directamente:', err);
-      setError(err.message || 'Error al confirmar la cita.');
+      console.error('Error confirming appointment directly:', err);
+      setError(err.message || 'Error confirming appointment.');
     } finally {
       setSaving(false);
     }
@@ -90,15 +90,15 @@ export function DirectConfirmModal({
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase tracking-wide flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                <span>Fast-Track / Cierre Directo</span>
+                <span>Fast-Track / Direct Confirmation</span>
               </span>
               <span className="text-xs text-slate-500 font-mono font-semibold">{claim.claimNumber}</span>
             </div>
             <h3 className="text-base font-bold text-slate-900">
-              Confirmar Cita Directamente
+              Directly Confirm Appointment
             </h3>
             <p className="text-xs text-slate-500">
-              Cierra y bloquea la cita sin pasar por los pasos del funnel. Pasa directo a Confirmado.
+              Locks the appointment immediately without going through funnel steps. Advances directly to Confirmed.
             </p>
           </div>
           <button
@@ -122,7 +122,7 @@ export function DirectConfirmModal({
           {event.slots && event.slots.length > 0 && (
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5">
               <span className="text-[11px] font-bold text-slate-600 block">
-                Opciones propuestas previas (haz clic para auto-llenar):
+                Previous proposed options (click to auto-fill):
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {event.slots.map((s, idx) => (
@@ -153,12 +153,12 @@ export function DirectConfirmModal({
               <span className="text-base">{event?.timezone === 'CT' ? '🏖️' : '🌴'}</span>
               <div>
                 <span className="font-bold block">
-                  {event?.timezone === 'CT' ? 'Zona Horaria: Pensacola / Panhandle (Central Time - CT)' : 'Zona Horaria: Miami / Sur de la Florida (Eastern Time - ET)'}
+                  {event?.timezone === 'CT' ? 'Timezone: Pensacola / Panhandle (Central Time - CT)' : 'Timezone: Miami / South Florida (Eastern Time - ET)'}
                 </span>
                 <span className="text-[11px] opacity-80 block">
                   {event?.timezone === 'CT' 
-                    ? '💡 Ingresa la hora local de la propiedad. Equivale a +1 hora en Miami.' 
-                    : '💡 Las horas ingresadas son hora local de Miami (Eastern Time).'}
+                    ? '💡 Enter property local time. Equal to +1 hour in Miami.' 
+                    : '💡 Times entered are Miami local time (Eastern Time).'}
                 </span>
               </div>
             </div>
@@ -170,7 +170,7 @@ export function DirectConfirmModal({
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-maroon-800" />
-              <span>Fecha Confirmada <span className="text-red-500">*</span></span>
+              <span>Confirmed Date <span className="text-red-500">*</span></span>
             </label>
             <input
               type="date"
@@ -185,7 +185,7 @@ export function DirectConfirmModal({
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-maroon-800" />
-                <span>Hora Inicio <span className="text-red-500">*</span></span>
+                <span>Start Time <span className="text-red-500">*</span></span>
               </label>
               <input
                 type="time"
@@ -198,7 +198,7 @@ export function DirectConfirmModal({
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-maroon-800" />
-                <span>Hora Fin <span className="text-red-500">*</span></span>
+                <span>End Time <span className="text-red-500">*</span></span>
               </label>
               <input
                 type="time"
@@ -212,7 +212,7 @@ export function DirectConfirmModal({
 
           {finalStartTime && finalEndTime && (
             <div className="text-[11px] text-slate-600 font-mono bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 flex items-center justify-between">
-              <span className="text-[10px] text-slate-500 font-sans">Equivalencia:</span>
+              <span className="text-[10px] text-slate-500 font-sans">Timezone conversion:</span>
               <strong className="text-tealBrand-800">
                 {formatTimeRangeWithDualTimezone(finalStartTime, finalEndTime, event?.timezone || 'ET').displayFull}
               </strong>
@@ -222,30 +222,30 @@ export function DirectConfirmModal({
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-maroon-800" />
-              <span>¿Con quién se acordó la fecha?</span>
+              <span>Who was this date agreed with?</span>
             </label>
             <select
               value={confirmedByActor}
               onChange={(e) => setConfirmedByActor(e.target.value)}
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
             >
-              <option value="Aseguradora / Ajustador">🏢 Acordado con Aseguradora / Ajustador</option>
-              <option value="Cliente / Asegurado">👤 Acordado con Cliente / Asegurado</option>
-              <option value="Public Adjuster">⚖️ Acordado con Public Adjuster</option>
-              <option value="Ambas Partes (Llamada Conjunta)">🤝 Ambas Partes (Llamada Conjunta)</option>
-              <option value="Coordinator">Coordinador de Oficina</option>
+              <option value="Carrier / Adjuster">🏢 Agreed with Insurance Carrier / Adjuster</option>
+              <option value="Insured / Client">👤 Agreed with Insured / Client</option>
+              <option value="Public Adjuster">⚖️ Agreed with Public Adjuster</option>
+              <option value="Both Parties (Joint Call)">🤝 Both Parties (Joint Call)</option>
+              <option value="Coordinator">Office Coordinator</option>
             </select>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Notas adicionales o Instrucciones de acceso (opcional)
+              Additional notes or access instructions (optional)
             </label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Confirmado por teléfono con el ajustador. Cliente tiene lockbox #1234."
+              placeholder="e.g. Confirmed by phone with adjuster. Client has lockbox #1234."
               className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
             />
           </div>
@@ -261,10 +261,10 @@ export function DirectConfirmModal({
             <label htmlFor="sendCalendarInvite" className="text-xs text-emerald-950 font-medium cursor-pointer">
               <span className="font-bold flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Enviar invitaciones de calendario (.ics) inmediatamente</span>
+                <span>Send calendar invitations (.ics) immediately</span>
               </span>
               <span className="block text-[11px] text-emerald-800 mt-0.5">
-                Notifica automáticamente a {claim.insured?.email ? 'Asegurado' : 'Participantes'} y Public Adjuster.
+                Automatically notifies {claim.insured?.email ? 'Insured' : 'Participants'} and Public Adjuster.
               </span>
             </label>
           </div>
@@ -276,7 +276,7 @@ export function DirectConfirmModal({
               disabled={saving}
               className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
             >
-              Cancelar
+              Cancel
             </button>
             <button
               type="submit"
@@ -284,7 +284,7 @@ export function DirectConfirmModal({
               className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{saving ? 'Guardando y Confirmando...' : 'Confirmar Cita Ahora ➔'}</span>
+              <span>{saving ? 'Saving & Confirming...' : 'Confirm Appointment Now ➔'}</span>
             </button>
           </div>
         </form>
