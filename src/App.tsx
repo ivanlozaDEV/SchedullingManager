@@ -257,7 +257,7 @@ export function App() {
 
   const handleSendCalendarUpdateToAll = async (evt: CoordinationEvent) => {
     const insuredEmail = evt.claim?.insured?.email;
-    const paEmail = evt.claim?.public_adjuster?.email;
+    const paEmail = evt.claim?.publicAdjuster?.email;
     const participants = evt.participants || [];
     const otherEmails = participants
       .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
