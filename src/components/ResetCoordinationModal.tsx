@@ -50,9 +50,9 @@ export function ResetCoordinationModal({
 
   const getStageTitle = (stage: string) => {
     switch (stage) {
-      case '1_awaiting_carrier_slots': return '1. Carrier Dates Offered';
-      case '2_pa_review': return '2. PA Review (2 of 3)';
-      case '3_insured_selection': return '3. Client Selection (1 of 2)';
+      case '1_awaiting_carrier_slots': return '1. Initial Dates Offered';
+      case '2_pa_review': return '2. Options Review & Filter';
+      case '3_insured_selection': return '3. Final Selection';
       case '4_confirmed': return '4. Inspection Confirmed';
       default: return stage;
     }

@@ -2646,9 +2646,9 @@ export function ClaimDetailView({
                             }}
                             className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-maroon-800 cursor-pointer shadow-2xs"
                           >
-                            <option value="1_awaiting_carrier_slots">1. Awaiting Dates</option>
-                            <option value="2_pa_review">2. PA Review</option>
-                            <option value="3_insured_selection">3. Insured Selection</option>
+                            <option value="1_awaiting_carrier_slots">1. Initial Dates</option>
+                            <option value="2_pa_review">2. Options Review</option>
+                            <option value="3_insured_selection">3. Final Selection</option>
                             <option value="4_confirmed">4. Confirmed</option>
                           </select>
                         </div>
@@ -2993,6 +2993,7 @@ export function ClaimDetailView({
                           evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
                           ['carrier', 'pa', 'insured']
                         );
+                        const p2Name = seq[1] === 'insured' ? 'Client' : seq[1] === 'pa' ? 'PA' : 'Carrier';
                         const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
                         return (
                         <div className="p-3 bg-tealBrand-50/70 border border-tealBrand-200 rounded-xl space-y-3">
@@ -3060,7 +3061,7 @@ export function ClaimDetailView({
                                 title="Return to Stage 2 for PA to re-evaluate options"
                               >
                                 <RotateCcw className="w-3 h-3 text-slate-500" />
-                                <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to PA Review'}</span>
+                                <span>{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to Stage 2 (${p2Name} Review)`}</span>
                               </button>
                             </div>
                           </div>
@@ -3097,7 +3098,14 @@ export function ClaimDetailView({
                       })()}
 
                       {/* STEP 4: CONFIRMED / LOCKED */}
-                      {evt.coordinationStage === '4_confirmed' && (
+                      {evt.coordinationStage === '4_confirmed' && (() => {
+                        const seq = evt.coordinationSequence || (
+                          evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+                          evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+                          ['carrier', 'pa', 'insured']
+                        );
+                        const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
+                        return (
                         <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -3146,12 +3154,13 @@ export function ClaimDetailView({
                                 title="Release appointment and return to Step 3 for client to pick another date"
                               >
                                 <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                                <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to Client Choice'}</span>
+                                <span>{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to ${p3Name} Choice`}</span>
                               </button>
                             </div>
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     {/* Access Codes Info if available */}

@@ -482,28 +482,28 @@ export function App() {
     }
   };
 
-  // Pipeline Stages (Flexible Model)
+  // Pipeline Stages (Flexible Role/Action based Model)
   const stages: { key: CoordinationStage; title: string; desc: string; badgeBg: string; badgeText: string; headerBorder: string }[] = [
     { 
       key: '1_awaiting_carrier_slots', 
-      title: '1. Awaiting Dates', 
-      desc: 'Carrier, Client, or PA offer date options', 
+      title: '1. Initial Dates', 
+      desc: 'First party offers date options', 
       badgeBg: 'bg-amber-100', 
       badgeText: 'text-amber-800',
       headerBorder: 'border-amber-400'
     },
     { 
       key: '2_pa_review', 
-      title: '2. PA Review', 
-      desc: 'PA validates inspection windows', 
+      title: '2. Options Review', 
+      desc: 'Second party narrows down options', 
       badgeBg: 'bg-tealBrand-100', 
       badgeText: 'text-tealBrand-800',
       headerBorder: 'border-tealBrand-500'
     },
     { 
       key: '3_insured_selection', 
-      title: '3. Selection / Approval', 
-      desc: 'Client or Carrier chooses/validates', 
+      title: '3. Final Selection', 
+      desc: 'Final party chooses definitive date', 
       badgeBg: 'bg-maroon-100', 
       badgeText: 'text-maroon-800',
       headerBorder: 'border-maroon-700'
@@ -958,6 +958,14 @@ export function App() {
                           const sla = getEventSlaStatus(evt, slaConfig);
                           const messageText = generateInsuredMessage(evt);
                           const isHistorical = evt.coordinationStage !== stage.key;
+                          const seq = evt.coordinationSequence || (
+                            evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+                            evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+                            ['carrier', 'pa', 'insured']
+                          );
+                          const p1Name = seq[0] === 'insured' ? 'Client' : seq[0] === 'pa' ? 'PA' : 'Carrier';
+                          const p2Name = seq[1] === 'insured' ? 'Client' : seq[1] === 'pa' ? 'PA' : 'Carrier';
+                          const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
 
                           return (
                             <div 
@@ -995,7 +1003,7 @@ export function App() {
                                       {/* Status Badge: Muted/off badge for historical completed stages, SLA timer for active */}
                                       {isHistorical ? (
                                         <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-slate-200/80 text-slate-700 border border-slate-300 flex items-center gap-1" title="Completed step in history">
-                                          ✓ {stage.key === '1_awaiting_carrier_slots' ? 'Dates Offered' : stage.key === '2_pa_review' ? 'PA Approved' : 'Client Chosen'}
+                                          ✓ {stage.key === '1_awaiting_carrier_slots' ? `${p1Name} Offered` : stage.key === '2_pa_review' ? `${p2Name} Picked` : `${p3Name} Chosen`}
                                         </span>
                                       ) : sla.alertLevel === 'critical' ? (
                                         <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-red-100 text-red-800 border border-red-200 flex items-center gap-1 shadow-2xs">
@@ -1751,7 +1759,7 @@ export function App() {
                                           title="Return to Stage 2 to re-evaluate options"
                                         >
                                           <RotateCcw className="w-3 h-3 text-slate-500" />
-                                          <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to Stage 2 Review'}</span>
+                                          <span>{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to Stage 2 (${p2Name} Review)`}</span>
                                         </button>
                                       )}
                                     </div>
@@ -1816,7 +1824,7 @@ export function App() {
                                         title="Release appointment and return to Stage 3 for the client to choose another date"
                                       >
                                         <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                                        <span>{revertingStageEventId === evt.id ? 'Returning...' : '↩️ Step Back to Client Choice (Stage 3)'}</span>
+                                        <span>{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to ${p3Name} Choice (Stage 3)`}</span>
                                       </button>
                                       <button
                                         type="button"

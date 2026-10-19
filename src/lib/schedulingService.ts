@@ -1104,9 +1104,9 @@ export const schedulingService = {
 
     // Record stage transition in audit log
     const stageTitles: Record<CoordinationStage, string> = {
-      '1_awaiting_carrier_slots': '1. Awaiting Dates',
-      '2_pa_review': '2. PA Review',
-      '3_insured_selection': '3. Insured Selection',
+      '1_awaiting_carrier_slots': '1. Initial Dates Offered',
+      '2_pa_review': '2. Options Review & Filter',
+      '3_insured_selection': '3. Final Selection',
       '4_confirmed': '4. Confirmed',
     };
     await supabase.from('coordination_logs').insert({

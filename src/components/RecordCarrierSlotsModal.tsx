@@ -92,6 +92,14 @@ export function RecordCarrierSlotsModal({
     }
   }, [proposedBy]);
 
+  const seq = event?.coordinationSequence || (
+    event?.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+    event?.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+    ['carrier', 'pa', 'insured']
+  );
+  const p2Name = seq[1] === 'insured' ? 'Cliente' : seq[1] === 'pa' ? 'PA' : 'Carrier';
+  const p3Name = seq[2] === 'insured' ? 'Cliente' : seq[2] === 'pa' ? 'PA' : 'Carrier';
+
   if (!isOpen) return null;
 
   const handleSlotChange = (index: number, field: 'slotDate' | 'startTime' | 'endTime', value: string) => {
@@ -513,11 +521,11 @@ export function RecordCarrierSlotsModal({
                   }`}
                 >
                   <div className="font-bold flex items-center justify-between">
-                    <span>⚖️ Enviar a Revisión de PA</span>
+                    <span>🔍 Enviar a Revisión de {p2Name}</span>
                     {targetStage === '2_pa_review' && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
                   </div>
                   <p className={`text-[11px] mt-0.5 leading-snug ${targetStage === '2_pa_review' ? 'text-tealBrand-100' : 'text-slate-500'}`}>
-                    El PA revisa y filtra 2 opciones antes de enviarlas al cliente (Flujo completo).
+                    {p2Name} revisa y filtra 2 opciones antes de enviarlas a {p3Name} (Flujo de 3 etapas).
                   </p>
                 </button>
 
@@ -531,11 +539,11 @@ export function RecordCarrierSlotsModal({
                   }`}
                 >
                   <div className="font-bold flex items-center justify-between">
-                    <span>⚡ Fechas Acordadas (Saltar Paso)</span>
+                    <span>⚡ Fechas Acordadas (Directo a {p3Name})</span>
                     {targetStage === '3_insured_selection' && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
                   </div>
                   <p className={`text-[11px] mt-0.5 leading-snug ${targetStage === '3_insured_selection' ? 'text-purple-100' : 'text-slate-500'}`}>
-                    Carrier y PA ya están de acuerdo. Enviar directo al Cliente para que elija.
+                    Partes ya están de acuerdo. Enviar directo a {p3Name} para que elija (Flujo de 2 etapas).
                   </p>
                 </button>
               </div>
@@ -575,8 +583,8 @@ export function RecordCarrierSlotsModal({
                 {saving
                   ? 'Guardando...'
                   : targetStage === '3_insured_selection'
-                  ? '⚡ Guardar y Enviar Directo a Selección de Cliente ➔'
-                  : 'Guardar y Enviar a Revisión de PA ➔'}
+                  ? `⚡ Guardar y Enviar Directo a Selección de ${p3Name} ➔`
+                  : `Guardar y Enviar a Revisión de ${p2Name} ➔`}
               </button>
             </div>
           </form>

@@ -57,15 +57,15 @@ export function SlaSettingsModal({ isOpen, onClose, onSaved }: SlaSettingsModalP
 
     // Validation
     if (config.stage1WarningHours >= config.stage1CriticalHours) {
-      setErrorMsg('Stage 1 (Carrier): Warning hours must be strictly less than Critical/Stalled hours.');
+      setErrorMsg('Stage 1 (Initial Dates): Warning hours must be strictly less than Critical/Stalled hours.');
       return;
     }
     if (config.stage2WarningHours >= config.stage2CriticalHours) {
-      setErrorMsg('Stage 2 (PA Review): Warning hours must be strictly less than Critical/Stalled hours.');
+      setErrorMsg('Stage 2 (Options Review): Warning hours must be strictly less than Critical/Stalled hours.');
       return;
     }
     if (config.stage3WarningHours >= config.stage3CriticalHours) {
-      setErrorMsg('Stage 3 (Client Choice): Warning hours must be strictly less than Critical/Stalled hours.');
+      setErrorMsg('Stage 3 (Final Selection): Warning hours must be strictly less than Critical/Stalled hours.');
       return;
     }
 
@@ -186,13 +186,13 @@ export function SlaSettingsModal({ isOpen, onClose, onSaved }: SlaSettingsModalP
             </div>
           </div>
 
-          {/* STAGE 2: PA REVIEW */}
+          {/* STAGE 2: OPTIONS REVIEW */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-tealBrand-700" />
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                  Stage 2: Public Adjuster Review (Pick 2 of 3)
+                  Stage 2: Options Review & Filter (Second Party)
                 </h3>
               </div>
               <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
@@ -200,7 +200,7 @@ export function SlaSettingsModal({ isOpen, onClose, onSaved }: SlaSettingsModalP
               </span>
             </div>
             <p className="text-[11px] text-slate-500">
-              Time elapsed since carrier dates were entered, waiting for the assigned Public Adjuster to approve 2 dates for the client.
+              Time elapsed waiting for the reviewing party to evaluate and narrow down proposed inspection dates.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -220,7 +220,7 @@ export function SlaSettingsModal({ isOpen, onClose, onSaved }: SlaSettingsModalP
                   />
                   <span className="text-xs text-slate-500 font-mono">hrs</span>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">Triggers ⚠️ Awaiting PA warning</span>
+                <span className="text-[10px] text-slate-400 mt-1 block">Triggers ⚠️ Review warning</span>
               </div>
 
               <div>
@@ -244,13 +244,13 @@ export function SlaSettingsModal({ isOpen, onClose, onSaved }: SlaSettingsModalP
             </div>
           </div>
 
-          {/* STAGE 3: CLIENT CHOICE */}
+          {/* STAGE 3: FINAL SELECTION */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-maroon-800" />
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                  Stage 3: Insured Client Selection (Pick 1 of 2)
+                  Stage 3: Final Selection (Definitive Choice)
                 </h3>
               </div>
               <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
@@ -258,7 +258,7 @@ export function SlaSettingsModal({ isOpen, onClose, onSaved }: SlaSettingsModalP
               </span>
             </div>
             <p className="text-[11px] text-slate-500">
-              Time elapsed since 2 pre-approved dates were sent to the policyholder, waiting for their final confirmation.
+              Time elapsed waiting for the final party (Client, Carrier, etc.) to confirm the definitive inspection date.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

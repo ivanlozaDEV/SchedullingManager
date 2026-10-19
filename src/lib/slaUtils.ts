@@ -153,12 +153,25 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
     }
   }
 
-  // 1. Awaiting Slots / Initial Dates (Carrier, PA or Client)
+  const seq = event.coordinationSequence || (
+    event.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
+    event.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
+    ['carrier', 'pa', 'insured']
+  );
+  const p1Actor: 'carrier' | 'pa' | 'insured' = seq[0];
+  const p2Actor: 'carrier' | 'pa' | 'insured' = seq[1];
+  const p3Actor: 'carrier' | 'pa' | 'insured' = seq[2];
+
+  const getActorLabel = (a: 'carrier' | 'pa' | 'insured') => 
+    a === 'insured' ? 'Client' : a === 'pa' ? 'Public Adjuster' : 'Carrier';
+  const getActorShort = (a: 'carrier' | 'pa' | 'insured') => 
+    a === 'insured' ? 'Client' : a === 'pa' ? 'PA' : 'Carrier';
+
+  // 1. Initial Dates Offered (Party 1)
   if (event.coordinationStage === '1_awaiting_carrier_slots') {
     const isClientOpenAvail = event.openAvailabilityActor === 'insured';
-    const originator = event.slotsOriginator || 'carrier';
-    const actorLabel = originator === 'pa' ? 'PA' : originator === 'insured' ? 'Insured' : 'Carrier';
-    const targetActorType: 'carrier' | 'pa' | 'insured' = originator === 'pa' ? 'pa' : originator === 'insured' ? 'insured' : 'carrier';
+    const actorLabel = getActorShort(p1Actor);
+    const targetActorType = p1Actor;
 
     if (hoursElapsed >= config.stage1CriticalHours) {
       return {
@@ -169,9 +182,9 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         isStalled: true,
         alertLevel: 'critical',
         alertMessage: `${actorLabel} delayed (${timeLabel} without response). Overdue (${config.stage1CriticalHours}h limit)!`,
-        actionRecommendation: isClientOpenAvail && originator !== 'insured'
-          ? `Client has open availability ("any day"). Call ${actorLabel} via Nextiva to request a fixed date and confirm.`
-          : `Call ${actorLabel} via Nextiva to request inspection date options.`,
+        actionRecommendation: isClientOpenAvail && p1Actor !== 'insured'
+          ? `Client has open availability ("any day"). Call ${getActorLabel(p1Actor)} via Nextiva to request a fixed date and confirm.`
+          : `Call ${getActorLabel(p1Actor)} via Nextiva to request inspection date options.`,
         targetActorType,
       };
     } else if (hoursElapsed >= config.stage1WarningHours) {
@@ -183,9 +196,9 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         isStalled: true,
         alertLevel: 'warning',
         alertMessage: `Follow-up required (${timeLabel} awaiting dates from ${actorLabel}, SLA: ${config.stage1WarningHours}h)`,
-        actionRecommendation: isClientOpenAvail && originator !== 'insured'
-          ? `Client is available any day. Request a date from ${actorLabel} to lock appointment directly.`
-          : `Send reminder or call ${actorLabel} via Nextiva.`,
+        actionRecommendation: isClientOpenAvail && p1Actor !== 'insured'
+          ? `Client is available any day. Request a date from ${getActorLabel(p1Actor)} to lock appointment directly.`
+          : `Send reminder or call ${getActorLabel(p1Actor)} via Nextiva.`,
         targetActorType,
       };
     } else {
@@ -197,16 +210,19 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         isStalled: false,
         alertLevel: 'normal',
         alertMessage: `Clock running: ${timeLabel} awaiting dates from ${actorLabel} (SLA: ${config.stage1WarningHours}h)`,
-        actionRecommendation: isClientOpenAvail && originator !== 'insured'
-          ? `Client has open availability. Awaiting inspection date from ${actorLabel}.`
+        actionRecommendation: isClientOpenAvail && p1Actor !== 'insured'
+          ? `Client has open availability. Awaiting inspection date from ${getActorLabel(p1Actor)}.`
           : `Awaiting proposed dates from ${actorLabel} (SLA: ${config.stage1WarningHours}h-${config.stage1CriticalHours}h).`,
         targetActorType,
       };
     }
   }
 
-  // 2. PA Review (Pick 2 of 3)
+  // 2. Options Review & Filter (Party 2)
   if (event.coordinationStage === '2_pa_review') {
+    const actorLabel = getActorShort(p2Actor);
+    const targetActorType = p2Actor;
+
     if (hoursElapsed >= config.stage2CriticalHours) {
       return {
         minutesElapsed,
@@ -215,9 +231,9 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: true,
         alertLevel: 'critical',
-        alertMessage: `PA review delayed (${timeLabel} pending). Overdue (Limit: ${config.stage2CriticalHours}h)!`,
-        actionRecommendation: 'Call Public Adjuster via Nextiva to select 2 available dates.',
-        targetActorType: 'pa',
+        alertMessage: `${actorLabel} review delayed (${timeLabel} pending). Overdue (Limit: ${config.stage2CriticalHours}h)!`,
+        actionRecommendation: `Call ${getActorLabel(p2Actor)} via Nextiva to review and select available dates.`,
+        targetActorType,
       };
     } else if (hoursElapsed >= config.stage2WarningHours) {
       return {
@@ -227,9 +243,9 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: true,
         alertLevel: 'warning',
-        alertMessage: `Awaiting PA selection (${timeLabel}, SLA: ${config.stage2WarningHours}h)`,
-        actionRecommendation: 'PA needs to pick 2 of 3 proposed dates.',
-        targetActorType: 'pa',
+        alertMessage: `Awaiting ${actorLabel} review (${timeLabel}, SLA: ${config.stage2WarningHours}h)`,
+        actionRecommendation: `${actorLabel} needs to pick 2 of proposed dates.`,
+        targetActorType,
       };
     } else {
       return {
@@ -239,15 +255,18 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: false,
         alertLevel: 'normal',
-        alertMessage: `Clock running: ${timeLabel} in PA review (SLA: ${config.stage2WarningHours}h)`,
-        actionRecommendation: 'PA reviewing 3 dates offered by carrier.',
-        targetActorType: 'pa',
+        alertMessage: `Clock running: ${timeLabel} in ${actorLabel} review (SLA: ${config.stage2WarningHours}h)`,
+        actionRecommendation: `${actorLabel} reviewing dates offered by ${getActorShort(p1Actor)}.`,
+        targetActorType,
       };
     }
   }
 
-  // 3. Insured Choice (Pick 1 of 2)
+  // 3. Final Selection (Party 3)
   if (event.coordinationStage === '3_insured_selection') {
+    const actorLabel = getActorShort(p3Actor);
+    const targetActorType = p3Actor;
+
     if (hoursElapsed >= config.stage3CriticalHours) {
       return {
         minutesElapsed,
@@ -256,9 +275,9 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: true,
         alertLevel: 'critical',
-        alertMessage: `Client unresponsive (${timeLabel} waiting for choice). Overdue (Limit: ${config.stage3CriticalHours}h)!`,
-        actionRecommendation: 'Call Insured client via Nextiva to lock final inspection date.',
-        targetActorType: 'insured',
+        alertMessage: `${actorLabel} choice delayed (${timeLabel} waiting for choice). Overdue (Limit: ${config.stage3CriticalHours}h)!`,
+        actionRecommendation: `Call ${getActorLabel(p3Actor)} via Nextiva to lock final inspection date.`,
+        targetActorType,
       };
     } else if (hoursElapsed >= config.stage3WarningHours) {
       return {
@@ -268,9 +287,9 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: true,
         alertLevel: 'warning',
-        alertMessage: `Pending client choice (${timeLabel}, SLA: ${config.stage3WarningHours}h)`,
-        actionRecommendation: 'Send reminder SMS/WhatsApp or call client via Nextiva.',
-        targetActorType: 'insured',
+        alertMessage: `Pending ${actorLabel} choice (${timeLabel}, SLA: ${config.stage3WarningHours}h)`,
+        actionRecommendation: `Send reminder SMS/WhatsApp or call ${getActorLabel(p3Actor)} via Nextiva.`,
+        targetActorType,
       };
     } else {
       return {
@@ -280,9 +299,9 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
         timeLabel,
         isStalled: false,
         alertLevel: 'normal',
-        alertMessage: `Clock running: ${timeLabel} waiting for client choice (SLA: ${config.stage3WarningHours}h)`,
-        actionRecommendation: 'Client has 2 dates to pick from.',
-        targetActorType: 'insured',
+        alertMessage: `Clock running: ${timeLabel} waiting for ${actorLabel} choice (SLA: ${config.stage3WarningHours}h)`,
+        actionRecommendation: `${actorLabel} has pre-approved dates to pick from.`,
+        targetActorType,
       };
     }
   }

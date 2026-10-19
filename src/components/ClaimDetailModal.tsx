@@ -583,9 +583,9 @@ export function ClaimDetailModal({
                             onChange={(e) => setCoordinationStage(e.target.value as CoordinationStage)}
                             className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
                           >
-                            <option value="1_awaiting_carrier_slots">1. Awaiting Dates</option>
-                            <option value="2_pa_review">2. PA Review</option>
-                            <option value="3_insured_selection">3. Insured Selection</option>
+                            <option value="1_awaiting_carrier_slots">1. Initial Dates</option>
+                            <option value="2_pa_review">2. Options Review</option>
+                            <option value="3_insured_selection">3. Final Selection</option>
                             <option value="4_confirmed">4. Confirmed</option>
                           </select>
                         </div>
