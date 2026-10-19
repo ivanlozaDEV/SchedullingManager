@@ -112,6 +112,26 @@ serve(async (req) => {
     const smtpUser = Deno.env.get('GMAIL_SMTP_USER') || 'scheduling@ipadjustinggroup.com'
     const smtpPass = Deno.env.get('GMAIL_SMTP_PASSWORD')
 
+    // Ensure the scheduling office/organizer also receives the invite to update their calendar
+    if (smtpUser && !isTest && !uniqueRecipients.some(r => r.email.toLowerCase() === smtpUser.toLowerCase())) {
+      uniqueRecipients.push({ email: smtpUser, name: 'IP Scheduling Coordinator' })
+    }
+
+    // Determine dynamic sequence number (RFC 5545) so updates modify existing calendar events instead of being ignored
+    let sequenceNumber = 0
+    if (event?.id && event.id !== 'test-calendar-event') {
+      try {
+        const { count } = await supabaseAdmin
+          .from('coordination_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', event.id)
+          .eq('channel', 'email')
+        sequenceNumber = Math.max(0, count || 0)
+      } catch (_) {
+        sequenceNumber = 1
+      }
+    }
+
     const attendeesIcs = uniqueRecipients.map(r => 
       `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="${(r.name || r.email).replace(/[;:,"]/g, '')}":mailto:${r.email}`
     ).join('\r\n')
@@ -133,7 +153,7 @@ serve(async (req) => {
       `DESCRIPTION:${desc.replace(/\n/g, '\\n')}`,
       `LOCATION:${event.location || ''}`,
       'STATUS:CONFIRMED',
-      'SEQUENCE:0',
+      `SEQUENCE:${sequenceNumber}`,
       'TRANSP:OPAQUE',
       'END:VEVENT',
       'END:VCALENDAR'

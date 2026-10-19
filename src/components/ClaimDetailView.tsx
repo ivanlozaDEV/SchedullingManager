@@ -36,8 +36,9 @@ import { RecordCarrierSlotsModal } from './RecordCarrierSlotsModal';
 import { DirectConfirmModal } from './DirectConfirmModal';
 import { ResetCoordinationModal } from './ResetCoordinationModal';
 import { EventHistoryModal } from './EventHistoryModal';
+import { EmailPreviewModal } from './EmailPreviewModal';
 import { useToast } from '../context/ToastContext';
-import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from '../lib/slaUtils';
+import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from '../lib/slaUtils';
 import { appSettingsService } from '../lib/appSettingsService';
 import { 
   formatPhoneAsYouType, 
@@ -228,72 +229,65 @@ export function ClaimDetailView({
 
   // Copied slot message state
   const [copiedSlotId, setCopiedSlotId] = useState<string | null>(null);
-  const [sendingEmailEventId, setSendingEmailEventId] = useState<string | null>(null);
+  const [emailPreviewEvent, setEmailPreviewEvent] = useState<CoordinationEvent | null>(null);
+  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update'>('selection_options');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const toast = useToast();
 
-  const handleSendInsuredEmail = async (eventId: string) => {
-    if (!claim.insured?.email || !claim.insured.email.trim()) {
-      toast.warning(
-        'Falta correo del asegurado',
-        `El cliente (${claim.insured?.name || 'Asegurado'}) no tiene un correo registrado. Haz clic en editar cliente para ingresarlo.`
-      );
-      return;
+  const handleOpenEmailPreview = (evt: CoordinationEvent, type: 'selection_options' | 'calendar_update' = 'selection_options') => {
+    if (type === 'selection_options') {
+      if (!claim.insured?.email || !claim.insured.email.trim()) {
+        toast.warning(
+          'Falta correo del asegurado',
+          `El cliente (${claim.insured?.name || 'Asegurado'}) no tiene un correo registrado. Haz clic en editar cliente para ingresarlo.`
+        );
+        return;
+      }
+    } else {
+      const insuredEmail = claim.insured?.email;
+      const paEmail = claim.publicAdjuster?.email;
+      const participants = evt.participants || [];
+      const otherEmails = participants
+        .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
+        .filter((em): em is string => Boolean(em && em.trim()));
+      const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
+      if (allEmails.length === 0) {
+        toast.warning('Sin destinatarios', 'No hay correos registrados para ninguno de los participantes de este evento.');
+        return;
+      }
     }
 
-    setSendingEmailEventId(eventId);
+    setEmailPreviewEvent(evt);
+    setEmailPreviewType(type);
+  };
+
+  const handleConfirmSendEmail = async () => {
+    if (!emailPreviewEvent) return;
+    setIsSendingEmail(true);
     try {
-      const res = await schedulingService.notifyInsuredSlots(eventId);
-      if (res && res.success === false) {
-        toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
+      if (emailPreviewType === 'selection_options') {
+        const res = await schedulingService.notifyInsuredSlots(emailPreviewEvent.id);
+        if (res && res.success === false) {
+          toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
+        } else {
+          toast.success(
+            '¡Correo enviado con éxito!',
+            `Se enviaron las opciones de fechas a ${claim.insured?.name || 'Asegurado'} (${claim.insured?.email})`
+          );
+        }
       } else {
+        const res = await schedulingService.sendCalendarInvites(emailPreviewEvent.id);
+        const sentList = res?.sentTo?.join(', ') || 'todos los participantes';
         toast.success(
-          '¡Correo enviado con éxito!',
-          `Se enviaron las opciones de fechas a ${claim.insured.name} (${claim.insured.email})`
+          '¡Invitaciones enviadas con éxito!',
+          `Invitaciones de calendario (.ics) enviadas a:\n${sentList}`
         );
       }
+      if (onEventCreated) onEventCreated();
     } catch (err: any) {
       toast.error('Error enviando correo', err.message || String(err));
     } finally {
-      setSendingEmailEventId(null);
-    }
-  };
-
-  const [sendingCalendarEventId, setSendingCalendarEventId] = useState<string | null>(null);
-
-  const handleSendCalendarUpdateToAll = async (evt: CoordinationEvent) => {
-    const insuredEmail = claim.insured?.email;
-    const paEmail = claim.publicAdjuster?.email;
-    const participants = evt.participants || [];
-    const otherEmails = participants
-      .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
-      .filter((em): em is string => Boolean(em && em.trim()));
-
-    const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
-
-    if (allEmails.length === 0) {
-      toast.warning('Sin destinatarios', 'No hay correos registrados para ninguno de los participantes de este evento.');
-      return;
-    }
-
-    const confirmMsg = `¿Deseas enviar la actualización de la cita por correo (.ics) a los siguientes participantes?\n\n` +
-      allEmails.map((em) => `• ${em}`).join('\n') +
-      `\n\n📅 Fecha: ${evt.finalDate}\n⏰ Hora: ${evt.finalStartTime?.slice(0, 5)} - ${evt.finalEndTime?.slice(0, 5)}`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    setSendingCalendarEventId(evt.id);
-    try {
-      const res = await schedulingService.sendCalendarInvites(evt.id);
-      const sentList = res?.sentTo?.join(', ') || allEmails.join(', ');
-      toast.success(
-        '¡Actualización enviada con éxito!',
-        `Invitaciones de calendario enviadas a:\n${sentList}`
-      );
-      if (onEventCreated) onEventCreated();
-    } catch (err: any) {
-      toast.error('Error enviando actualización', err.message || String(err));
-    } finally {
-      setSendingCalendarEventId(null);
+      setIsSendingEmail(false);
     }
   };
 
@@ -633,6 +627,35 @@ export function ClaimDetailView({
     setCoordinationSequence(current);
   };
 
+  // Helper for 2-step flow (Stage 2: Options Review) - only 2 actors are chosen
+  const handleStage2PartyChange = (slot: 'review' | 'final', selected: CoordinationParty) => {
+    const ALL_PARTIES: CoordinationParty[] = ['carrier', 'pa', 'insured'];
+    let currentReview = coordinationSequence[1];
+    let currentFinal = coordinationSequence[2];
+
+    if (slot === 'review') {
+      currentReview = selected;
+      if (currentFinal === selected) {
+        currentFinal = ALL_PARTIES.find(p => p !== selected && p !== coordinationSequence[0]) || ALL_PARTIES.find(p => p !== selected)!;
+      }
+    } else {
+      currentFinal = selected;
+      if (currentReview === selected) {
+        currentReview = ALL_PARTIES.find(p => p !== selected && p !== coordinationSequence[0]) || ALL_PARTIES.find(p => p !== selected)!;
+      }
+    }
+
+    const omitted = ALL_PARTIES.find(p => p !== currentReview && p !== currentFinal) || 'carrier';
+    setCoordinationSequence([omitted, currentReview, currentFinal]);
+  };
+
+  // Helper for 1-step flow (Stage 3: Final Selection) - only 1 actor is chosen
+  const handleStage3PartyChange = (finalSelected: CoordinationParty) => {
+    const ALL_PARTIES: CoordinationParty[] = ['carrier', 'pa', 'insured'];
+    const others = ALL_PARTIES.filter(p => p !== finalSelected);
+    setCoordinationSequence([others[0], others[1], finalSelected]);
+  };
+
   const handleOpenEditEvent = (evt: CoordinationEvent) => {
     setEditingEvent(evt);
     setEventError(null);
@@ -940,6 +963,33 @@ export function ClaimDetailView({
       setEditingEvent(null);
       setIsDirectScheduleMode(false);
       setDirectFinalDate('');
+
+      if (editingEvent) {
+        toast.success('Evento actualizado', 'Los cambios en el evento se guardaron exitosamente.');
+      } else if (isDirectScheduleMode) {
+        toast.success('¡Cita Confirmada Agendada!', 'La cita ha sido fijada directamente en el calendario.');
+      } else {
+        if (coordinationStage === '1_awaiting_carrier_slots') {
+          toast.info(
+            'Evento creado en Etapa 1 (Initial Dates)',
+            'El evento ya está disponible en el Funnel. Recuerda solicitar o registrar las fechas iniciales para avanzar.',
+            7000
+          );
+        } else if (coordinationStage === '2_pa_review') {
+          toast.info(
+            'Evento creado en Etapa 2 (Options Review)',
+            'El evento está en Options Review. Recuerda revisar y filtrar las 2 opciones para continuar.',
+            7000
+          );
+        } else if (coordinationStage === '3_insured_selection') {
+          toast.warning(
+            '⚠️ Recuerda Enviar el Correo de Fechas',
+            'El evento está en Etapa 3 (Selección Final). Haz clic en "Preview & Send Email" para verificar y enviar las opciones al cliente.',
+            8000
+          );
+        }
+      }
+
       onEventCreated();
     } catch (err: any) {
       console.error(editingEvent ? 'Error updating event:' : 'Error creating event:', err);
@@ -1796,19 +1846,33 @@ export function ClaimDetailView({
                         </label>
                         <select
                           value={coordinationStage}
-                          onChange={(e) => setCoordinationStage(e.target.value as CoordinationStage)}
-                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
+                          onChange={(e) => {
+                            const newStage = e.target.value as CoordinationStage;
+                            setCoordinationStage(newStage);
+                            if (newStage === '4_confirmed') {
+                              setIsDirectScheduleMode(true);
+                            } else if (newStage === '3_insured_selection') {
+                              setIsDirectScheduleMode(false);
+                              handleStage3PartyChange(coordinationSequence[2] || 'insured');
+                            } else if (newStage === '2_pa_review') {
+                              setIsDirectScheduleMode(false);
+                              handleStage2PartyChange('review', coordinationSequence[1] || 'pa');
+                            } else {
+                              setIsDirectScheduleMode(false);
+                            }
+                          }}
+                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:border-maroon-800"
                         >
                           <option value="1_awaiting_carrier_slots">
-                            1. Awaiting Dates ({coordinationSequence[0] === 'insured' ? 'Client' : coordinationSequence[0] === 'pa' ? 'PA' : 'Carrier'})
+                            1. Initial Dates (Full 3-Step Coordination)
                           </option>
                           <option value="2_pa_review">
-                            2. Review & Filter ({coordinationSequence[1] === 'insured' ? 'Client' : coordinationSequence[1] === 'pa' ? 'PA' : 'Carrier'})
+                            2. Options Review (2 Steps Remaining - Dates Already Offered)
                           </option>
                           <option value="3_insured_selection">
-                            3. Final Selection ({coordinationSequence[2] === 'insured' ? 'Client' : coordinationSequence[2] === 'pa' ? 'PA' : 'Carrier'})
+                            3. Final Selection (1 Step Remaining - Parties Agreed, Final Choice)
                           </option>
-                          <option value="4_confirmed">4. Confirmed</option>
+                          <option value="4_confirmed">4. Confirmed (Direct Schedule)</option>
                         </select>
                       </div>
                     )}
@@ -1821,137 +1885,189 @@ export function ClaimDetailView({
                         <div>
                           <label className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                             <Layers className="w-4 h-4 text-maroon-800" />
-                            <span>Coordination Sequence / Order of Dates</span>
+                            <span>
+                              {coordinationStage === '1_awaiting_carrier_slots' && 'Coordination Sequence (3 Steps)'}
+                              {coordinationStage === '2_pa_review' && 'Coordination Sequence (2 Steps Remaining)'}
+                              {coordinationStage === '3_insured_selection' && 'Coordination Sequence (1 Step Remaining)'}
+                            </span>
                             <span className="text-red-500">*</span>
                           </label>
                           <p className="text-[11px] text-slate-500">
-                            Define the exact order in which dates will be proposed, reviewed, and finalized.
+                            {coordinationStage === '1_awaiting_carrier_slots' && 'Define the exact order in which dates will be proposed, reviewed, and finalized.'}
+                            {coordinationStage === '2_pa_review' && 'Initial dates were already offered. Choose who reviews and who makes the final choice.'}
+                            {coordinationStage === '3_insured_selection' && 'Prior parties already aligned on dates. Choose who makes the final date lock.'}
                           </p>
                         </div>
 
                         {/* Live Flow Preview Badge */}
                         <div className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 bg-white border border-slate-300 rounded-lg shadow-2xs self-start sm:self-auto">
                           <span className="text-slate-400">Order:</span>
-                          <span className="text-maroon-900">
-                            {coordinationSequence[0] === 'insured' ? '👤 Client' : coordinationSequence[0] === 'pa' ? '⚖️ PA' : '🏢 Carrier'}
-                          </span>
-                          <ArrowRight className="w-3 h-3 text-slate-400" />
-                          <span className="text-tealBrand-800">
-                            {coordinationSequence[1] === 'insured' ? '👤 Client' : coordinationSequence[1] === 'pa' ? '⚖️ PA' : '🏢 Carrier'}
-                          </span>
-                          <ArrowRight className="w-3 h-3 text-slate-400" />
+                          {coordinationStage === '1_awaiting_carrier_slots' && (
+                            <>
+                              <span className="text-maroon-900">
+                                {coordinationSequence[0] === 'insured' ? '👤 Client' : coordinationSequence[0] === 'pa' ? '⚖️ PA' : '🏢 Carrier'}
+                              </span>
+                              <ArrowRight className="w-3 h-3 text-slate-400" />
+                            </>
+                          )}
+                          {coordinationStage === '2_pa_review' && (
+                            <>
+                              <span className="text-slate-400 font-normal italic">Dates Offered</span>
+                              <ArrowRight className="w-3 h-3 text-slate-400" />
+                            </>
+                          )}
+                          {coordinationStage === '3_insured_selection' && (
+                            <>
+                              <span className="text-slate-400 font-normal italic">Parties Agreed</span>
+                              <ArrowRight className="w-3 h-3 text-slate-400" />
+                            </>
+                          )}
+                          {coordinationStage !== '3_insured_selection' && (
+                            <>
+                              <span className="text-tealBrand-800">
+                                {coordinationSequence[1] === 'insured' ? '👤 Client' : coordinationSequence[1] === 'pa' ? '⚖️ PA' : '🏢 Carrier'}
+                              </span>
+                              <ArrowRight className="w-3 h-3 text-slate-400" />
+                            </>
+                          )}
                           <span className="text-purple-800">
                             {coordinationSequence[2] === 'insured' ? '👤 Client' : coordinationSequence[2] === 'pa' ? '⚖️ PA' : '🏢 Carrier'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Quick Presets */}
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                          Quick Presets:
-                        </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5">
-                          {[
-                            { seq: ['carrier', 'pa', 'insured'] as CoordinationParty[], label: '🏢 Carrier ➔ ⚖️ PA ➔ 👤 Cliente', desc: 'Estándar 3 Etapas: Carrier ofrece fechas' },
-                            { seq: ['insured', 'pa', 'carrier'] as CoordinationParty[], label: '👤 Cliente ➔ ⚖️ PA ➔ 🏢 Carrier', desc: 'Estándar 3 Etapas: Cliente propone primero' },
-                            { seq: ['pa', 'insured', 'carrier'] as CoordinationParty[], label: '⚖️ PA ➔ 👤 Cliente ➔ 🏢 Carrier', desc: 'Estándar 3 Etapas: PA propone slots' },
-                            { seq: ['carrier', 'pa', 'insured'] as CoordinationParty[], label: '⚡ 🏢 Carrier + ⚖️ PA ➔ 👤 Cliente', desc: '2 Etapas: Carrier & PA de acuerdo (Directo a Cliente)', defaultStage: '3_insured_selection' as CoordinationStage },
-                            { seq: ['insured', 'pa', 'carrier'] as CoordinationParty[], label: '⚡ 👤 Cliente + ⚖️ PA ➔ 🏢 Carrier', desc: '2 Etapas: Cliente & PA de acuerdo (Directo a Carrier)', defaultStage: '3_insured_selection' as CoordinationStage },
-                            { seq: ['carrier', 'insured', 'pa'] as CoordinationParty[], label: '🏢 Carrier ➔ 👤 Cliente ➔ ⚖️ PA', desc: 'Estándar 3 Etapas: Carrier -> Cliente -> PA' },
-                          ].map((preset, idx) => {
-                            const isSelected = coordinationSequence.length === 3 &&
-                              coordinationSequence[0] === preset.seq[0] &&
-                              coordinationSequence[1] === preset.seq[1] &&
-                              coordinationSequence[2] === preset.seq[2] &&
-                              (!preset.defaultStage || coordinationStage === preset.defaultStage);
-                            return (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => {
-                                  setCoordinationSequence(preset.seq);
-                                  if (preset.defaultStage) {
-                                    setCoordinationStage(preset.defaultStage);
-                                  }
-                                }}
-                                className={`text-left p-2 rounded-lg border text-xs transition-all cursor-pointer ${
-                                  isSelected
-                                    ? 'bg-maroon-800 text-white border-maroon-900 shadow-xs ring-1 ring-maroon-800'
-                                    : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                                }`}
+                      {/* STAGE 1: Full 3-Step Coordination */}
+                      {coordinationStage === '1_awaiting_carrier_slots' && (
+                        <div className="bg-white rounded-lg border border-slate-200 p-2.5">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
+                            Configure 3 Steps:
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {/* Step 1 */}
+                            <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                              <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                <span className="w-4 h-4 rounded-full bg-maroon-800 text-white flex items-center justify-center text-[9px] font-mono">1</span>
+                                <span>Proposes Dates:</span>
+                              </div>
+                              <select
+                                value={coordinationSequence[0]}
+                                onChange={(e) => handleSelectStepParty(0, e.target.value as CoordinationParty)}
+                                className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
                               >
-                                <div className="font-bold flex items-center justify-between">
-                                  <span className="truncate">{preset.label}</span>
-                                  {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
-                                </div>
-                                <div className={`text-[10px] mt-0.5 truncate ${isSelected ? 'text-maroon-100' : 'text-slate-500'}`}>
-                                  {preset.desc}
-                                </div>
-                              </button>
-                            );
-                          })}
+                                <option value="carrier">🏢 Carrier (Adjuster)</option>
+                                <option value="pa">⚖️ Public Adjuster (PA)</option>
+                                <option value="insured">👤 Client / Insured</option>
+                              </select>
+                            </div>
+
+                            {/* Step 2 */}
+                            <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                              <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                <span className="w-4 h-4 rounded-full bg-tealBrand-800 text-white flex items-center justify-center text-[9px] font-mono">2</span>
+                                <span>Reviews / Filters:</span>
+                              </div>
+                              <select
+                                value={coordinationSequence[1]}
+                                onChange={(e) => handleSelectStepParty(1, e.target.value as CoordinationParty)}
+                                className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
+                              >
+                                <option value="pa">⚖️ Public Adjuster (PA)</option>
+                                <option value="insured">👤 Client / Insured</option>
+                                <option value="carrier">🏢 Carrier (Adjuster)</option>
+                              </select>
+                            </div>
+
+                            {/* Step 3 */}
+                            <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                              <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                <span className="w-4 h-4 rounded-full bg-purple-800 text-white flex items-center justify-center text-[9px] font-mono">3</span>
+                                <span>Final Choice:</span>
+                              </div>
+                              <select
+                                value={coordinationSequence[2]}
+                                onChange={(e) => handleSelectStepParty(2, e.target.value as CoordinationParty)}
+                                className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
+                              >
+                                <option value="insured">👤 Client / Insured</option>
+                                <option value="carrier">🏢 Carrier (Adjuster)</option>
+                                <option value="pa">⚖️ Public Adjuster (PA)</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      {/* Custom 3-Step Pickers (Any Combination) */}
-                      <div className="bg-white rounded-lg border border-slate-200 p-2.5">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
-                          Customize Step by Step:
-                        </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          {/* Step 1 */}
-                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-                            <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-maroon-800 text-white flex items-center justify-center text-[9px] font-mono">1</span>
-                              <span>Proposes Dates:</span>
-                            </div>
-                            <select
-                              value={coordinationSequence[0]}
-                              onChange={(e) => handleSelectStepParty(0, e.target.value as CoordinationParty)}
-                              className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
-                            >
-                              <option value="insured">👤 Client / Insured</option>
-                              <option value="pa">⚖️ Public Adjuster (PA)</option>
-                              <option value="carrier">🏢 Carrier (Adjuster)</option>
-                            </select>
+                      {/* STAGE 2: 2 Steps (Dates already proposed/open) */}
+                      {coordinationStage === '2_pa_review' && (
+                        <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2.5">
+                          <div className="flex items-center gap-2 p-2 bg-tealBrand-50 border border-tealBrand-200 rounded-lg text-[11px] text-tealBrand-900">
+                            <span className="font-bold shrink-0">💡 Paso 1 omitido:</span>
+                            <span>Se asume que las fechas u opciones ya fueron provistas. Solo debes definir los 2 actores restantes.</span>
                           </div>
 
-                          {/* Step 2 */}
-                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-                            <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-tealBrand-800 text-white flex items-center justify-center text-[9px] font-mono">2</span>
-                              <span>Reviews / Filters:</span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {/* Step 2 in flow */}
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                              <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                <span className="w-4 h-4 rounded-full bg-tealBrand-800 text-white flex items-center justify-center text-[9px] font-mono">1</span>
+                                <span>Reviews / Filters Now:</span>
+                              </div>
+                              <select
+                                value={coordinationSequence[1]}
+                                onChange={(e) => handleStage2PartyChange('review', e.target.value as CoordinationParty)}
+                                className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
+                              >
+                                <option value="pa">⚖️ Public Adjuster (PA)</option>
+                                <option value="carrier">🏢 Carrier (Adjuster)</option>
+                                <option value="insured">👤 Client / Insured</option>
+                              </select>
                             </div>
-                            <select
-                              value={coordinationSequence[1]}
-                              onChange={(e) => handleSelectStepParty(1, e.target.value as CoordinationParty)}
-                              className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
-                            >
-                              <option value="pa">⚖️ Public Adjuster (PA)</option>
-                              <option value="insured">👤 Client / Insured</option>
-                              <option value="carrier">🏢 Carrier (Adjuster)</option>
-                            </select>
+
+                            {/* Step 3 in flow */}
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                              <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                <span className="w-4 h-4 rounded-full bg-purple-800 text-white flex items-center justify-center text-[9px] font-mono">2</span>
+                                <span>Final Choice:</span>
+                              </div>
+                              <select
+                                value={coordinationSequence[2]}
+                                onChange={(e) => handleStage2PartyChange('final', e.target.value as CoordinationParty)}
+                                className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
+                              >
+                                <option value="insured">👤 Client / Insured</option>
+                                <option value="carrier">🏢 Carrier (Adjuster)</option>
+                                <option value="pa">⚖️ Public Adjuster (PA)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* STAGE 3: 1 Step (Parties agreed, only final selection needed) */}
+                      {coordinationStage === '3_insured_selection' && (
+                        <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2.5">
+                          <div className="flex items-center gap-2 p-2 bg-purple-50 border border-purple-200 rounded-lg text-[11px] text-purple-900">
+                            <span className="font-bold shrink-0">💡 Pasos 1 y 2 omitidos:</span>
+                            <span>Las partes iniciales ya acordaron las fechas candidatas. Solo debes elegir quién hace la selección final.</span>
                           </div>
 
-                          {/* Step 3 */}
-                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
-                            <div className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
-                              <span className="w-4 h-4 rounded-full bg-purple-800 text-white flex items-center justify-center text-[9px] font-mono">3</span>
-                              <span>Final Choice:</span>
+                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5 max-w-md">
+                            <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                              <span className="w-4 h-4 rounded-full bg-purple-800 text-white flex items-center justify-center text-[9px] font-mono">✓</span>
+                              <span>¿Quién confirma y bloquea la fecha final?:</span>
                             </div>
                             <select
                               value={coordinationSequence[2]}
-                              onChange={(e) => handleSelectStepParty(2, e.target.value as CoordinationParty)}
-                              className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
+                              onChange={(e) => handleStage3PartyChange(e.target.value as CoordinationParty)}
+                              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-maroon-800 cursor-pointer"
                             >
-                              <option value="carrier">🏢 Carrier (Adjuster)</option>
                               <option value="insured">👤 Client / Insured</option>
+                              <option value="carrier">🏢 Carrier (Adjuster)</option>
                               <option value="pa">⚖️ Public Adjuster (PA)</option>
                             </select>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )}
 
@@ -3044,13 +3160,12 @@ export function ClaimDetailView({
                               {claim.insured?.email && (
                                 <button
                                   type="button"
-                                  onClick={() => handleSendInsuredEmail(evt.id)}
-                                  disabled={sendingEmailEventId === evt.id}
-                                  className="px-2.5 py-1.5 bg-white border border-tealBrand-300 text-tealBrand-900 hover:bg-tealBrand-100 rounded-md text-[11px] font-bold flex items-center gap-1 shadow-xs transition-colors"
-                                  title="Send or resend 1-click email invitation to Insured"
+                                  onClick={() => handleOpenEmailPreview(evt, 'selection_options')}
+                                  className="px-2.5 py-1.5 bg-white border border-tealBrand-300 text-tealBrand-900 hover:bg-tealBrand-100 rounded-md text-[11px] font-bold flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                                  title="Preview and send 1-click email invitation to Insured"
                                 >
                                   <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                                  <span>{sendingEmailEventId === evt.id ? 'Sending...' : 'Email Client'}</span>
+                                  <span>Preview & Send Email</span>
                                 </button>
                               )}
                               <button
@@ -3138,14 +3253,25 @@ export function ClaimDetailView({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleSendCalendarUpdateToAll(evt)}
-                                disabled={sendingCalendarEventId === evt.id}
-                                className="px-2.5 py-1 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-md text-xs font-bold transition-colors shadow-2xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                                title="Send updated calendar invitations (.ics) to all participants"
+                                onClick={() => handleOpenEmailPreview(evt, 'calendar_update')}
+                                className="px-2.5 py-1 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-md text-xs font-bold transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
+                                title="Preview and send updated calendar invitations (.ics) to all participants"
                               >
                                 <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                                <span>{sendingCalendarEventId === evt.id ? 'Sending...' : 'Send Update to All ✉️'}</span>
+                                <span>Preview & Send Update ✉️</span>
                               </button>
+                              {getGoogleCalendarUrl(evt) && (
+                                <a
+                                  href={getGoogleCalendarUrl(evt)!}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-900 rounded-md text-xs font-bold transition-colors shadow-2xs flex items-center gap-1"
+                                  title="Abrir o actualizar esta cita directamente en tu Google Calendar con 1 clic"
+                                >
+                                  <Calendar className="w-3.5 h-3.5 text-blue-700" />
+                                  <span>Abrir en Google Calendar 📅</span>
+                                </a>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleReturnToInsuredSelection(evt)}
@@ -3978,6 +4104,18 @@ export function ClaimDetailView({
             </div>
           </div>
         </div>
+      )}
+
+      {/* EMAIL PREVIEW MODAL */}
+      {emailPreviewEvent && (
+        <EmailPreviewModal
+          isOpen={Boolean(emailPreviewEvent)}
+          onClose={() => setEmailPreviewEvent(null)}
+          event={emailPreviewEvent}
+          type={emailPreviewType}
+          onConfirmSend={handleConfirmSendEmail}
+          isSending={isSendingEmail}
+        />
       )}
 
     </div>

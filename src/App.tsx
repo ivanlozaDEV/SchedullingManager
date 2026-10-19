@@ -41,9 +41,10 @@ import { DirectConfirmModal } from './components/DirectConfirmModal';
 import { SlaSettingsModal } from './components/SlaSettingsModal';
 import { ResetCoordinationModal } from './components/ResetCoordinationModal';
 import { EventHistoryModal } from './components/EventHistoryModal';
+import { EmailPreviewModal } from './components/EmailPreviewModal';
 import { MasterCatalogsView } from './components/MasterCatalogsView';
 import { useToast } from './context/ToastContext';
-import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, type SlaConfig } from './lib/slaUtils';
+import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from './lib/slaUtils';
 import { appSettingsService } from './lib/appSettingsService';
 import { formatTimeRangeWithDualTimezone, getLiveOperatingTimes, type FloridaTimezone } from './lib/timezoneUtils';
 import type { 
@@ -222,75 +223,68 @@ export function App() {
   const [paSelectedSlotIds, setPaSelectedSlotIds] = useState<Record<string, string[]>>({});
   const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
   const [insuredConfirmingSlotId, setInsuredConfirmingSlotId] = useState<string | null>(null);
-  const [sendingEmailEventId, setSendingEmailEventId] = useState<string | null>(null);
+  const [emailPreviewEvent, setEmailPreviewEvent] = useState<CoordinationEvent | null>(null);
+  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update'>('selection_options');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-  const handleSendInsuredEmail = async (eventId: string) => {
-    const evt = events.find((e) => e.id === eventId);
-    const insuredEmail = evt?.claim?.insured?.email;
-    const insuredName = evt?.claim?.insured?.name || 'Asegurado';
-
-    if (!insuredEmail || !insuredEmail.trim()) {
-      toast.warning(
-        'Falta correo del asegurado',
-        `El cliente ${insuredName} no tiene un correo electrónico registrado. Por favor ingrésalo en los datos del cliente.`
-      );
-      return;
+  const handleOpenEmailPreview = (evt: CoordinationEvent, type: 'selection_options' | 'calendar_update' = 'selection_options') => {
+    if (type === 'selection_options') {
+      const insuredEmail = evt.claim?.insured?.email;
+      const insuredName = evt.claim?.insured?.name || 'Asegurado';
+      if (!insuredEmail || !insuredEmail.trim()) {
+        toast.warning(
+          'Falta correo del asegurado',
+          `El cliente ${insuredName} no tiene un correo electrónico registrado. Por favor ingrésalo en los datos del cliente.`
+        );
+        return;
+      }
+    } else {
+      const insuredEmail = evt.claim?.insured?.email;
+      const paEmail = evt.claim?.publicAdjuster?.email;
+      const participants = evt.participants || [];
+      const otherEmails = participants
+        .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
+        .filter((em): em is string => Boolean(em && em.trim()));
+      const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
+      if (allEmails.length === 0) {
+        toast.warning('Sin destinatarios', 'No hay correos registrados para ninguno de los participantes.');
+        return;
+      }
     }
 
-    setSendingEmailEventId(eventId);
+    setEmailPreviewEvent(evt);
+    setEmailPreviewType(type);
+  };
+
+  const handleConfirmSendEmail = async () => {
+    if (!emailPreviewEvent) return;
+    setIsSendingEmail(true);
     try {
-      const res = await schedulingService.notifyInsuredSlots(eventId);
-      if (res && res.success === false) {
-        toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
+      if (emailPreviewType === 'selection_options') {
+        const res = await schedulingService.notifyInsuredSlots(emailPreviewEvent.id);
+        if (res && res.success === false) {
+          toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
+        } else {
+          const insuredName = emailPreviewEvent.claim?.insured?.name || 'Asegurado';
+          const insuredEmail = emailPreviewEvent.claim?.insured?.email || '';
+          toast.success(
+            '¡Correo enviado con éxito!',
+            `Se enviaron las opciones de fechas a ${insuredName} (${insuredEmail})`
+          );
+        }
       } else {
+        const res = await schedulingService.sendCalendarInvites(emailPreviewEvent.id);
+        const sentList = res?.sentTo?.join(', ') || 'todos los participantes';
         toast.success(
-          '¡Correo enviado con éxito!',
-          `Se enviaron las opciones de fechas a ${insuredName} (${insuredEmail})`
+          '¡Invitaciones enviadas con éxito!',
+          `Invitaciones de calendario (.ics) enviadas a:\n${sentList}`
         );
       }
+      await loadData();
     } catch (err: any) {
       toast.error('Error enviando correo', err.message || String(err));
     } finally {
-      setSendingEmailEventId(null);
-    }
-  };
-
-  const [sendingCalendarEventId, setSendingCalendarEventId] = useState<string | null>(null);
-
-  const handleSendCalendarUpdateToAll = async (evt: CoordinationEvent) => {
-    const insuredEmail = evt.claim?.insured?.email;
-    const paEmail = evt.claim?.publicAdjuster?.email;
-    const participants = evt.participants || [];
-    const otherEmails = participants
-      .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
-      .filter((em): em is string => Boolean(em && em.trim()));
-
-    const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
-
-    if (allEmails.length === 0) {
-      toast.warning('Sin destinatarios', 'No hay correos registrados para ninguno de los participantes.');
-      return;
-    }
-
-    const confirmMsg = `¿Deseas enviar la actualización de la cita por correo (.ics) a los siguientes participantes?\n\n` +
-      allEmails.map((em) => `• ${em}`).join('\n') +
-      `\n\n📅 Fecha: ${evt.finalDate}\n⏰ Hora: ${evt.finalStartTime?.slice(0, 5)} - ${evt.finalEndTime?.slice(0, 5)}`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    setSendingCalendarEventId(evt.id);
-    try {
-      const res = await schedulingService.sendCalendarInvites(evt.id);
-      const sentList = res?.sentTo?.join(', ') || allEmails.join(', ');
-      toast.success(
-        '¡Actualización enviada con éxito!',
-        `Invitaciones de calendario enviadas a:\n${sentList}`
-      );
-      await loadData();
-    } catch (err: any) {
-      toast.error('Error enviando actualización', err.message || String(err));
-    } finally {
-      setSendingCalendarEventId(null);
+      setIsSendingEmail(false);
     }
   };
 
@@ -1724,9 +1718,8 @@ export function App() {
 
                                             <button
                                               type="button"
-                                              onClick={() => handleSendInsuredEmail(evt.id)}
-                                              disabled={sendingEmailEventId === evt.id}
-                                              className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold ${
+                                              onClick={() => handleOpenEmailPreview(evt, 'selection_options')}
+                                              className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold cursor-pointer ${
                                                 !evt.claim?.insured?.email
                                                   ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
                                                   : 'bg-tealBrand-50 hover:bg-tealBrand-100 border-tealBrand-300 text-tealBrand-800'
@@ -1734,16 +1727,14 @@ export function App() {
                                               title={
                                                 !evt.claim?.insured?.email
                                                   ? 'Sin correo registrado para el asegurado. Clic para ver detalles.'
-                                                  : `Enviar invitación por correo a ${evt.claim.insured.email}`
+                                                  : `Previsualizar y enviar invitación por correo a ${evt.claim.insured.email}`
                                               }
                                             >
                                               <Mail className={`w-3.5 h-3.5 ${!evt.claim?.insured?.email ? 'text-amber-600' : 'text-tealBrand-700'}`} />
                                               <span>
-                                                {sendingEmailEventId === evt.id
-                                                  ? '...'
-                                                  : !evt.claim?.insured?.email
+                                                {!evt.claim?.insured?.email
                                                   ? 'Sin Email'
-                                                  : 'Email'}
+                                                  : 'Preview & Send Email'}
                                               </span>
                                             </button>
                                           </>
@@ -1808,14 +1799,25 @@ export function App() {
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => handleSendCalendarUpdateToAll(evt)}
-                                        disabled={sendingCalendarEventId === evt.id}
-                                        className="w-full h-8 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                                        title="Send updated calendar invitations (.ics) to all participants"
+                                        onClick={() => handleOpenEmailPreview(evt, 'calendar_update')}
+                                        className="w-full h-8 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                                        title="Previsualizar y enviar invitaciones de calendario actualizadas (.ics) a todos los participantes"
                                       >
                                         <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                                        <span>{sendingCalendarEventId === evt.id ? 'Sending Update...' : 'Send Update to All ✉️'}</span>
+                                        <span>Preview & Send Update ✉️</span>
                                       </button>
+                                      {getGoogleCalendarUrl(evt) && (
+                                        <a
+                                          href={getGoogleCalendarUrl(evt)!}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="w-full h-8 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                          title="Abrir o actualizar esta cita directamente en tu Google Calendar con 1 clic"
+                                        >
+                                          <Calendar className="w-3.5 h-3.5 text-blue-700" />
+                                          <span>Abrir en mi Google Calendar 📅</span>
+                                        </a>
+                                      )}
                                       <button
                                         type="button"
                                         onClick={() => handleReturnToInsuredSelection(evt)}
@@ -2423,6 +2425,18 @@ export function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* EMAIL PREVIEW MODAL */}
+      {emailPreviewEvent && (
+        <EmailPreviewModal
+          isOpen={Boolean(emailPreviewEvent)}
+          onClose={() => setEmailPreviewEvent(null)}
+          event={emailPreviewEvent}
+          type={emailPreviewType}
+          onConfirmSend={handleConfirmSendEmail}
+          isSending={isSendingEmail}
+        />
       )}
     </div>
   );

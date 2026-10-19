@@ -318,3 +318,25 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
     targetActorType: 'none',
   };
 }
+
+export function getGoogleCalendarUrl(event: CoordinationEvent): string | null {
+  if (!event.finalDate) return null;
+  const cleanDate = event.finalDate.replace(/-/g, '');
+  const cleanStartTime = (event.finalStartTime || '09:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0');
+  const cleanEndTime = (event.finalEndTime || '11:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0');
+  const dtStart = `${cleanDate}T${cleanStartTime}`;
+  const dtEnd = `${cleanDate}T${cleanEndTime}`;
+
+  const isCt = event.timezone === 'CT';
+  const ianaTz = isCt ? 'America/Chicago' : 'America/New_York';
+  const tzLabel = isCt ? 'Central Time (CT - Pensacola)' : 'Eastern Time (ET - Miami)';
+
+  const insuredName = event.claim?.insured?.name || 'Insured Client';
+  const claimNumber = event.claim?.claimNumber || 'N/A';
+  const eventType = event.eventType || 'Inspection';
+  const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`;
+  const location = event.location || event.claim?.propertyAddress || '';
+  const desc = `Address: ${event.claim?.propertyAddress || ''}\nTimezone: ${tzLabel}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier || ''}\nInsured: ${insuredName}`;
+
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStart}/${dtEnd}&ctz=${ianaTz}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(location)}`;
+}
