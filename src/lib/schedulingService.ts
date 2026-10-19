@@ -715,6 +715,9 @@ export const schedulingService = {
       body: { eventId }
     });
     if (error) throw error;
+    if (data && data.success === false) {
+      throw new Error(data.message || 'No se pudo enviar el correo al asegurado.');
+    }
     return data;
   },
 

@@ -228,12 +228,21 @@ export function ClaimDetailView({
   const [sendingEmailEventId, setSendingEmailEventId] = useState<string | null>(null);
 
   const handleSendInsuredEmail = async (eventId: string) => {
+    if (!claim.insured?.email || !claim.insured.email.trim()) {
+      alert(`⚠️ El cliente asegurado (${claim.insured?.name || 'Asegurado'}) no tiene un correo electrónico registrado.\n\nPor favor, haz clic en editar cliente para ingresar su correo antes de enviar.`);
+      return;
+    }
+
     setSendingEmailEventId(eventId);
     try {
-      await schedulingService.notifyInsuredSlots(eventId);
-      alert('Email successfully sent to insured client!');
+      const res = await schedulingService.notifyInsuredSlots(eventId);
+      if (res && res.success === false) {
+        alert('⚠️ No se pudo enviar el correo: ' + (res.message || 'Error desconocido'));
+      } else {
+        alert(`✓ ¡Correo enviado con éxito a ${claim.insured.name} (${claim.insured.email})!`);
+      }
     } catch (err: any) {
-      alert('Error sending email: ' + (err.message || err));
+      alert('Error enviando correo: ' + (err.message || err));
     } finally {
       setSendingEmailEventId(null);
     }

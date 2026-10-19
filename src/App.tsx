@@ -219,12 +219,25 @@ export function App() {
   const [sendingEmailEventId, setSendingEmailEventId] = useState<string | null>(null);
 
   const handleSendInsuredEmail = async (eventId: string) => {
+    const evt = events.find((e) => e.id === eventId);
+    const insuredEmail = evt?.claim?.insured?.email;
+    const insuredName = evt?.claim?.insured?.name || 'Asegurado';
+
+    if (!insuredEmail || !insuredEmail.trim()) {
+      alert(`⚠️ El cliente asegurado (${insuredName}) no tiene un correo electrónico registrado.\n\nPor favor, ingresa su correo en la ficha del reclamo o catálogo de asegurados antes de enviar.`);
+      return;
+    }
+
     setSendingEmailEventId(eventId);
     try {
-      await schedulingService.notifyInsuredSlots(eventId);
-      alert('Email sent successfully to the insured client!');
+      const res = await schedulingService.notifyInsuredSlots(eventId);
+      if (res && res.success === false) {
+        alert('⚠️ No se pudo enviar el correo: ' + (res.message || 'Error desconocido'));
+      } else {
+        alert(`✓ ¡Correo enviado con éxito a ${insuredName} (${insuredEmail})!`);
+      }
     } catch (err: any) {
-      alert('Error sending email: ' + (err.message || err));
+      alert('Error enviando correo: ' + (err.message || err));
     } finally {
       setSendingEmailEventId(null);
     }
@@ -1521,11 +1534,25 @@ export function App() {
                                               type="button"
                                               onClick={() => handleSendInsuredEmail(evt.id)}
                                               disabled={sendingEmailEventId === evt.id}
-                                              className="h-8 px-2.5 rounded-lg bg-tealBrand-50 hover:bg-tealBrand-100 border border-tealBrand-300 text-tealBrand-800 transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold"
-                                              title="Send or resend email invitation to Insured"
+                                              className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold ${
+                                                !evt.claim?.insured?.email
+                                                  ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
+                                                  : 'bg-tealBrand-50 hover:bg-tealBrand-100 border-tealBrand-300 text-tealBrand-800'
+                                              }`}
+                                              title={
+                                                !evt.claim?.insured?.email
+                                                  ? 'Sin correo registrado para el asegurado. Clic para ver detalles.'
+                                                  : `Enviar invitación por correo a ${evt.claim.insured.email}`
+                                              }
                                             >
-                                              <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                                              <span>{sendingEmailEventId === evt.id ? '...' : 'Email'}</span>
+                                              <Mail className={`w-3.5 h-3.5 ${!evt.claim?.insured?.email ? 'text-amber-600' : 'text-tealBrand-700'}`} />
+                                              <span>
+                                                {sendingEmailEventId === evt.id
+                                                  ? '...'
+                                                  : !evt.claim?.insured?.email
+                                                  ? 'Sin Email'
+                                                  : 'Email'}
+                                              </span>
                                             </button>
                                           </>
                                         )}
