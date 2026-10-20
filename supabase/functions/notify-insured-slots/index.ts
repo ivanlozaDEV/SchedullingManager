@@ -19,7 +19,10 @@ function buildRedirectResponse({
   time = '',
   title = '',
   message = '',
-  eventType = ''
+  eventType = '',
+  accessInstructions = '',
+  gateCode = '',
+  lockboxCode = '',
 }: any) {
   const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://ip-scheduling-manager.onrender.com'
   const redirectUrl = new URL(baseUrl)
@@ -35,6 +38,9 @@ function buildRedirectResponse({
   if (title) redirectUrl.searchParams.set('title', title)
   if (message) redirectUrl.searchParams.set('message', message)
   if (eventType) redirectUrl.searchParams.set('eventType', eventType)
+  if (accessInstructions) redirectUrl.searchParams.set('accessInstructions', accessInstructions)
+  if (gateCode) redirectUrl.searchParams.set('gateCode', gateCode)
+  if (lockboxCode) redirectUrl.searchParams.set('lockboxCode', lockboxCode)
 
   return new Response(null, {
     status: 302,
@@ -181,6 +187,10 @@ serve(async (req) => {
         insured: insuredName,
         carrier: carrier,
         address: propertyAddress,
+        location: event.location && event.location !== propertyAddress ? event.location : undefined,
+        accessInstructions: event.access_instructions,
+        gateCode: event.gate_code,
+        lockboxCode: event.lockbox_code,
         date: slotDate,
         time: `${startTime.slice(0, 5)} - ${endTime.slice(0, 5)}`,
         eventType
@@ -254,6 +264,12 @@ serve(async (req) => {
       claimNumber = claim?.claim_number || 'N/A'
       propertyAddress = claim?.property_address || event.location || 'N/A'
       eventType = event.event_type || 'Inspection'
+
+      const cleanNotes = (event.notes || '')
+        .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
+        .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
+        .replace(/\[Timezone:[^\]]*\]/gi, '')
+        .trim()
 
       if (!insuredEmail) {
         return new Response(JSON.stringify({ 
@@ -332,7 +348,7 @@ serve(async (req) => {
     const plainText = `Dear ${insuredName},
 
 The insurance company (${carrier}) has requested an on-site ${eventType.toLowerCase()} for your claim at ${propertyAddress}.
-
+${event.access_instructions ? `Access Instructions: ${event.access_instructions}\n` : ''}${cleanNotes ? `Special Notes: ${cleanNotes}\n` : ''}
 Your Public Adjuster, ${paName}, has reviewed the calendar and pre-approved the following ${sortedSlots.length} date options for you:
 
 ${slotsPlainText}
@@ -420,7 +436,9 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Insurance Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${propertyAddress}<br>
                       <strong>Event Type:</strong> ${eventType}<br>
-                      <strong>Public Adjuster:</strong> ${paName}
+                      <strong>Public Adjuster:</strong> ${paName}<br>
+                      ${event.access_instructions ? `<strong>Access Instructions:</strong> <em>${event.access_instructions}</em><br>` : ''}
+                      ${cleanNotes ? `<strong>Special Notes:</strong> ${cleanNotes}<br>` : ''}
                     </div>
                   </td>
                 </tr>

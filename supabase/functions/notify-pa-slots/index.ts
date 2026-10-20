@@ -133,7 +133,11 @@ serve(async (req) => {
         paName,
         slots: sortedSlots,
         currentStage: event.coordination_stage,
-        eventType: event.event_type || 'Inspection'
+        eventType: event.event_type || 'Inspection',
+        accessInstructions: event.access_instructions,
+        gateCode: event.gate_code,
+        lockboxCode: event.lockbox_code,
+        notes: (event.notes || '').replace(/\[CoordinationSequence:[^\]]*\]/gi, '').replace(/\[SlotsOriginator:[^\]]*\]/gi, '').replace(/\[Timezone:[^\]]*\]/gi, '').trim()
       }), {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
         status: 200
@@ -223,6 +227,12 @@ serve(async (req) => {
       claimNumber = claim?.claim_number || 'N/A'
       address = claim?.property_address || event.location || 'N/A'
       eventType = event.event_type || 'Inspection'
+
+      const cleanNotes = (event.notes || '')
+        .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
+        .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
+        .replace(/\[Timezone:[^\]]*\]/gi, '')
+        .trim()
 
       const rawSlots = event.slots || []
       sortedSlots = [...rawSlots].sort((a, b) => (a.slot_date > b.slot_date ? 1 : -1))
@@ -316,6 +326,7 @@ CLAIM DETAILS:
 - Carrier: ${carrier}
 - Property Address: ${address}
 - Event Type: ${eventType}
+${event.gate_code ? `- Gate Code: ${event.gate_code}\n` : ''}${event.lockbox_code ? `- Lockbox Code: ${event.lockbox_code}\n` : ''}${event.access_instructions ? `- Access Instructions: ${event.access_instructions}\n` : ''}${cleanNotes ? `- Special Notes: ${cleanNotes}\n` : ''}
 
 PROPOSED DATES FROM CARRIER:
 ${slotsPlainText}
@@ -406,7 +417,11 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Insured:</strong> ${insuredName}<br>
                       <strong>Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${address}<br>
-                      <strong>Event Type:</strong> ${eventType}
+                      <strong>Event Type:</strong> ${eventType}<br>
+                      ${event.gate_code ? `<strong>Gate Code:</strong> <span style="font-family:monospace; font-weight:bold; color:#0f766e;">${event.gate_code}</span><br>` : ''}
+                      ${event.lockbox_code ? `<strong>Lockbox Code:</strong> <span style="font-family:monospace; font-weight:bold; color:#0f766e;">${event.lockbox_code}</span><br>` : ''}
+                      ${event.access_instructions ? `<strong>Access Instructions:</strong> <em>${event.access_instructions}</em><br>` : ''}
+                      ${cleanNotes ? `<strong>Special Notes:</strong> ${cleanNotes}<br>` : ''}
                     </div>
                   </td>
                 </tr>
@@ -588,7 +603,10 @@ function buildRedirectResponse({
   time = '',
   title = '',
   message = '',
-  eventType = ''
+  eventType = '',
+  accessInstructions = '',
+  gateCode = '',
+  lockboxCode = '',
 }: any) {
   const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://ip-scheduling-manager.onrender.com'
   const redirectUrl = new URL(baseUrl)
@@ -604,6 +622,9 @@ function buildRedirectResponse({
   if (title) redirectUrl.searchParams.set('title', title)
   if (message) redirectUrl.searchParams.set('message', message)
   if (eventType) redirectUrl.searchParams.set('eventType', eventType)
+  if (accessInstructions) redirectUrl.searchParams.set('accessInstructions', accessInstructions)
+  if (gateCode) redirectUrl.searchParams.set('gateCode', gateCode)
+  if (lockboxCode) redirectUrl.searchParams.set('lockboxCode', lockboxCode)
 
   return new Response(null, {
     status: 302,
@@ -697,7 +718,10 @@ async function executeSlotSelection({
     address: propertyAddress,
     date: acceptedSlots.map((s: any) => s.slot_date).join(', '),
     time: acceptedSlots.map((s: any) => `${(s.start_time || '').slice(0, 5)}-${(s.end_time || '').slice(0, 5)}`).join(', '),
-    eventType: event.event_type || 'Inspection'
+    eventType: event.event_type || 'Inspection',
+    accessInstructions: event.access_instructions,
+    gateCode: event.gate_code,
+    lockboxCode: event.lockbox_code,
   })
 }
 
@@ -758,6 +782,10 @@ function renderConfirmationSuccessHtml({
         <div><strong>Insured:</strong> ${insuredName}</div>
         <div><strong>Carrier:</strong> ${carrier}</div>
         <div><strong>Property Address:</strong> ${propertyAddress}</div>
+        ${accessInstructions ? `<div><strong>Access Instructions:</strong> <em>${accessInstructions}</em></div>` : ''}
+        ${gateCode ? `<div><strong>Gate Code:</strong> ${gateCode}</div>` : ''}
+        ${lockboxCode ? `<div><strong>Lockbox Code:</strong> ${lockboxCode}</div>` : ''}
+        ${notes ? `<div><strong>Notes:</strong> ${notes}</div>` : ''}
       </div>
 
       <div style="font-size:13px; font-weight:bold; color:#334155; text-transform:uppercase; margin-bottom:8px;">
@@ -843,6 +871,10 @@ function renderPortalHtml({
       <div style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:18px; font-size:12px; line-height:1.6;">
         <div><strong>Claim:</strong> ${claimNumber} | <strong>Insured:</strong> ${insuredName}</div>
         <div><strong>Carrier:</strong> ${carrier} | <strong>Property Address:</strong> ${propertyAddress}</div>
+        ${accessInstructions ? `<div><strong>Access Instructions:</strong> <em>${accessInstructions}</em></div>` : ''}
+        ${gateCode ? `<div><strong>Gate Code:</strong> ${gateCode}</div>` : ''}
+        ${lockboxCode ? `<div><strong>Lockbox Code:</strong> ${lockboxCode}</div>` : ''}
+        ${notes ? `<div><strong>Notes:</strong> ${notes}</div>` : ''}
       </div>
 
       ${isAlreadyAdvanced ? `

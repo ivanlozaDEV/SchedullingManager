@@ -34,6 +34,12 @@ export function EmailPreviewModal({
   const insuredEmail = insured?.email || '';
   const paName = pa?.name || 'Your Public Adjuster';
 
+  const cleanNotes = (event.notes || '')
+    .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
+    .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
+    .replace(/\[Timezone:[^\]]*\]/gi, '')
+    .trim();
+
   // Available slots for Stage 3 (selection_options)
   const rawSlots = event.slots || [];
   const approvedSlots = rawSlots.filter((s) => s.status === 'pa_accepted');
@@ -214,6 +220,18 @@ export function EmailPreviewModal({
                         <MapPin className="w-3.5 h-3.5 text-slate-400" />
                         <span className="truncate"><strong>Property:</strong> {propertyAddress}</span>
                       </div>
+                      {event.accessInstructions && (
+                        <div className="flex items-center gap-1.5 pt-1 text-slate-700">
+                          <span className="font-bold text-slate-500">📝 Access Instructions:</span>
+                          <em>{event.accessInstructions}</em>
+                        </div>
+                      )}
+                      {cleanNotes && (
+                        <div className="flex items-center gap-1.5 pt-0.5 text-slate-700">
+                          <span className="font-bold text-slate-500">📋 Notes:</span>
+                          <span>{cleanNotes}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* SLOTS LIST */}
@@ -276,8 +294,35 @@ export function EmailPreviewModal({
                         📅 {event.finalDate || 'Date pending'} &bull; ⏰ {event.finalStartTime?.slice(0, 5)} - {event.finalEndTime?.slice(0, 5)}
                       </div>
                       <div><strong>Location:</strong> {propertyAddress}</div>
-                      {event.gateCode && <div><strong>Gate Code:</strong> {event.gateCode}</div>}
-                      {event.lockboxCode && <div><strong>Lockbox Code:</strong> {event.lockboxCode}</div>}
+                      {event.location && event.location !== propertyAddress && (
+                        <div><strong>Event Location:</strong> {event.location}</div>
+                      )}
+                      {event.gateCode && (
+                        <div><strong>Gate Code:</strong> <span className="font-mono font-bold bg-emerald-50 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-200">{event.gateCode}</span></div>
+                      )}
+                      {event.lockboxCode && (
+                        <div><strong>Lockbox Code:</strong> <span className="font-mono font-bold bg-emerald-50 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-200">{event.lockboxCode}</span></div>
+                      )}
+                      {event.accessInstructions && (
+                        <div className="pt-0.5"><strong>Access Instructions:</strong> <em>{event.accessInstructions}</em></div>
+                      )}
+                      {cleanNotes && (
+                        <div className="pt-1.5 border-t border-slate-100 text-slate-700">
+                          <strong>Notes:</strong> {cleanNotes}
+                        </div>
+                      )}
+                      {participants.length > 0 && (
+                        <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-600">
+                          <strong>Coordination Team / Attendees:</strong>
+                          <div className="mt-0.5 pl-2 space-y-0.5">
+                            {participants.map((p, idx) => {
+                              const pName = p.customName || p.publicAdjuster?.name || p.carrierRep?.name || p.externalActor?.name || 'Participant';
+                              const pRole = p.roleType === 'actor' ? 'In-person' : 'Notified';
+                              return <div key={p.id || idx}>• {pName} ({pRole})</div>;
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <div className="text-[11px] text-slate-500 pt-1">
                         📎 An RFC-5545 compliant calendar file (<strong>invite.ics</strong>) is attached for 1-click addition to Google Calendar, Apple Calendar, and Outlook.
                       </div>
@@ -332,7 +377,7 @@ This is a calendar notification for the upcoming ${eventType} regarding Claim #$
 Date: ${event.finalDate}
 Time: ${event.finalStartTime?.slice(0, 5)} - ${event.finalEndTime?.slice(0, 5)}
 Location: ${propertyAddress}
-${event.gateCode ? `Gate Code: ${event.gateCode}\n` : ''}${event.lockboxCode ? `Lockbox Code: ${event.lockboxCode}\n` : ''}
+${event.location && event.location !== propertyAddress ? `Event Location: ${event.location}\n` : ''}${event.gateCode ? `Gate Code: ${event.gateCode}\n` : ''}${event.lockboxCode ? `Lockbox Code: ${event.lockboxCode}\n` : ''}${event.accessInstructions ? `Access Instructions: ${event.accessInstructions}\n` : ''}${cleanNotes ? `Notes: ${cleanNotes}\n` : ''}
 Calendar file (.ics) attached.
 
 Warm regards,

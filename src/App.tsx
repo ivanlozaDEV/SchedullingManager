@@ -591,6 +591,9 @@ export function App() {
         title={urlParams.get('title')}
         message={urlParams.get('message')}
         eventType={urlParams.get('eventType')}
+        accessInstructions={urlParams.get('accessInstructions')}
+        gateCode={urlParams.get('gateCode')}
+        lockboxCode={urlParams.get('lockboxCode')}
       />
     );
   }

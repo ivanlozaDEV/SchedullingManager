@@ -82,7 +82,7 @@ serve(async (req) => {
       // 2. Fetch event participants
       const { data: participants } = await supabaseAdmin
         .from('event_participants')
-        .select(`*, carrier_rep:carrier_representatives(email, name), external_actor:external_actors(email, name)`)
+        .select(`*, public_adjuster:public_adjusters(email, name), carrier_rep:carrier_representatives(email, name), external_actor:external_actors(email, name)`)
         .eq('event_id', eventId)
 
       const claim = event.claim
@@ -108,6 +108,7 @@ serve(async (req) => {
       }
       for (const p of (participants || [])) {
         if (p.custom_email) recipients.push({ email: p.custom_email, name: p.custom_name || 'Participant' })
+        if (p.public_adjuster?.email) recipients.push({ email: p.public_adjuster.email, name: p.public_adjuster.name || 'Public Adjuster' })
         if (p.carrier_rep?.email) recipients.push({ email: p.carrier_rep.email, name: p.carrier_rep.name || 'Carrier Rep' })
         if (p.external_actor?.email) recipients.push({ email: p.external_actor.email, name: p.external_actor.name || 'Specialist' })
       }
@@ -180,7 +181,7 @@ CLAIM DETAILS:
 - Insured: ${insuredName}
 - Insurance Carrier: ${carrier}
 - Property Address: ${propertyAddress}
-- Event Type: ${eventType}
+${event.location && event.location !== propertyAddress ? `- Event Location: ${event.location}\n` : ''}${pa?.name ? `- Public Adjuster: ${pa.name}${pa.phone ? ` (${pa.phone})` : ''}\n` : ''}- Event Type: ${eventType}
 ${cancelDate ? `- Previous Scheduled Date: ${cancelDate} (${cancelStartTime} - ${cancelEndTime})\n` : ''}- Cancelled By / Requested By: ${cancelledBy || 'General'}
 - Reason / Notes: ${cancellationReason || 'Rescheduling requested.'}
 
@@ -276,6 +277,8 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Insured:</strong> ${insuredName}<br>
                       <strong>Insurance Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${propertyAddress}<br>
+                      ${event.location && event.location !== propertyAddress ? `<strong>Event Location:</strong> ${event.location}<br>` : ''}
+                      ${pa?.name ? `<strong>Public Adjuster:</strong> ${pa.name}${pa.phone ? ` (${pa.phone})` : ''}<br>` : ''}
                       <strong>Event Type:</strong> ${eventType}<br>
                       ${cancelDate ? `<strong>Cancelled Appointment:</strong> 📅 ${cancelDate} (${cancelStartTime} - ${cancelEndTime})<br>` : ''}
                       <strong>Cancelled By / Requested By:</strong> ${cancelledBy || 'General'}<br>

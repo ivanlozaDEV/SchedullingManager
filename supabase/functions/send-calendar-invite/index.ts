@@ -33,6 +33,10 @@ serve(async (req) => {
         final_start_time: '10:00:00',
         final_end_time: '12:00:00',
         location: '6539 Bellview Pines Rd, Pensacola, FL 32526',
+        gate_code: '#4589',
+        lockbox_code: '1234',
+        access_instructions: 'Driveway parking only. Lockbox on front door handle.',
+        notes: 'Roof inspection ladder required. Carrier rep attending in-person.',
         event_type: 'Initial Inspection',
         claim: {
           claim_number: 'HO0526444000',
@@ -41,7 +45,8 @@ serve(async (req) => {
           city: 'Pensacola',
           state: 'FL',
           zip_code: '32526',
-          insured: { name: 'Albert & Carmelita Kling', email: testEmail || 'ivanloza88@gmail.com' }
+          insured: { name: 'Albert & Carmelita Kling', email: testEmail || 'ivanloza88@gmail.com', phone: '(850) 555-0199' },
+          public_adjuster: { name: 'Iván Hernández', email: 'ivan@ipadjustinggroup.com', phone: '(772) 282-0862', role: 'lead_adjuster' }
         }
       };
       uniqueRecipients = [{ email: testEmail || 'ivanloza88@gmail.com', name: 'Iván Loza (Test Preview)' }];
@@ -59,7 +64,7 @@ serve(async (req) => {
       // 2. Fetch Participants
       const { data: participants, error: partErr } = await supabaseAdmin
         .from('event_participants')
-        .select(`*, public_adjuster:public_adjusters(email, name), carrier_rep:carrier_representatives(email, name), external_actor:external_actors(email, name)`)
+        .select(`*, public_adjuster:public_adjusters(email, name, phone, role), carrier_rep:carrier_representatives(email, name, phone, company), external_actor:external_actors(email, name, phone, type_of_actor, company)`)
         .eq('event_id', eventId)
 
       if (partErr) throw partErr
@@ -87,7 +92,61 @@ serve(async (req) => {
       return new Response(JSON.stringify({ message: "No participants with emails found" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 })
     }
 
-    // 3. Detect Property Timezone (Central Time vs Eastern Time)
+    // 3. Compile in-person attendees / coordination team
+    const attendeeList: { name: string; role?: string; contact?: string }[] = []
+    if (event.claim?.insured?.name) {
+      attendeeList.push({
+        name: event.claim.insured.name,
+        role: 'Insured Policyholder',
+        contact: event.claim.insured.phone || undefined,
+      })
+    }
+    if (event.claim?.public_adjuster?.name) {
+      attendeeList.push({
+        name: event.claim.public_adjuster.name,
+        role: `Public Adjuster (${event.claim.public_adjuster.role?.replace(/_/g, ' ') || 'Lead PA'})`,
+        contact: [event.claim.public_adjuster.phone, event.claim.public_adjuster.email].filter(Boolean).join(' | ') || undefined,
+      })
+    }
+    for (const p of (participants || [])) {
+      if (p.public_adjuster && p.public_adjuster_id !== event.claim?.public_adjuster_id) {
+        attendeeList.push({
+          name: p.public_adjuster.name,
+          role: `Support PA (${p.public_adjuster.role?.replace(/_/g, ' ') || 'Adjuster'})`,
+          contact: [p.public_adjuster.phone, p.public_adjuster.email].filter(Boolean).join(' | ') || undefined,
+        })
+      }
+      if (p.carrier_rep) {
+        attendeeList.push({
+          name: p.carrier_rep.name,
+          role: `Insurance Adjuster (${p.carrier_rep.company || event.claim?.carrier || 'Carrier'})`,
+          contact: [p.carrier_rep.phone, p.carrier_rep.email].filter(Boolean).join(' | ') || undefined,
+        })
+      }
+      if (p.external_actor) {
+        attendeeList.push({
+          name: p.external_actor.name,
+          role: `${p.external_actor.type_of_actor || 'Specialist'}${p.external_actor.company ? ` (${p.external_actor.company})` : ''}`,
+          contact: [p.external_actor.phone, p.external_actor.email].filter(Boolean).join(' | ') || undefined,
+        })
+      }
+      if (p.custom_name && !p.public_adjuster && !p.carrier_rep && !p.external_actor) {
+        attendeeList.push({
+          name: p.custom_name,
+          role: p.role_type === 'actor' ? 'Attendee' : 'Participant',
+          contact: [p.custom_phone, p.custom_email].filter(Boolean).join(' | ') || undefined,
+        })
+      }
+    }
+
+    // Clean internal tags from notes
+    const cleanNotes = (event.notes || '')
+      .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
+      .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
+      .replace(/\[Timezone:[^\]]*\]/gi, '')
+      .trim()
+
+    // 4. Detect Property Timezone (Central Time vs Eastern Time)
     const combinedAddr = `${event.location || ''} ${event.claim?.property_address || ''} ${event.claim?.city || ''} ${event.claim?.zip_code || ''} ${event.notes || ''}`.toLowerCase();
     const isCt = /\[timezone:\s*ct\]/i.test(combinedAddr) || 
       /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
@@ -96,7 +155,7 @@ serve(async (req) => {
     const ianaTz = isCt ? 'America/Chicago' : 'America/New_York';
     const tzLabel = isCt ? 'Central Time (CT - Pensacola)' : 'Eastern Time (ET - Miami)';
 
-    // 4. Generate Dates & .ics content
+    // 5. Generate Dates & .ics content
     const cleanDate = (event.final_date || '').replace(/-/g, '')
     const cleanStartTime = (event.final_start_time || '09:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0')
     const cleanEndTime = (event.final_end_time || '11:00:00').slice(0, 8).replace(/:/g, '').padEnd(6, '0')
@@ -107,7 +166,26 @@ serve(async (req) => {
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'
     const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`
-    const desc = `Address: ${event.claim?.property_address || ''}\nLocation: ${event.location || ''}\nTimezone: ${tzLabel}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier || ''}\nInsured: ${insuredName}`
+
+    // Comprehensive description for .ics and calendar clients
+    const descParts: string[] = [
+      `Claim Number: ${claimNumber}`,
+      `Carrier: ${event.claim?.carrier || 'Carrier'}`,
+      `Insured: ${insuredName}`,
+      `Address: ${event.claim?.property_address || event.location || 'N/A'}`,
+    ]
+    if (event.location && event.location !== event.claim?.property_address) {
+      descParts.push(`Event Location: ${event.location}`)
+    }
+    descParts.push(`Timezone: ${tzLabel}`)
+    if (event.gate_code) descParts.push(`Gate / Community Code: ${event.gate_code}`)
+    if (event.lockbox_code) descParts.push(`Lockbox / Key Code: ${event.lockbox_code}`)
+    if (event.access_instructions) descParts.push(`Access Instructions: ${event.access_instructions}`)
+    if (cleanNotes) descParts.push(`Appointment Notes: ${cleanNotes}`)
+    if (attendeeList.length > 0) {
+      descParts.push(`Attendees & Team:\n${attendeeList.map(a => `• ${a.name}${a.role ? ` (${a.role})` : ''}${a.contact ? ` - ${a.contact}` : ''}`).join('\n')}`)
+    }
+    const desc = descParts.join('\n\n')
 
     const smtpUser = Deno.env.get('GMAIL_SMTP_USER') || 'scheduling@ipadjustinggroup.com'
     const smtpPass = Deno.env.get('GMAIL_SMTP_PASSWORD')
@@ -151,7 +229,7 @@ serve(async (req) => {
       `DTEND;TZID=${ianaTz}:${dtEndIcs}`,
       `SUMMARY:${title}`,
       `DESCRIPTION:${desc.replace(/\n/g, '\\n')}`,
-      `LOCATION:${event.location || ''}`,
+      `LOCATION:${event.location || event.claim?.property_address || ''}`,
       'STATUS:CONFIRMED',
       `SEQUENCE:${sequenceNumber}`,
       'TRANSP:OPAQUE',
@@ -160,9 +238,9 @@ serve(async (req) => {
     ].filter(Boolean).join('\r\n')
 
     // Google Calendar Direct Web Link
-    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStartIcs}/${dtEndIcs}&ctz=${ianaTz}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(event.location || '')}`
+    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStartIcs}/${dtEndIcs}&ctz=${ianaTz}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(event.location || event.claim?.property_address || '')}`
 
-    // 4. Send email via Google SMTP (Nodemailer)
+    // 6. Send email via Google SMTP (Nodemailer)
     if (!smtpPass) {
       console.warn("GMAIL_SMTP_PASSWORD not set. Skipping actual email send.")
       return new Response(JSON.stringify({ 
@@ -235,11 +313,11 @@ serve(async (req) => {
               <p style="margin:0 0 14px 0; font-size:16px;">Dear <strong>${insuredName}</strong>,</p>
               
               <p style="margin:0 0 16px 0;">
-                Your upcoming <strong>${eventType}</strong> for Claim <strong>#${claimNumber}</strong> has been officially confirmed and scheduled. Below are the details for your appointment:
+                Your upcoming <strong>${eventType}</strong> for Claim <strong>#${claimNumber}</strong> has been officially confirmed and scheduled. Below are the complete appointment and access details:
               </p>
 
               <!-- APPOINTMENT DETAILS CARD -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; background-color:#ffffff; border-left:4px solid #0071bc; border-radius:4px; padding:18px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px; background-color:#ffffff; border-left:4px solid #0071bc; border-radius:4px; padding:18px;">
                 <tr>
                   <td>
                     <div style="font-size:12px; font-weight:bold; color:#0071bc; text-transform:uppercase; margin-bottom:10px;">
@@ -251,11 +329,60 @@ serve(async (req) => {
                       <strong>📍 Location:</strong> ${event.location || event.claim?.property_address || 'N/A'}<br>
                       <strong>Claim Number:</strong> ${claimNumber}<br>
                       <strong>Insured Client:</strong> ${insuredName}<br>
-                      <strong>Insurance Carrier:</strong> ${event.claim?.carrier || 'Carrier'}
+                      <strong>Insurance Carrier:</strong> ${event.claim?.carrier || 'Carrier'}<br>
+                      ${event.claim?.public_adjuster?.name ? `<strong>Public Adjuster:</strong> ${event.claim.public_adjuster.name}${event.claim.public_adjuster.phone ? ` (${event.claim.public_adjuster.phone})` : ''}<br>` : ''}
                     </div>
                   </td>
                 </tr>
               </table>
+
+              <!-- PROPERTY ACCESS & ENTRY DETAILS CARD -->
+              ${(event.gate_code || event.lockbox_code || event.access_instructions) ? `
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px; background-color:#ffffff; border-left:4px solid #10b981; border-radius:4px; padding:18px;">
+                <tr>
+                  <td>
+                    <div style="font-size:12px; font-weight:bold; color:#059669; text-transform:uppercase; margin-bottom:10px;">
+                      🔑 Property Access & Entry Details
+                    </div>
+                    <div style="font-size:14px; color:#111827; line-height:1.8;">
+                      ${event.gate_code ? `<strong>🚪 Gate / Community Code:</strong> <span style="font-family:monospace; font-size:14px; font-weight:bold; color:#065f46; background-color:#ecfdf5; padding:2px 8px; border-radius:4px; border:1px solid #a7f3d0;">${event.gate_code}</span><br>` : ''}
+                      ${event.lockbox_code ? `<strong>🔐 Lockbox / Key Code:</strong> <span style="font-family:monospace; font-size:14px; font-weight:bold; color:#065f46; background-color:#ecfdf5; padding:2px 8px; border-radius:4px; border:1px solid #a7f3d0;">${event.lockbox_code}</span><br>` : ''}
+                      ${event.access_instructions ? `<strong>📝 Access Instructions:</strong> <em>${event.access_instructions}</em><br>` : ''}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              ` : ''}
+
+              <!-- APPOINTMENT NOTES & INSTRUCTIONS CARD -->
+              ${cleanNotes ? `
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px; background-color:#ffffff; border-left:4px solid #f59e0b; border-radius:4px; padding:18px;">
+                <tr>
+                  <td>
+                    <div style="font-size:12px; font-weight:bold; color:#d97706; text-transform:uppercase; margin-bottom:8px;">
+                      📋 Appointment Notes & Instructions
+                    </div>
+                    <div style="font-size:14px; color:#374151; line-height:1.6; white-space:pre-wrap;">${cleanNotes}</div>
+                  </td>
+                </tr>
+              </table>
+              ` : ''}
+
+              <!-- ATTENDEES & COORDINATION TEAM CARD -->
+              ${attendeeList.length > 0 ? `
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px; background-color:#ffffff; border-left:4px solid #6366f1; border-radius:4px; padding:18px;">
+                <tr>
+                  <td>
+                    <div style="font-size:12px; font-weight:bold; color:#4f46e5; text-transform:uppercase; margin-bottom:8px;">
+                      👥 In-Person Attendees & Coordination Team
+                    </div>
+                    <div style="font-size:13px; color:#374151; line-height:1.8;">
+                      ${attendeeList.map(a => `• <strong>${a.name}</strong>${a.role ? ` <span style="color:#6b7280;">(${a.role})</span>` : ''}${a.contact ? ` — <span style="color:#2563eb;">${a.contact}</span>` : ''}`).join('<br>')}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              ` : ''}
 
               <!-- GOOGLE CALENDAR BUTTON -->
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 16px 0;">

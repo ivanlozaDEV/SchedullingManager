@@ -12,6 +12,9 @@ interface ConfirmationPortalProps {
   title: string | null;
   message: string | null;
   eventType?: string | null;
+  accessInstructions?: string | null;
+  gateCode?: string | null;
+  lockboxCode?: string | null;
 }
 
 export function ConfirmationPortal({
@@ -26,6 +29,9 @@ export function ConfirmationPortal({
   title,
   message,
   eventType,
+  accessInstructions,
+  gateCode,
+  lockboxCode,
 }: ConfirmationPortalProps) {
   const isSuccess = status !== 'error';
   const isInsured = role === 'insured';
@@ -153,6 +159,33 @@ export function ConfirmationPortal({
                       <span className="text-slate-500">Property Location:</span>{' '}
                       <strong className="text-slate-900 font-semibold">{address}</strong>
                     </div>
+                  </div>
+                )}
+
+                {accessInstructions && (
+                  <div className="flex items-start gap-2.5 pt-1">
+                    <span className="text-[#1187aa] shrink-0 text-sm">📝</span>
+                    <div>
+                      <span className="text-slate-500">Access Instructions:</span>{' '}
+                      <em className="text-slate-800 font-medium">{accessInstructions}</em>
+                    </div>
+                  </div>
+                )}
+
+                {(gateCode || lockboxCode) && (
+                  <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+                    {gateCode && (
+                      <div className="bg-[#e7f3f7] border border-[#419fbb]/30 px-2.5 py-1 rounded-lg">
+                        <span className="text-[#0c6079] font-medium">Gate Code:</span>{' '}
+                        <strong className="font-mono text-slate-900 font-bold">{gateCode}</strong>
+                      </div>
+                    )}
+                    {lockboxCode && (
+                      <div className="bg-[#e7f3f7] border border-[#419fbb]/30 px-2.5 py-1 rounded-lg">
+                        <span className="text-[#0c6079] font-medium">Lockbox Code:</span>{' '}
+                        <strong className="font-mono text-slate-900 font-bold">{lockboxCode}</strong>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
