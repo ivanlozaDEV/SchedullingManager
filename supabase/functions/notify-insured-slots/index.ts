@@ -214,7 +214,7 @@ serve(async (req) => {
     const { eventId, isTest, testEmail } = await req.json()
     if (!eventId && !isTest) throw new Error("eventId is required")
 
-    let event = null
+    let event: any = null
     let insuredEmail = ''
     let insuredName = ''
     let paName = ''
@@ -222,9 +222,18 @@ serve(async (req) => {
     let claimNumber = ''
     let propertyAddress = ''
     let eventType = ''
+    let cleanNotes = ''
     let sortedSlots: any[] = []
 
     if (isTest && (!eventId || eventId === 'test')) {
+      event = {
+        id: 'test-slot-event',
+        access_instructions: 'Driveway parking only. Lockbox on front door handle.',
+        gate_code: '#4589',
+        lockbox_code: '1234',
+        location: '6539 Bellview Pines Rd, Pensacola, FL 32526',
+        notes: 'Roof inspection ladder required.'
+      }
       insuredEmail = testEmail || 'ivanloza88@gmail.com'
       insuredName = 'Albert & Carmelita Kling'
       paName = 'Iván Hernández'
@@ -232,6 +241,7 @@ serve(async (req) => {
       claimNumber = 'HO0526444000'
       propertyAddress = '6539 Bellview Pines Rd, Pensacola, FL 32526'
       eventType = 'Initial Inspection'
+      cleanNotes = 'Roof inspection ladder required.'
       sortedSlots = [
         { id: 'test-slot-1', slot_date: '2026-10-29', start_time: '09:00:00', end_time: '11:00:00' },
         { id: 'test-slot-2', slot_date: '2026-10-30', start_time: '14:00:00', end_time: '16:00:00' }
@@ -265,7 +275,7 @@ serve(async (req) => {
       propertyAddress = claim?.property_address || event.location || 'N/A'
       eventType = event.event_type || 'Inspection'
 
-      const cleanNotes = (event.notes || '')
+      cleanNotes = (event.notes || '')
         .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
         .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
         .replace(/\[Timezone:[^\]]*\]/gi, '')
@@ -348,7 +358,7 @@ serve(async (req) => {
     const plainText = `Dear ${insuredName},
 
 The insurance company (${carrier}) has requested an on-site ${eventType.toLowerCase()} for your claim at ${propertyAddress}.
-${event.access_instructions ? `Access Instructions: ${event.access_instructions}\n` : ''}${cleanNotes ? `Special Notes: ${cleanNotes}\n` : ''}
+${event?.access_instructions ? `Access Instructions: ${event.access_instructions}\n` : ''}${cleanNotes ? `Special Notes: ${cleanNotes}\n` : ''}
 Your Public Adjuster, ${paName}, has reviewed the calendar and pre-approved the following ${sortedSlots.length} date options for you:
 
 ${slotsPlainText}
@@ -437,7 +447,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Property Address:</strong> ${propertyAddress}<br>
                       <strong>Event Type:</strong> ${eventType}<br>
                       <strong>Public Adjuster:</strong> ${paName}<br>
-                      ${event.access_instructions ? `<strong>Access Instructions:</strong> <em>${event.access_instructions}</em><br>` : ''}
+                      ${event?.access_instructions ? `<strong>Access Instructions:</strong> <em>${event.access_instructions}</em><br>` : ''}
                       ${cleanNotes ? `<strong>Special Notes:</strong> ${cleanNotes}<br>` : ''}
                     </div>
                   </td>

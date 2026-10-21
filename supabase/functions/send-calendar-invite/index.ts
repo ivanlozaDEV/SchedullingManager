@@ -23,6 +23,7 @@ serve(async (req) => {
     )
 
     let event = null;
+    let participants: any[] = [];
     let uniqueRecipients: { email: string, name: string }[] = [];
 
     if (isTest && (!eventId || eventId === 'test')) {
@@ -62,12 +63,13 @@ serve(async (req) => {
       event = dbEvent;
 
       // 2. Fetch Participants
-      const { data: participants, error: partErr } = await supabaseAdmin
+      const { data: partData, error: partErr } = await supabaseAdmin
         .from('event_participants')
         .select(`*, public_adjuster:public_adjusters(email, name, phone, role), carrier_rep:carrier_representatives(email, name, phone, company), external_actor:external_actors(email, name, phone, type_of_actor, company)`)
         .eq('event_id', eventId)
 
       if (partErr) throw partErr
+      participants = partData || [];
 
       // Collect all emails
       const emailRecipients: { email: string, name: string }[] = []

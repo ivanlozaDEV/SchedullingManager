@@ -32,7 +32,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    let event = null
+    let event: any = null
+    let pa: any = null
     let claimNumber = ''
     let insuredName = ''
     let carrier = ''
@@ -46,6 +47,18 @@ serve(async (req) => {
     let uniqueRecipients: { email: string, name: string }[] = []
 
     if (isTest && (!eventId || eventId === 'test')) {
+      event = {
+        id: 'test-cancellation-event',
+        location: '6539 Bellview Pines Rd, Pensacola, FL 32526',
+        final_date: '2026-10-30',
+        final_start_time: '10:00:00',
+        final_end_time: '12:00:00',
+      }
+      pa = {
+        name: 'Iván Hernández',
+        phone: '(772) 282-0862',
+        email: 'ivan@ipadjustinggroup.com'
+      }
       claimNumber = 'HO0526444000'
       insuredName = 'Albert & Carmelita Kling'
       carrier = 'Monarch National Insurance'
@@ -87,7 +100,7 @@ serve(async (req) => {
 
       const claim = event.claim
       const insured = claim?.insured
-      const pa = claim?.public_adjuster
+      pa = claim?.public_adjuster
       claimNumber = claim?.claim_number || 'N/A'
       insuredName = insured?.name || 'Insured Client'
       carrier = claim?.carrier || 'Carrier'
@@ -181,7 +194,7 @@ CLAIM DETAILS:
 - Insured: ${insuredName}
 - Insurance Carrier: ${carrier}
 - Property Address: ${propertyAddress}
-${event.location && event.location !== propertyAddress ? `- Event Location: ${event.location}\n` : ''}${pa?.name ? `- Public Adjuster: ${pa.name}${pa.phone ? ` (${pa.phone})` : ''}\n` : ''}- Event Type: ${eventType}
+${event?.location && event.location !== propertyAddress ? `- Event Location: ${event.location}\n` : ''}${pa?.name ? `- Public Adjuster: ${pa.name}${pa.phone ? ` (${pa.phone})` : ''}\n` : ''}- Event Type: ${eventType}
 ${cancelDate ? `- Previous Scheduled Date: ${cancelDate} (${cancelStartTime} - ${cancelEndTime})\n` : ''}- Cancelled By / Requested By: ${cancelledBy || 'General'}
 - Reason / Notes: ${cancellationReason || 'Rescheduling requested.'}
 
@@ -277,7 +290,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Insured:</strong> ${insuredName}<br>
                       <strong>Insurance Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${propertyAddress}<br>
-                      ${event.location && event.location !== propertyAddress ? `<strong>Event Location:</strong> ${event.location}<br>` : ''}
+                      ${event?.location && event.location !== propertyAddress ? `<strong>Event Location:</strong> ${event.location}<br>` : ''}
                       ${pa?.name ? `<strong>Public Adjuster:</strong> ${pa.name}${pa.phone ? ` (${pa.phone})` : ''}<br>` : ''}
                       <strong>Event Type:</strong> ${eventType}<br>
                       ${cancelDate ? `<strong>Cancelled Appointment:</strong> 📅 ${cancelDate} (${cancelStartTime} - ${cancelEndTime})<br>` : ''}

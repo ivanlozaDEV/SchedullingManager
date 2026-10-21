@@ -14,6 +14,25 @@ import type {
   ParticipantRole
 } from '../types';
 
+async function parseEdgeFunctionError(error: any): Promise<string> {
+  if (!error) return 'Error desconocido en Edge Function';
+  if (error.context && typeof error.context.json === 'function') {
+    try {
+      const cloned = typeof error.context.clone === 'function' ? error.context.clone() : error.context;
+      const body = await cloned.json();
+      if (body?.error) return body.error;
+      if (body?.message) return body.message;
+      if (body?.warning) return body.warning;
+    } catch (_) {
+      try {
+        const text = await error.context.text();
+        if (text) return text;
+      } catch (_) {}
+    }
+  }
+  return error.message || String(error);
+}
+
 export const schedulingService = {
   // 1. Obtener Public Adjusters
   async getPublicAdjusters(includeInactive = false): Promise<PublicAdjuster[]> {
@@ -817,7 +836,10 @@ export const schedulingService = {
     const { data, error } = await supabase.functions.invoke('notify-insured-slots', {
       body: { eventId }
     });
-    if (error) throw error;
+    if (error) {
+      const detail = await parseEdgeFunctionError(error);
+      throw new Error(detail);
+    }
     if (data && data.success === false) {
       throw new Error(data.message || 'No se pudo enviar el correo al asegurado.');
     }
@@ -883,7 +905,10 @@ export const schedulingService = {
     const { data, error } = await supabase.functions.invoke('send-calendar-invite', {
       body: { eventId }
     });
-    if (error) throw error;
+    if (error) {
+      const detail = await parseEdgeFunctionError(error);
+      throw new Error(detail);
+    }
     if (data && data.success === false) {
       throw new Error(data.warning || data.message || 'No se pudieron enviar las invitaciones de calendario.');
     }

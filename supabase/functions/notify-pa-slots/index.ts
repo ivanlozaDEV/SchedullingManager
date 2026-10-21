@@ -163,7 +163,7 @@ serve(async (req) => {
     const { eventId, isTest, testEmail } = await req.json()
     if (!eventId && !isTest) throw new Error("eventId is required")
 
-    let event = null
+    let event: any = null
     let paEmail = ''
     let paName = ''
     let claim = null
@@ -172,9 +172,18 @@ serve(async (req) => {
     let claimNumber = ''
     let address = ''
     let eventType = ''
+    let cleanNotes = ''
     let sortedSlots: any[] = []
 
     if (isTest && (!eventId || eventId === 'test')) {
+      event = {
+        id: 'test-slot-event',
+        access_instructions: 'Driveway parking only. Lockbox on front door handle.',
+        gate_code: '#4589',
+        lockbox_code: '1234',
+        location: '6539 Bellview Pines Rd, Pensacola, FL 32526',
+        notes: 'Roof inspection ladder required.'
+      }
       paEmail = testEmail || 'ivanloza88@gmail.com'
       paName = 'Iván Hernández'
       insuredName = 'Albert & Carmelita Kling'
@@ -182,6 +191,7 @@ serve(async (req) => {
       claimNumber = 'HO0526444000'
       address = '6539 Bellview Pines Rd, Pensacola, FL 32526'
       eventType = 'Initial Inspection'
+      cleanNotes = 'Roof inspection ladder required.'
       sortedSlots = [
         { id: 'test-slot-1', slot_date: '2026-10-28', start_time: '09:00:00', end_time: '11:00:00' },
         { id: 'test-slot-2', slot_date: '2026-10-29', start_time: '13:00:00', end_time: '15:00:00' },
@@ -228,7 +238,7 @@ serve(async (req) => {
       address = claim?.property_address || event.location || 'N/A'
       eventType = event.event_type || 'Inspection'
 
-      const cleanNotes = (event.notes || '')
+      cleanNotes = (event.notes || '')
         .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
         .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
         .replace(/\[Timezone:[^\]]*\]/gi, '')
@@ -326,7 +336,7 @@ CLAIM DETAILS:
 - Carrier: ${carrier}
 - Property Address: ${address}
 - Event Type: ${eventType}
-${event.gate_code ? `- Gate Code: ${event.gate_code}\n` : ''}${event.lockbox_code ? `- Lockbox Code: ${event.lockbox_code}\n` : ''}${event.access_instructions ? `- Access Instructions: ${event.access_instructions}\n` : ''}${cleanNotes ? `- Special Notes: ${cleanNotes}\n` : ''}
+${event?.gate_code ? `- Gate Code: ${event.gate_code}\n` : ''}${event?.lockbox_code ? `- Lockbox Code: ${event.lockbox_code}\n` : ''}${event?.access_instructions ? `- Access Instructions: ${event.access_instructions}\n` : ''}${cleanNotes ? `- Special Notes: ${cleanNotes}\n` : ''}
 
 PROPOSED DATES FROM CARRIER:
 ${slotsPlainText}
@@ -418,9 +428,9 @@ admin@ipadjustinggroup.com | (772) 282-0862
                       <strong>Carrier:</strong> ${carrier}<br>
                       <strong>Property Address:</strong> ${address}<br>
                       <strong>Event Type:</strong> ${eventType}<br>
-                      ${event.gate_code ? `<strong>Gate Code:</strong> <span style="font-family:monospace; font-weight:bold; color:#0f766e;">${event.gate_code}</span><br>` : ''}
-                      ${event.lockbox_code ? `<strong>Lockbox Code:</strong> <span style="font-family:monospace; font-weight:bold; color:#0f766e;">${event.lockbox_code}</span><br>` : ''}
-                      ${event.access_instructions ? `<strong>Access Instructions:</strong> <em>${event.access_instructions}</em><br>` : ''}
+                      ${event?.gate_code ? `<strong>Gate Code:</strong> <span style="font-family:monospace; font-weight:bold; color:#0f766e;">${event.gate_code}</span><br>` : ''}
+                      ${event?.lockbox_code ? `<strong>Lockbox Code:</strong> <span style="font-family:monospace; font-weight:bold; color:#0f766e;">${event.lockbox_code}</span><br>` : ''}
+                      ${event?.access_instructions ? `<strong>Access Instructions:</strong> <em>${event.access_instructions}</em><br>` : ''}
                       ${cleanNotes ? `<strong>Special Notes:</strong> ${cleanNotes}<br>` : ''}
                     </div>
                   </td>
