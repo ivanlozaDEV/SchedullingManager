@@ -1,0 +1,16 @@
+project_id = "nazzlfkfwdzrgzspvixm"
+
+[functions.notify-insured-slots]
+verify_jwt = false
+
+[functions.notify-pa-slots]
+verify_jwt = false
+
+[functions.send-calendar-invite]
+verify_jwt = false
+
+[functions.send-cancellation-notice]
+verify_jwt = false
+
+[functions.sync-sheet-claim]
+verify_jwt = false
