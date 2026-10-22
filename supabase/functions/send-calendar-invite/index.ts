@@ -150,12 +150,42 @@ serve(async (req) => {
 
     // 4. Detect Property Timezone (Central Time vs Eastern Time)
     const combinedAddr = `${event.location || ''} ${event.claim?.property_address || ''} ${event.claim?.city || ''} ${event.claim?.zip_code || ''} ${event.notes || ''}`.toLowerCase();
-    const isCt = /\[timezone:\s*ct\]/i.test(combinedAddr) || 
+    const isCt = event.timezone === 'CT' || 
+      event.claim?.timezone === 'CT' ||
+      /\[timezone:\s*ct\]/i.test(combinedAddr) || 
       /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
       ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa'].some(kw => combinedAddr.includes(kw));
     
     const ianaTz = isCt ? 'America/Chicago' : 'America/New_York';
     const tzLabel = isCt ? 'Central Time (CT - Pensacola)' : 'Eastern Time (ET - Miami)';
+    const tzCityLabel = isCt ? 'Pensacola Time CT' : 'Miami Time ET';
+
+    // Helper to format 24h time to 12h lowercase am/pm
+    const formatTime12 = (t?: string): string => {
+      if (!t) return '';
+      const clean = t.slice(0, 5);
+      const [hStr, mStr] = clean.split(':');
+      const h = parseInt(hStr, 10);
+      if (isNaN(h)) return clean;
+      const ampm = h >= 12 ? 'pm' : 'am';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return `${h12}:${mStr || '00'} ${ampm}`;
+    };
+
+    let timeWindowStr = '';
+    if (event.final_start_time) {
+      const start12 = formatTime12(event.final_start_time);
+      if (event.final_end_time) {
+        const end12 = formatTime12(event.final_end_time);
+        timeWindowStr = `${start12} to ${end12} ${tzCityLabel}`;
+      } else {
+        timeWindowStr = `${start12} ${tzCityLabel}`;
+      }
+    }
+
+    const timeSubjectPart = timeWindowStr
+      ? `${event.final_date ? `${event.final_date} · ` : ''}${timeWindowStr}`
+      : (event.final_date || 'Confirmed');
 
     // 5. Generate Dates & .ics content
     const cleanDate = (event.final_date || '').replace(/-/g, '')
@@ -168,6 +198,7 @@ serve(async (req) => {
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'
     const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`
+    const emailSubject = `${isTest ? '[TEST PREVIEW] ' : ''}Confirmed: ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`
 
     // Comprehensive description for .ics and calendar clients
     const descParts: string[] = [
@@ -476,7 +507,7 @@ serve(async (req) => {
     const mailOptions = {
       from: `"IP Scheduling" <${smtpUser}>`,
       to: uniqueRecipients.map(r => r.email).join(', '),
-      subject: `${isTest ? '[TEST PREVIEW] ' : ''}Confirmed: ${eventType} | ${insuredName} - Claim #${claimNumber}`,
+      subject: emailSubject,
       html: htmlBody,
       icalEvent: {
         filename: 'invite.ics',

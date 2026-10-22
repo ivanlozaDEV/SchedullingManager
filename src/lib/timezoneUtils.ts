@@ -223,3 +223,23 @@ export function getLiveOperatingTimes(): {
     isPensacolaSameAsEcuador: ecuador === pensacola,
   };
 }
+
+/**
+ * Formats a time range with explicit city timezone for email subjects.
+ * Example for Pensacola / Panhandle (CT): "10:00 am to 12:00 pm Pensacola Time CT"
+ * Example for Miami / Rest of Florida (ET): "10:00 am to 12:00 pm Miami Time ET"
+ */
+export function formatTimeRangeForSubject(
+  startTime24?: string,
+  endTime24?: string,
+  timezone: FloridaTimezone = 'ET'
+): string {
+  if (!startTime24) return '';
+  const tzCityLabel = timezone === 'CT' ? 'Pensacola Time CT' : 'Miami Time ET';
+  const s12 = format12Hour(startTime24).toLowerCase();
+  if (endTime24) {
+    const e12 = format12Hour(endTime24).toLowerCase();
+    return `${s12} to ${e12} ${tzCityLabel}`;
+  }
+  return `${s12} ${tzCityLabel}`;
+}

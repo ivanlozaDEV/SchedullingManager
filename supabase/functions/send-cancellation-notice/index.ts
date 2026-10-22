@@ -181,7 +181,42 @@ serve(async (req) => {
       })
     }
 
-    const subject = `Notice: ${eventType} Cancelled / Rescheduling | ${insuredName} - Claim #${claimNumber}`
+    const combinedAddr = `${event?.location || ''} ${propertyAddress} ${claim?.city || ''} ${claim?.zip_code || ''} ${event?.notes || ''}`.toLowerCase();
+    const isCt = event?.timezone === 'CT' ||
+      claim?.timezone === 'CT' ||
+      /\[timezone:\s*ct\]/i.test(combinedAddr) || 
+      /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
+      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa'].some(kw => combinedAddr.includes(kw));
+
+    const tzCityLabel = isCt ? 'Pensacola Time CT' : 'Miami Time ET';
+
+    const formatTime12 = (t?: string): string => {
+      if (!t) return '';
+      const clean = t.slice(0, 5);
+      const [hStr, mStr] = clean.split(':');
+      const h = parseInt(hStr, 10);
+      if (isNaN(h)) return clean;
+      const ampm = h >= 12 ? 'pm' : 'am';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return `${h12}:${mStr || '00'} ${ampm}`;
+    };
+
+    let cancelTimeLabel = '';
+    if (cancelStartTime) {
+      const s12 = formatTime12(cancelStartTime);
+      if (cancelEndTime) {
+        const e12 = formatTime12(cancelEndTime);
+        cancelTimeLabel = `${s12} to ${e12} ${tzCityLabel}`;
+      } else {
+        cancelTimeLabel = `${s12} ${tzCityLabel}`;
+      }
+    }
+
+    const cancelSubjectDetail = cancelTimeLabel
+      ? (cancelDate ? `${cancelDate} · ${cancelTimeLabel}` : cancelTimeLabel)
+      : (cancelDate || '');
+
+    const subject = `Notice: ${eventType} Cancelled / Rescheduling${cancelSubjectDetail ? ` (${cancelSubjectDetail})` : ''} | ${insuredName} - Claim #${claimNumber}`;
 
     const plainText = `NOTICE OF ${eventType.toUpperCase()} CANCELLATION & RESCHEDULING
 

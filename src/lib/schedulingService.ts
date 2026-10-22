@@ -407,6 +407,36 @@ export const schedulingService = {
     if (error) throw error;
   },
 
+  // 6.01 Actualizar Fecha y Horas de un Slot individual sin alterar la etapa
+  async updateSlot(
+    slotId: string,
+    data: {
+      slotDate?: string;
+      startTime?: string;
+      endTime?: string;
+    }
+  ) {
+    if (!isSupabaseConfigured) return;
+    const payload: any = {};
+    if (data.slotDate !== undefined) payload.slot_date = data.slotDate;
+    if (data.startTime !== undefined) {
+      payload.start_time = data.startTime.length === 5 ? `${data.startTime}:00` : data.startTime;
+    }
+    if (data.endTime !== undefined) {
+      payload.end_time = data.endTime.length === 5 ? `${data.endTime}:00` : data.endTime;
+    }
+
+    const { data: updated, error } = await supabase
+      .from('event_slots')
+      .update(payload)
+      .eq('id', slotId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return updated;
+  },
+
   // 6.0 Confirmar Cita Directamente (Fast-Track / Cierre Inmediato sin Funnel)
   async directConfirmEvent(
     eventId: string,

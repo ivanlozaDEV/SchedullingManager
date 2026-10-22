@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Mail, X, Send, Eye, FileText, CheckCircle2, Calendar, MapPin, Building, User, AlertCircle } from 'lucide-react';
 import type { CoordinationEvent } from '../types';
+import { detectPropertyTimezone, formatTimeRangeForSubject } from '../lib/timezoneUtils';
 
 interface EmailPreviewModalProps {
   isOpen: boolean;
@@ -53,9 +54,18 @@ export function EmailPreviewModal({
     .filter((em): em is string => Boolean(em && em.trim()));
   const calendarRecipients = Array.from(new Set([insuredEmail, pa?.email, ...otherEmails].filter(Boolean))) as string[];
 
+  const propertyTz = detectPropertyTimezone(
+    `${event.location || ''} ${propertyAddress} ${event.notes || ''}`,
+    event.timezone as any
+  );
+  const timeWindowStr = formatTimeRangeForSubject(event.finalStartTime, event.finalEndTime, propertyTz);
+  const timeSubjectPart = timeWindowStr
+    ? `${event.finalDate ? `${event.finalDate} · ` : ''}${timeWindowStr}`
+    : (event.finalDate || 'Confirmed');
+
   const subject = type === 'selection_options'
     ? `Action Required: Choose your ${eventType} Date - Claim #${claimNumber}`
-    : `CALENDAR INVITE: ${eventType} - ${claimNumber} (${event.finalDate || 'Confirmed'})`;
+    : `Confirmed: ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`;
 
   const recipientDisplay = type === 'selection_options'
     ? (insuredEmail ? `${insuredName} <${insuredEmail}>` : '⚠️ No email registered for Insured')
