@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, Clock, CheckCircle2, AlertCircle, Pencil } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
-import { formatTimeRangeWithDualTimezone } from '../lib/timezoneUtils';
+import { formatTimeRangeWithDualTimezone, formatUsDate } from '../lib/timezoneUtils';
 import { useToast } from '../context/ToastContext';
 import type { EventSlot, CoordinationEvent, Claim } from '../types';
 
@@ -84,7 +84,7 @@ export function EditSlotModal({
 
       toast.success(
         'Fecha modificada',
-        `La opción se actualizó a: ${slotDate} (${startTime} - ${endTime} ${timezone})`
+        `La opción se actualizó a: ${formatUsDate(slotDate)} (${startTime} - ${endTime} ${timezone})`
       );
 
       await onSaved();
@@ -126,7 +126,7 @@ export function EditSlotModal({
 
       toast.success(
         '¡Cita Fijada y Confirmada!',
-        `La inspección quedó confirmada para el ${slotDate} de ${startTime} a ${endTime} (${timezone}).`
+        `La inspección quedó confirmada para el ${formatUsDate(slotDate)} de ${startTime} a ${endTime} (${timezone}).`
       );
 
       await onSaved();
@@ -231,7 +231,7 @@ export function EditSlotModal({
                 Vista previa con zona horaria ({timezone}):
               </span>
               <p className="font-bold text-slate-900 font-mono text-[11px]">
-                📅 {slotDate || 'YYYY-MM-DD'}
+                📅 {formatUsDate(slotDate) || 'MM/DD/YYYY'}
               </p>
               <p className="text-[11px] text-tealBrand-900 font-mono">
                 ⏰ {dualTimeInfo.displayFull}

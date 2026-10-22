@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { eventId, isTest, testEmail } = await req.json()
+    const { eventId, isTest, testEmail, isUpdate } = await req.json()
     if (!eventId && !isTest) throw new Error("eventId is required")
 
     const supabaseAdmin = createClient(
@@ -154,11 +154,38 @@ serve(async (req) => {
       event.claim?.timezone === 'CT' ||
       /\[timezone:\s*ct\]/i.test(combinedAddr) || 
       /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
-      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa'].some(kw => combinedAddr.includes(kw));
+      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa', 'molino'].some(kw => combinedAddr.includes(kw));
     
     const ianaTz = isCt ? 'America/Chicago' : 'America/New_York';
-    const tzLabel = isCt ? 'Central Time (CT - Pensacola)' : 'Eastern Time (ET - Miami)';
-    const tzCityLabel = isCt ? 'Pensacola Time CT' : 'Miami Time ET';
+
+    // Resolve city dynamically from claim.city or address
+    const rawCity = event.claim?.city?.trim();
+    let resolvedCity = '';
+    if (rawCity && !/\d{3,}/.test(rawCity) && !/,\s*fl\b/i.test(rawCity)) {
+      resolvedCity = rawCity;
+    } else {
+      const knownCities = [
+        'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton',
+        'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville',
+        'cantonment', 'santa rosa beach', 'miramar beach', 'molino', 'miami beach',
+        'miami', 'fort lauderdale', 'pompano beach', 'hollywood', 'coral gables',
+        'doral', 'hialeah', 'west palm beach', 'boca raton', 'delray beach',
+        'port st lucie', 'tampa', 'st petersburg', 'clearwater', 'orlando',
+        'jacksonville', 'tallahassee', 'fort myers', 'naples', 'sarasota'
+      ];
+      for (const kw of knownCities) {
+        if (combinedAddr.includes(kw)) {
+          resolvedCity = kw;
+          break;
+        }
+      }
+    }
+    const cityName = resolvedCity
+      ? resolvedCity.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+      : (isCt ? 'Pensacola' : 'Miami');
+
+    const tzLabel = isCt ? `Central Time (CT - ${cityName})` : `Eastern Time (ET - ${cityName})`;
+    const tzCityLabel = `${cityName} Time ${isCt ? 'CT' : 'ET'}`;
 
     // Helper to format 24h time to 12h lowercase am/pm
     const formatTime12 = (t?: string): string => {
@@ -183,9 +210,19 @@ serve(async (req) => {
       }
     }
 
+    const formatUsDate = (dStr?: string | null): string => {
+      if (!dStr) return '';
+      const m = dStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (m) return `${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}/${m[1]}`;
+      return dStr;
+    };
+
+    const isUpdateEvent = Boolean(isUpdate) || event.status === 'rescheduled';
+    const actionLabel = isUpdateEvent ? 'Update' : 'Confirmed';
+
     const timeSubjectPart = timeWindowStr
-      ? `${event.final_date ? `${event.final_date} · ` : ''}${timeWindowStr}`
-      : (event.final_date || 'Confirmed');
+      ? `${event.final_date ? `${formatUsDate(event.final_date)} · ` : ''}${timeWindowStr}`
+      : (event.final_date ? formatUsDate(event.final_date) : actionLabel);
 
     // 5. Generate Dates & .ics content
     const cleanDate = (event.final_date || '').replace(/-/g, '')
@@ -197,8 +234,8 @@ serve(async (req) => {
     const insuredName = event.claim?.insured?.name || 'Insured Client'
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'
-    const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`
-    const emailSubject = `${isTest ? '[TEST PREVIEW] ' : ''}Confirmed: ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`
+    const title = `${eventType} ${actionLabel} | ${insuredName} - Claim #${claimNumber}`
+    const emailSubject = `${isTest ? '[TEST PREVIEW] ' : ''}${actionLabel}: ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`
 
     // Comprehensive description for .ics and calendar clients
     const descParts: string[] = [
@@ -293,7 +330,7 @@ serve(async (req) => {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Confirmed: ${eventType} | ${insuredName} - Claim #${claimNumber}</title>
+  <title>${actionLabel}: ${eventType} | ${insuredName} - Claim #${claimNumber}</title>
   <style>
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
     table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
@@ -346,7 +383,7 @@ serve(async (req) => {
               <p style="margin:0 0 14px 0; font-size:16px;">Dear <strong>${insuredName}</strong>,</p>
               
               <p style="margin:0 0 16px 0;">
-                Your upcoming <strong>${eventType}</strong> for Claim <strong>#${claimNumber}</strong> has been officially confirmed and scheduled. Below are the complete appointment and access details:
+                Your upcoming <strong>${eventType}</strong> for Claim <strong>#${claimNumber}</strong> has been officially ${isUpdateEvent ? 'updated' : 'confirmed and scheduled'}. Below are the complete appointment and access details:
               </p>
 
               <!-- APPOINTMENT DETAILS CARD -->
@@ -354,10 +391,10 @@ serve(async (req) => {
                 <tr>
                   <td>
                     <div style="font-size:12px; font-weight:bold; color:#0071bc; text-transform:uppercase; margin-bottom:10px;">
-                      ✓ Confirmed Appointment Details
+                      ✓ ${actionLabel} Appointment Details
                     </div>
                     <div style="font-size:14px; color:#111827; line-height:1.8;">
-                      <strong>📅 Date:</strong> ${event.final_date}<br>
+                      <strong>📅 Date:</strong> ${formatUsDate(event.final_date)}<br>
                       <strong>⏰ Time Window:</strong> ${(event.final_start_time || '').slice(0, 5)} - ${(event.final_end_time || '').slice(0, 5)} (${tzLabel})<br>
                       <strong>📍 Location:</strong> ${event.location || event.claim?.property_address || 'N/A'}<br>
                       <strong>Claim Number:</strong> ${claimNumber}<br>

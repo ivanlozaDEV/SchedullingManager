@@ -40,6 +40,7 @@ const CT_KEYWORDS = [
   'mary esther',
   'century',
   'molino',
+  'molina', // Typo alias for Molino, FL
   'mexico beach',
   'wewahitchka',
   'port st joe',
@@ -82,6 +83,97 @@ export function detectPropertyTimezone(addressOrText?: string, manualOverride?: 
 
   // Default to Eastern Time (Miami / Orlando / Tampa / Jacksonville / Rest of FL)
   return 'ET';
+}
+
+/**
+ * Cleans an address string:
+ * - Fixes common typos like "Molina" -> "Molino" for FL 32577
+ * - Removes erroneous trailing ", Miami, FL" fallback attachments when the address is in another city
+ * - Eliminates duplicate parts (e.g. "... Gulf Breeze, FL 32563, Gulf Breeze, FL 32563")
+ */
+export function cleanAddress(rawAddress?: string): string {
+  if (!rawAddress) return '';
+  let cleaned = rawAddress.trim();
+
+  // 1. Correct typo "Molina" -> "Molino" for Florida Panhandle addresses
+  cleaned = cleaned.replace(/\bMolina\b/gi, 'Molino');
+
+  // 2. Remove duplicate trailing city/state/zip repeats:
+  // e.g. "..., City, FL 32563, City, FL 32563"
+  const dupRepeatRegex = /^(.*?)(?:,\s*([^,]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?))(?:,\s*\2)+$/i;
+  const dupMatch = cleaned.match(dupRepeatRegex);
+  if (dupMatch) {
+    cleaned = `${dupMatch[1]}, ${dupMatch[2]}`.replace(/^,\s*/, '').trim();
+  }
+
+  // 3. Remove erroneous trailing ", Miami, FL" if the preceding text already mentions another city or non-Miami zip code
+  if (cleaned.toLowerCase().endsWith(', miami, fl') && !cleaned.toLowerCase().startsWith('miami')) {
+    const withoutMiami = cleaned.slice(0, -11).trim();
+    if (
+      /,\s*[A-Z]{2}\b/i.test(withoutMiami) ||
+      /\b\d{5}\b/.test(withoutMiami) ||
+      CT_KEYWORDS.some((kw) => withoutMiami.toLowerCase().includes(kw))
+    ) {
+      cleaned = withoutMiami;
+    }
+  }
+
+  // 4. Remove duplicate city/state repeats like "... City, FL, City, FL"
+  const parts = cleaned.split(',').map((s) => s.trim());
+  if (parts.length >= 4) {
+    const lastTwo = parts.slice(-2).join(', ').toLowerCase();
+    const prevTwo = parts.slice(-4, -2).join(', ').toLowerCase();
+    if (lastTwo === prevTwo) {
+      cleaned = parts.slice(0, -2).join(', ');
+    }
+  }
+
+  return cleaned.replace(/,\s*,/g, ',').trim();
+}
+
+/**
+ * Combines street address, city, state, zip cleanly without duplicates.
+ * If street already contains city, state or zip, avoids duplicating them.
+ */
+export function formatFullAddress(
+  street?: string,
+  city?: string,
+  state: string = 'FL',
+  zip?: string
+): string {
+  const cleanStreet = cleanAddress(street);
+  if (!cleanStreet) {
+    const parts = [city, state, zip].filter(Boolean);
+    return parts.join(', ');
+  }
+
+  const lowerStreet = cleanStreet.toLowerCase();
+
+  // If cleanStreet already has state and zip or already has the city, don't append
+  const hasState = /\b(fl|florida)\b/i.test(lowerStreet);
+  const hasZip = zip ? lowerStreet.includes(zip.toLowerCase()) : /\b\d{5}\b/.test(lowerStreet);
+  const hasCity = city ? lowerStreet.includes(city.toLowerCase().trim()) : false;
+
+  if (hasState && (hasZip || hasCity)) {
+    return cleanStreet;
+  }
+
+  const extraParts: string[] = [];
+  if (city && !hasCity && city.toLowerCase() !== 'miami') {
+    extraParts.push(city.trim());
+  }
+  if (!hasState && state) {
+    extraParts.push(state.trim());
+  }
+  let result = cleanStreet;
+  if (extraParts.length > 0) {
+    result += `, ${extraParts.join(', ')}`;
+  }
+  if (zip && !hasZip) {
+    result += ` ${zip.trim()}`;
+  }
+
+  return cleanAddress(result);
 }
 
 /**
@@ -224,18 +316,102 @@ export function getLiveOperatingTimes(): {
   };
 }
 
+const FLORIDA_CITIES = [
+  // Central Time (CT)
+  'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton', 'ft walton',
+  'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville', 'defuniak springs',
+  'defuniak', 'marianna', 'bonifay', 'chipley', 'cantonment', 'santa rosa beach',
+  'miramar beach', 'perdido', 'lynn haven', 'valparaiso', 'mary esther', 'century',
+  'molino', 'mexico beach', 'wewahitchka', 'port st joe', 'port st. joe',
+  // Eastern Time (ET)
+  'miami beach', 'miami lakes', 'miami gardens', 'miami shores', 'north miami', 'south miami', 'miami',
+  'fort lauderdale', 'ft lauderdale', 'pompano beach', 'hollywood', 'coral gables', 'doral', 'hialeah',
+  'homestead', 'kendall', 'aventura', 'hallandale', 'davie', 'plantation', 'sunrise', 'coral springs',
+  'pembroke pines', 'miramar', 'deerfield beach', 'west palm beach', 'boca raton', 'delray beach',
+  'boynton beach', 'jupiter', 'wellington', 'lake worth', 'palm beach gardens', 'port st lucie',
+  'port saint lucie', 'fort pierce', 'stuart', 'vero beach', 'sebastian', 'tampa', 'st petersburg',
+  'st. petersburg', 'clearwater', 'largo', 'pinellas park', 'brandon', 'orlando', 'kissimmee',
+  'sanford', 'altamonte springs', 'winter park', 'winter haven', 'jacksonville', 'st augustine',
+  'st. augustine', 'orange park', 'tallahassee', 'gainesville', 'ocala', 'fort myers', 'ft myers',
+  'cape coral', 'naples', 'marco island', 'bonita springs', 'estero', 'sarasota', 'bradenton',
+  'venice', 'lakeland', 'daytona beach', 'ormond beach', 'deltona', 'port orange'
+];
+
+/**
+ * Formats a city name into clean Title Case (e.g. "molino" -> "Molino", "fort lauderdale" -> "Fort Lauderdale")
+ */
+export function formatCityTitleCase(rawCity: string): string {
+  if (!rawCity) return '';
+  return rawCity
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => {
+      if (word === 'ft' || word === 'ft.') return 'Ft.';
+      if (word === 'st' || word === 'st.') return 'St.';
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
+/**
+ * Resolves the property city name dynamically from claim.city or address.
+ * Prioritizes the real city of the property (e.g. Molino, Tampa, Miami Beach)
+ * instead of hardcoding Pensacola or Miami.
+ */
+export function resolveCityName(
+  city?: string | null,
+  address?: string | null,
+  timezone: FloridaTimezone = 'ET'
+): string {
+  // 1. If explicit city provided, ensure it's not a full street address
+  if (city && city.trim()) {
+    const c = city.trim();
+    if (!/\d{3,}/.test(c) && !/,\s*fl\b/i.test(c)) {
+      return formatCityTitleCase(c);
+    }
+  }
+
+  // 2. Search in combined text (city + address) for known city keywords (longest first)
+  const combined = `${city || ''} ${address || ''}`.trim();
+  if (combined) {
+    const lower = combined.toLowerCase();
+    const sortedCities = [...FLORIDA_CITIES].sort((a, b) => b.length - a.length);
+    for (const kw of sortedCities) {
+      const regex = new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i');
+      if (regex.test(lower)) {
+        return formatCityTitleCase(kw);
+      }
+    }
+
+    // 3. Fallback: match standard US address pattern: "..., <City>, FL <ZIP>"
+    const addrMatch = combined.match(/,\s*([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i);
+    if (addrMatch) {
+      const candidate = addrMatch[1].trim();
+      if (candidate.length > 2 && !/\d/.test(candidate)) {
+        return formatCityTitleCase(candidate);
+      }
+    }
+  }
+
+  // 4. Default timezone fallback
+  return timezone === 'CT' ? 'Pensacola' : 'Miami';
+}
+
 /**
  * Formats a time range with explicit city timezone for email subjects.
- * Example for Pensacola / Panhandle (CT): "10:00 am to 12:00 pm Pensacola Time CT"
- * Example for Miami / Rest of Florida (ET): "10:00 am to 12:00 pm Miami Time ET"
+ * Takes the actual city from the address (e.g. "11:00 am to 1:00 pm Molino Time CT").
  */
 export function formatTimeRangeForSubject(
   startTime24?: string,
   endTime24?: string,
-  timezone: FloridaTimezone = 'ET'
+  timezone: FloridaTimezone = 'ET',
+  city?: string,
+  address?: string
 ): string {
   if (!startTime24) return '';
-  const tzCityLabel = timezone === 'CT' ? 'Pensacola Time CT' : 'Miami Time ET';
+  const cityName = resolveCityName(city, address, timezone);
+  const tzCityLabel = `${cityName} Time ${timezone}`;
   const s12 = format12Hour(startTime24).toLowerCase();
   if (endTime24) {
     const e12 = format12Hour(endTime24).toLowerCase();
@@ -243,3 +419,5 @@ export function formatTimeRangeForSubject(
   }
   return `${s12} ${tzCityLabel}`;
 }
+
+export { formatUsDate } from './formatters';

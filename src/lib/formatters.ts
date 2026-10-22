@@ -70,3 +70,27 @@ export function formatClaimNumber(val: string): string {
 export function cleanWhitespace(val: string): string {
   return val.trim().replace(/\s+/g, ' ');
 }
+
+/**
+ * Formats a date string (YYYY-MM-DD or ISO timestamp) into US format MM/DD/YYYY (month/day/year).
+ * e.g. "2026-11-10" -> "11/10/2026"
+ * e.g. "2026-11-05" -> "11/05/2026"
+ */
+export function formatUsDate(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const clean = dateStr.trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) return clean;
+  const match = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
+  }
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) {
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
+  }
+  return clean;
+}

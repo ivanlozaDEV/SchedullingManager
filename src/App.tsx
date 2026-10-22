@@ -48,7 +48,7 @@ import { MasterCatalogsView } from './components/MasterCatalogsView';
 import { useToast } from './context/ToastContext';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from './lib/slaUtils';
 import { appSettingsService } from './lib/appSettingsService';
-import { formatTimeRangeWithDualTimezone, getLiveOperatingTimes, type FloridaTimezone } from './lib/timezoneUtils';
+import { formatTimeRangeWithDualTimezone, getLiveOperatingTimes, cleanAddress, formatUsDate, type FloridaTimezone } from './lib/timezoneUtils';
 import type { 
   CoordinationEvent, 
   EventSlot,
@@ -165,7 +165,7 @@ export function App() {
       setEvents(dbEvents);
 
       setClaims(dbClaims);
-      return dbClaims;
+      return Object.assign(dbClaims, { events: dbEvents, claims: dbClaims });
     } catch (err) {
       console.error('Error fetching live data:', err);
       return [];
@@ -205,7 +205,7 @@ export function App() {
     let text = `Hello ${insuredName}, this is IP Adjusters coordinating the inspection for your claim with ${carrier} (${address}).\n\n`;
     text += `We have the following date and time options available:\n`;
     acceptedSlots.forEach((s, idx) => {
-      text += `📍 Option ${idx + 1}: ${s.slotDate} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}\n`;
+      text += `📍 Option ${idx + 1}: ${formatUsDate(s.slotDate)} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}\n`;
     });
     text += `\nPlease let us know which option works best for you. Thank you!`;
     return text;
@@ -227,10 +227,13 @@ export function App() {
   const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
   const [insuredConfirmingSlotId, setInsuredConfirmingSlotId] = useState<string | null>(null);
   const [emailPreviewEvent, setEmailPreviewEvent] = useState<CoordinationEvent | null>(null);
-  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update'>('selection_options');
+  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update' | 'calendar_confirmation'>('selection_options');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-  const handleOpenEmailPreview = (evt: CoordinationEvent, type: 'selection_options' | 'calendar_update' = 'selection_options') => {
+  const handleOpenEmailPreview = (
+    evt: CoordinationEvent, 
+    type: 'selection_options' | 'calendar_update' | 'calendar_confirmation' = 'selection_options'
+  ) => {
     if (type === 'selection_options') {
       const insuredEmail = evt.claim?.insured?.email;
       const insuredName = evt.claim?.insured?.name || 'Asegurado';
@@ -276,10 +279,11 @@ export function App() {
           );
         }
       } else {
-        const res = await schedulingService.sendCalendarInvites(emailPreviewEvent.id);
+        const isUpdate = emailPreviewType === 'calendar_update';
+        const res = await schedulingService.sendCalendarInvites(emailPreviewEvent.id, { isUpdate });
         const sentList = res?.sentTo?.join(', ') || 'todos los participantes';
         toast.success(
-          '¡Invitaciones enviadas con éxito!',
+          isUpdate ? '¡Actualización de calendario enviada!' : '¡Invitaciones enviadas con éxito!',
           `Invitaciones de calendario (.ics) enviadas a:\n${sentList}`
         );
       }
@@ -359,7 +363,10 @@ export function App() {
     setPaConfirmingEventId(evt.id);
     try {
       await schedulingService.paSelectSlots(evt.id, selected, allSlotIds);
-      await loadData();
+      const res = await loadData();
+      const freshEvt = (res as any)?.events?.find((e: CoordinationEvent) => e.id === evt.id) || evt;
+      // Show email preview popup so user can review and send manually
+      handleOpenEmailPreview(freshEvt, 'selection_options');
     } catch (err) {
       console.error('Failed to confirm PA slots:', err);
     } finally {
@@ -401,7 +408,16 @@ export function App() {
         startTime: slot.startTime,
         endTime: slot.endTime,
       });
-      await loadData();
+      const res = await loadData();
+      const freshEvt = (res as any)?.events?.find((e: CoordinationEvent) => e.id === evt.id) || {
+        ...evt,
+        finalDate: slot.slotDate,
+        finalStartTime: slot.startTime,
+        finalEndTime: slot.endTime,
+        coordinationStage: '4_confirmed',
+      };
+      // Show email preview popup so user can review and send confirmation manually
+      handleOpenEmailPreview(freshEvt, 'calendar_confirmation');
     } catch (err) {
       console.error('Failed to lock insured slot:', err);
     } finally {
@@ -1167,7 +1183,7 @@ export function App() {
                                 {/* Location */}
                                 <div className="text-[11px] text-slate-500 flex items-start space-x-1.5 h-7">
                                   <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400 mt-0.5" />
-                                  <span className="line-clamp-2 leading-relaxed">{evt.location}</span>
+                                  <span className="line-clamp-2 leading-relaxed">{cleanAddress(evt.location)}</span>
                                 </div>
 
                                 {/* Actors Badges */}
@@ -1289,7 +1305,7 @@ export function App() {
                                                 }`}
                                               >
                                                 <div>
-                                                  <span className="font-semibold block">📅 {s.slotDate}</span>
+                                                  <span className="font-semibold block">📅 {formatUsDate(s.slotDate)}</span>
                                                   <span className="text-slate-500 font-mono text-[10px] block">
                                                     {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
                                                   </span>
@@ -1487,7 +1503,7 @@ export function App() {
                                                 }`}
                                               >
                                                 <div>
-                                                  <span className="block font-semibold">📅 {s.slotDate}</span>
+                                                  <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
                                                   <span className="text-[10px] font-mono block opacity-80">
                                                     {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
                                                   </span>
@@ -1516,7 +1532,7 @@ export function App() {
                                                   onClick={() => handleTogglePaSlot(evt.id, s.id)}
                                                   className="flex-1 cursor-pointer"
                                                 >
-                                                  <span className="block font-semibold">📅 {s.slotDate}</span>
+                                                  <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
                                                   <span className="text-[10px] text-slate-500 block font-mono">
                                                     {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
                                                   </span>
@@ -1650,7 +1666,7 @@ export function App() {
                                                 }`}
                                               >
                                                 <div>
-                                                  <span className="block font-semibold">📅 {s.slotDate}</span>
+                                                  <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
                                                   <span className="text-[10px] font-mono block opacity-80">
                                                     {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
                                                   </span>
@@ -1673,7 +1689,7 @@ export function App() {
                                                   className="p-2 rounded-lg border border-tealBrand-300 bg-tealBrand-50/70 text-xs flex items-center justify-between gap-1 min-h-[44px]"
                                                 >
                                                   <div>
-                                                    <span className="font-bold text-slate-900 block">📅 {s.slotDate}</span>
+                                                    <span className="font-bold text-slate-900 block">📅 {formatUsDate(s.slotDate)}</span>
                                                     <span className="text-[10px] text-slate-600 font-mono block">
                                                       {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
                                                     </span>
@@ -1708,7 +1724,7 @@ export function App() {
                                                   title="Option not selected by PA"
                                                 >
                                                   <div>
-                                                    <span className="font-medium text-slate-500 block">📅 {s.slotDate}</span>
+                                                    <span className="font-medium text-slate-500 block">📅 {formatUsDate(s.slotDate)}</span>
                                                     <span className="text-[10px] text-slate-400 font-mono block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
                                                   </div>
                                                   <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
@@ -1836,7 +1852,7 @@ export function App() {
                                           <span>Appointment Confirmed</span>
                                         </div>
                                         <p className="text-[12px] text-emerald-800 font-bold pl-5.5">
-                                          📅 {evt.finalDate}
+                                          📅 {formatUsDate(evt.finalDate)}
                                         </p>
                                         <p className="text-[11px] text-slate-600 font-mono pl-5.5">
                                           ⏰ {formatTimeRangeWithDualTimezone(evt.finalStartTime || '09:00', evt.finalEndTime || '11:00', evt.timezone || 'ET').displayFull}
@@ -2103,7 +2119,7 @@ export function App() {
                               </div>
                               <div className="text-[11px] text-slate-500 mt-1 font-medium">
                                 <span className="text-slate-700 font-semibold">{claim.typeOfLoss}</span>
-                                {claim.dateOfLoss && ` · Loss: ${claim.dateOfLoss}`}
+                                {claim.dateOfLoss && ` · Loss: ${formatUsDate(claim.dateOfLoss)}`}
                               </div>
                             </td>
 
@@ -2265,7 +2281,7 @@ export function App() {
                             {claim.dateOfLoss && (
                               <>
                                 <span>·</span>
-                                <span>Loss: {claim.dateOfLoss}</span>
+                                <span>Loss: {formatUsDate(claim.dateOfLoss)}</span>
                               </>
                             )}
                           </div>

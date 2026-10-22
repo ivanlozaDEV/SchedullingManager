@@ -20,6 +20,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
+import { formatFullAddress, formatUsDate } from '../lib/timezoneUtils';
 import type { Claim, PublicAdjuster, CoordinationEvent, CoordinationStage } from '../types';
 
 interface ClaimDetailModalProps {
@@ -85,7 +86,7 @@ export function ClaimDetailModal({
 
   // Initialize event location with claim address when opening form
   const handleOpenAddEvent = () => {
-    setLocation(`${claim.propertyAddress}, ${claim.city || 'Miami'}, ${claim.state || 'FL'} ${claim.zipCode || ''}`.trim());
+    setLocation(formatFullAddress(claim.propertyAddress, claim.city, claim.state, claim.zipCode));
     setGateCode('');
     setLockboxCode('');
     setAccessInstructions('');
@@ -251,7 +252,7 @@ export function ClaimDetailModal({
                   {claim.dateOfLoss && (
                     <div className="flex justify-between py-1 border-b border-slate-200">
                       <span className="text-slate-500">Date of Loss:</span>
-                      <strong className="text-slate-900 font-semibold">{claim.dateOfLoss}</strong>
+                      <strong className="text-slate-900 font-semibold">{formatUsDate(claim.dateOfLoss)}</strong>
                     </div>
                   )}
                   <div className="py-1">

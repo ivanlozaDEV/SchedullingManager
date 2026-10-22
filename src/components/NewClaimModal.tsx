@@ -142,7 +142,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
       setClaimStatus(claimToEdit.status || 'Open');
       setTypeOfLoss(claimToEdit.typeOfLoss || 'Water Damage');
       setPropertyAddress(claimToEdit.propertyAddress || '');
-      setCity(claimToEdit.city || 'Miami');
+      setCity(claimToEdit.city || '');
       setState(claimToEdit.state || 'FL');
       setZipCode(claimToEdit.zipCode || '');
       setDateOfLoss(claimToEdit.dateOfLoss || '');
@@ -166,7 +166,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
       setClaimStatus('Open');
       setTypeOfLoss('Water Damage');
       setPropertyAddress('');
-      setCity('Miami');
+      setCity('');
       setState('FL');
       setZipCode('');
       setDateOfLoss('');
@@ -699,7 +699,33 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                           required
                           placeholder="e.g. 1420 Brickell Ave, Apt 18B"
                           value={propertyAddress}
-                          onChange={(e) => setPropertyAddress(e.target.value)}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setPropertyAddress(raw);
+                            
+                            // Auto-extract zip if found in address
+                            const zipMatch = raw.match(/\b(3\d{4}(?:-\d{4})?)\b/);
+                            if (zipMatch && !zipCode) {
+                              setZipCode(zipMatch[1]);
+                            }
+
+                            // Check known cities
+                            const knownCities = [
+                              'molino', 'molina', 'pensacola', 'gulf breeze', 'milton', 'crestview', 
+                              'destin', 'fort walton', 'navarre', 'pace', 'loxahatchee', 'fort lauderdale', 
+                              'miami', 'tampa', 'orlando', 'jacksonville', 'fort myers', 'naples'
+                            ];
+                            const rawLower = raw.toLowerCase();
+                            for (const kc of knownCities) {
+                              if (rawLower.includes(kc)) {
+                                const norm = (kc === 'molina' || kc === 'molino') ? 'Molino' : kc.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                                if (!city || city === 'Miami' || city === 'Molina') {
+                                  setCity(norm);
+                                }
+                                break;
+                              }
+                            }
+                          }}
                           className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"
                         />
                       </div>

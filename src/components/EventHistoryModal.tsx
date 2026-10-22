@@ -14,6 +14,7 @@ import {
   Phone
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
+import { formatUsDate } from '../lib/timezoneUtils';
 import type { CoordinationEvent, CoordinationLog, ContactChannel } from '../types';
 
 interface EventHistoryModalProps {
@@ -264,11 +265,7 @@ export function EventHistoryModal({
             <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
               {logs.map((log) => {
                 const dateObj = new Date(log.createdAt);
-                const formattedDate = dateObj.toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                });
+                const formattedDate = formatUsDate(log.createdAt);
                 const formattedTime = dateObj.toLocaleTimeString([], {
                   hour: '2-digit',
                   minute: '2-digit'

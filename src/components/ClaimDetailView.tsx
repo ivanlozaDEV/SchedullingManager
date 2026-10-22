@@ -40,6 +40,7 @@ import { EmailPreviewModal } from './EmailPreviewModal';
 import { useToast } from '../context/ToastContext';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from '../lib/slaUtils';
 import { appSettingsService } from '../lib/appSettingsService';
+import { formatFullAddress, formatUsDate } from '../lib/timezoneUtils';
 import { 
   formatPhoneAsYouType, 
   isValidPhone, 
@@ -230,11 +231,14 @@ export function ClaimDetailView({
   // Copied slot message state
   const [copiedSlotId, setCopiedSlotId] = useState<string | null>(null);
   const [emailPreviewEvent, setEmailPreviewEvent] = useState<CoordinationEvent | null>(null);
-  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update'>('selection_options');
+  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update' | 'calendar_confirmation'>('selection_options');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const toast = useToast();
 
-  const handleOpenEmailPreview = (evt: CoordinationEvent, type: 'selection_options' | 'calendar_update' = 'selection_options') => {
+  const handleOpenEmailPreview = (
+    evt: CoordinationEvent, 
+    type: 'selection_options' | 'calendar_update' | 'calendar_confirmation' = 'selection_options'
+  ) => {
     if (type === 'selection_options') {
       if (!claim.insured?.email || !claim.insured.email.trim()) {
         toast.warning(
@@ -276,10 +280,11 @@ export function ClaimDetailView({
           );
         }
       } else {
-        const res = await schedulingService.sendCalendarInvites(emailPreviewEvent.id);
+        const isUpdate = emailPreviewType === 'calendar_update';
+        const res = await schedulingService.sendCalendarInvites(emailPreviewEvent.id, { isUpdate });
         const sentList = res?.sentTo?.join(', ') || 'todos los participantes';
         toast.success(
-          '¡Invitaciones enviadas con éxito!',
+          isUpdate ? '¡Actualización de calendario enviada!' : '¡Invitaciones enviadas con éxito!',
           `Invitaciones de calendario (.ics) enviadas a:\n${sentList}`
         );
       }
@@ -368,7 +373,7 @@ export function ClaimDetailView({
       status: claim.status || 'Open',
       typeOfLoss: claim.typeOfLoss || 'Water Damage',
       propertyAddress: claim.propertyAddress,
-      city: claim.city || 'Miami',
+      city: claim.city || '',
       state: claim.state || 'FL',
       zipCode: claim.zipCode || '',
       dateOfLoss: claim.dateOfLoss || '',
@@ -581,7 +586,7 @@ export function ClaimDetailView({
   // Initialize event location and participant selections when opening form
   const handleOpenAddEvent = () => {
     setEditingEvent(null);
-    setLocation(`${claim.propertyAddress}, ${claim.city || 'Miami'}, ${claim.state || 'FL'} ${claim.zipCode || ''}`.trim());
+    setLocation(formatFullAddress(claim.propertyAddress, claim.city, claim.state, claim.zipCode));
     setGateCode('');
     setLockboxCode('');
     setAccessInstructions('');
@@ -1340,7 +1345,7 @@ export function ClaimDetailView({
               {claim.dateOfLoss && (
                 <div className="flex justify-between py-1 border-b border-slate-100">
                   <span className="text-slate-500">Date of Loss:</span>
-                  <strong className="text-slate-900 font-semibold">{claim.dateOfLoss}</strong>
+                  <strong className="text-slate-900 font-semibold">{formatUsDate(claim.dateOfLoss)}</strong>
                 </div>
               )}
               <div className="py-1">
@@ -2959,7 +2964,7 @@ export function ClaimDetailView({
                               <div key={s.id || idx} className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs flex flex-col justify-between gap-2 shadow-2xs">
                                 <div>
                                   <div className="flex items-center justify-between">
-                                    <span className="font-bold text-slate-800 block">Option #{idx + 1}: 📅 {s.slotDate}</span>
+                                    <span className="font-bold text-slate-800 block">Option #{idx + 1}: 📅 {formatUsDate(s.slotDate)}</span>
                                     {s.status === 'insured_chosen' && (
                                       <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">Chosen</span>
                                     )}
@@ -3050,7 +3055,7 @@ export function ClaimDetailView({
                                   }`}
                                 >
                                   <div className="flex items-center justify-between w-full mb-1">
-                                    <span className="text-xs font-bold">📅 {s.slotDate}</span>
+                                    <span className="text-xs font-bold">📅 {formatUsDate(s.slotDate)}</span>
                                     <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] font-bold ${
                                       isSelected
                                         ? 'bg-tealBrand-800 border-tealBrand-800 text-white'
@@ -3146,7 +3151,7 @@ export function ClaimDetailView({
                                 <a
                                   href={`https://wa.me/1${claim.insured.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
                                     `Hello ${claim.insured.name || 'Insured'}, this is IP Adjusters coordinating the inspection for your claim with ${claim.carrier} (${evt.location}).\n\nWe have 2 options available:\n` +
-                                    (evt.slots || []).filter(s => s.status === 'pa_accepted').map((s, idx) => `Option ${idx + 1}: ${s.slotDate} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}`).join('\n') +
+                                    (evt.slots || []).filter(s => s.status === 'pa_accepted').map((s, idx) => `Option ${idx + 1}: ${formatUsDate(s.slotDate)} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}`).join('\n') +
                                     `\n\nPlease let us know which option works best for you. Thank you!`
                                   )}`}
                                   target="_blank"
@@ -3190,7 +3195,7 @@ export function ClaimDetailView({
                                   className="p-3 bg-white border-2 border-tealBrand-300 rounded-lg flex items-center justify-between gap-2 shadow-xs"
                                 >
                                   <div>
-                                    <span className="font-bold text-slate-900 text-xs block">📅 {s.slotDate}</span>
+                                    <span className="font-bold text-slate-900 text-xs block">📅 {formatUsDate(s.slotDate)}</span>
                                     <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                                       <Clock className="w-3 h-3" />
                                       <span>{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
@@ -3237,7 +3242,7 @@ export function ClaimDetailView({
                           </div>
                           <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-xs font-medium text-emerald-900 flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-4">
-                              <span>📅 Date: <strong>{evt.finalDate}</strong></span>
+                              <span>📅 Date: <strong>{formatUsDate(evt.finalDate)}</strong></span>
                               <span>⏰ Time: <strong>{evt.finalStartTime?.slice(0, 5)} - {evt.finalEndTime?.slice(0, 5)}</strong></span>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -3317,7 +3322,7 @@ export function ClaimDetailView({
                                 )}
                               </div>
                               <span className="text-[10px] text-slate-400 font-mono shrink-0 whitespace-nowrap">
-                                {new Date(log.createdAt).toLocaleDateString()} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {formatUsDate(log.createdAt)} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
                           ))}

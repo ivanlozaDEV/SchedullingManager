@@ -1,4 +1,5 @@
 import type { CoordinationEvent } from '../types';
+import { resolveCityName } from './timezoneUtils';
 
 export interface SlaConfig {
   stage1WarningHours: number; // default: 24h
@@ -329,7 +330,8 @@ export function getGoogleCalendarUrl(event: CoordinationEvent): string | null {
 
   const isCt = event.timezone === 'CT';
   const ianaTz = isCt ? 'America/Chicago' : 'America/New_York';
-  const tzLabel = isCt ? 'Central Time (CT - Pensacola)' : 'Eastern Time (ET - Miami)';
+  const cityName = resolveCityName(event.claim?.city, event.location || event.claim?.propertyAddress, isCt ? 'CT' : 'ET');
+  const tzLabel = isCt ? `Central Time (CT - ${cityName})` : `Eastern Time (ET - ${cityName})`;
 
   const insuredName = event.claim?.insured?.name || 'Insured Client';
   const claimNumber = event.claim?.claimNumber || 'N/A';

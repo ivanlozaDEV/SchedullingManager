@@ -46,20 +46,53 @@ function parseDate(dateStr) {
 function parseAddress(addrStr) {
   const result = {
     address: addrStr ? String(addrStr).trim() : '',
-    city: 'Miami',
+    city: '',
     state: 'FL',
     zip: ''
   };
 
   if (!result.address) return result;
 
-  // Match e.g. "..., Fort Myers, FL 33907" or "..., Miami, FL 33157"
-  const regex = /,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/i;
-  const match = result.address.match(regex);
-  if (match) {
-    result.city = match[1].trim();
-    result.state = match[2].trim().toUpperCase();
-    if (match[3]) result.zip = match[3].trim();
+  // Normalize "Molina" -> "Molino"
+  result.address = result.address.replace(/\bMolina\b/gi, 'Molino');
+
+  // Match 5-digit zip code (FL zips start with 3)
+  const zipMatch = result.address.match(/\b(3\d{4}(?:-\d{4})?)\b/);
+  if (zipMatch) {
+    result.zip = zipMatch[1];
+  }
+
+  // Known cities in Florida
+  const knownCities = [
+    'pensacola', 'gulf breeze', 'molino', 'milton', 'crestview', 'destin',
+    'fort walton', 'navarre', 'pace', 'loxahatchee', 'fort lauderdale',
+    'miami', 'tampa', 'orlando', 'jacksonville', 'fort myers', 'naples'
+  ];
+  const addrLower = result.address.toLowerCase();
+  for (const c of knownCities) {
+    if (addrLower.includes(c)) {
+      result.city = c.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      break;
+    }
+  }
+
+  // If not matched by known cities, try regex match: e.g. "..., City, FL 12345"
+  if (!result.city) {
+    const regex = /,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/i;
+    const match = result.address.match(regex);
+    if (match) {
+      result.city = match[1].trim();
+      result.state = match[2].trim().toUpperCase();
+      if (match[3] && !result.zip) result.zip = match[3].trim();
+    }
+  }
+
+  // If still no city, check if city appears before ", FL"
+  if (!result.city) {
+    const singleCommaMatch = result.address.match(/(?:,\s*|\s+)([A-Za-z\s]+?),\s*FL\b/i);
+    if (singleCommaMatch) {
+      result.city = singleCommaMatch[1].trim();
+    }
   }
 
   return result;

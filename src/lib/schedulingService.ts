@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import { detectPropertyTimezone } from './timezoneUtils';
+import { detectPropertyTimezone, cleanAddress } from './timezoneUtils';
 import type { 
   PublicAdjuster, 
   CarrierRepresentative, 
@@ -166,7 +166,7 @@ export const schedulingService = {
       claimNumber: row.claim_number,
       policyNumber: row.policy_number || '',
       typeOfLoss: row.type_of_loss,
-      propertyAddress: row.property_address,
+      propertyAddress: cleanAddress(row.property_address),
       city: row.city || '',
       state: row.state || 'FL',
       zipCode: row.zip_code || '',
@@ -259,7 +259,7 @@ export const schedulingService = {
       finalDate: row.final_date,
       finalStartTime: row.final_start_time,
       finalEndTime: row.final_end_time,
-      location: row.location,
+      location: cleanAddress(row.location),
       lockboxCode: row.lockbox_code,
       gateCode: row.gate_code,
       accessInstructions: row.access_instructions,
@@ -501,8 +501,8 @@ export const schedulingService = {
       notes: logNote,
     });
 
-    // 4. Trigger calendar invites if not disabled
-    if (details.sendCalendarInvite !== false) {
+    // Automatic email sending is strictly disabled. Email sending requires manual confirmation via EmailPreviewModal.
+    if (details.sendCalendarInvite === true) {
       supabase.functions.invoke('send-calendar-invite', {
         body: { eventId },
       }).then(({ data, error }) => {
@@ -789,12 +789,7 @@ export const schedulingService = {
       notes: `📅 ${authorName} proposed ${slots.length} date option(s): ${dateSummary}.${options?.notes ? ` Notes: ${options.notes}` : ''}`
     });
 
-    // 5. If it was the carrier and moves to PA review, trigger PA notification
-    if (proposedBy === 'carrier' && nextStage === '2_pa_review') {
-      supabase.functions.invoke('notify-pa-slots', {
-        body: { eventId }
-      }).catch(err => console.error("Error triggering PA notification:", err));
-    }
+    // Note: Automatic email sending disabled. Manual review popup required.
   },
 
   // Alias semántico para mayor claridad en el código
@@ -854,10 +849,7 @@ export const schedulingService = {
       notes: `⚖️ PA reviewed and approved 2 options for the client. Advanced to Stage 3 (Client Choice).`
     });
 
-    // Enviar correo automáticamente al cliente asegurado con las 2 opciones en 1-clic
-    supabase.functions.invoke('notify-insured-slots', {
-      body: { eventId }
-    }).catch(err => console.error("Error triggering notify-insured-slots edge function:", err));
+    // Note: Automatic email sending disabled. Manual review popup required.
   },
 
   // Enviar / Reenviar correo con las opciones al cliente asegurado
@@ -920,20 +912,14 @@ export const schedulingService = {
       notes: `✓ Client selected appointment date: ${finalDetails.date} (${finalDetails.startTime.slice(0, 5)} - ${finalDetails.endTime.slice(0, 5)}). Inspection locked & scheduled.`
     });
 
-    // Enviar invitaciones de calendario automáticamente de forma asíncrona (sin bloquear el flujo)
-    supabase.functions.invoke('send-calendar-invite', {
-      body: { eventId }
-    }).then(({ data, error }) => {
-      if (error) console.warn('⚠️ Note on calendar invitation:', error.message);
-      else if (data?.warning) console.warn('⚠️ Email sending warning:', data.warning);
-    }).catch(err => console.warn("Note: calendar edge function not available:", err));
+    // Note: Automatic email sending disabled. Manual review popup required.
   },
 
   // 6.3b Enviar manualmente invitaciones / actualización de calendario (.ics) a todos los participantes
-  async sendCalendarInvites(eventId: string) {
+  async sendCalendarInvites(eventId: string, options?: { isUpdate?: boolean }) {
     if (!isSupabaseConfigured) return;
     const { data, error } = await supabase.functions.invoke('send-calendar-invite', {
-      body: { eventId }
+      body: { eventId, isUpdate: options?.isUpdate }
     });
     if (error) {
       const detail = await parseEdgeFunctionError(error);
@@ -1116,8 +1102,8 @@ export const schedulingService = {
         notes: logNotes
       });
 
-    // 4. Enviar correo de notificación de cancelación a todas las partes involucradas
-    if (options?.sendCancellationNotice !== false) {
+    // Automatic email sending disabled. Manual review required.
+    if (options?.sendCancellationNotice === true) {
       supabase.functions.invoke('send-cancellation-notice', {
         body: {
           eventId,
@@ -1172,7 +1158,7 @@ export const schedulingService = {
       notes: `🔄 Stage updated to "${stageTitles[stage] || stage}".${options?.reason ? ` Reason: ${options.reason}` : ''}`,
     });
 
-    if (stage === '4_confirmed' && options?.sendCalendarInvite) {
+    if (stage === '4_confirmed' && options?.sendCalendarInvite === true) {
       supabase.functions.invoke('send-calendar-invite', {
         body: { eventId },
       }).then(({ data, error }) => {
@@ -1483,8 +1469,8 @@ export const schedulingService = {
       claim_number: claimData.claimNumber,
       policy_number: claimData.policyNumber,
       type_of_loss: claimData.typeOfLoss,
-      property_address: claimData.propertyAddress,
-      city: claimData.city || 'Miami',
+      property_address: cleanAddress(claimData.propertyAddress),
+      city: claimData.city || '',
       state: claimData.state || 'FL',
       zip_code: claimData.zipCode,
       date_of_loss: claimData.dateOfLoss,
@@ -1552,8 +1538,8 @@ export const schedulingService = {
       claim_number: claimData.claimNumber,
       policy_number: claimData.policyNumber || null,
       type_of_loss: claimData.typeOfLoss,
-      property_address: claimData.propertyAddress,
-      city: claimData.city || 'Miami',
+      property_address: cleanAddress(claimData.propertyAddress),
+      city: claimData.city || '',
       state: claimData.state || 'FL',
       zip_code: claimData.zipCode || null,
       date_of_loss: claimData.dateOfLoss || null,
@@ -1710,7 +1696,7 @@ export const schedulingService = {
         notes: `⚡ Event created directly as Confirmed for ${eventData.finalDate} (${eventData.finalStartTime?.slice(0, 5)} - ${eventData.finalEndTime ? eventData.finalEndTime.slice(0, 5) : 'End'}).`,
       });
 
-      if (eventData.sendCalendarInvite !== false) {
+      if (eventData.sendCalendarInvite === true) {
         supabase.functions.invoke('send-calendar-invite', {
           body: { eventId: newEvent.id }
         }).then(({ data, error }) => {

@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Mail, X, Send, Eye, FileText, CheckCircle2, Calendar, MapPin, Building, User, AlertCircle } from 'lucide-react';
 import type { CoordinationEvent } from '../types';
-import { detectPropertyTimezone, formatTimeRangeForSubject } from '../lib/timezoneUtils';
+import { detectPropertyTimezone, formatTimeRangeForSubject, formatUsDate } from '../lib/timezoneUtils';
 
 interface EmailPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: CoordinationEvent;
-  type?: 'selection_options' | 'calendar_update';
+  type?: 'selection_options' | 'calendar_update' | 'calendar_confirmation';
+  isUpdate?: boolean;
   onConfirmSend: () => Promise<void>;
   isSending?: boolean;
 }
@@ -17,12 +18,16 @@ export function EmailPreviewModal({
   onClose,
   event,
   type = 'selection_options',
+  isUpdate,
   onConfirmSend,
   isSending = false,
 }: EmailPreviewModalProps) {
   const [activeTab, setActiveTab] = useState<'visual' | 'plain'>('visual');
 
   if (!isOpen) return null;
+
+  const isCalendarUpdate = type === 'calendar_update' || Boolean(isUpdate);
+  const actionPrefix = isCalendarUpdate ? 'Update:' : 'Confirmed:';
 
   const claim = event.claim;
   const insured = claim?.insured;
@@ -55,17 +60,29 @@ export function EmailPreviewModal({
   const calendarRecipients = Array.from(new Set([insuredEmail, pa?.email, ...otherEmails].filter(Boolean))) as string[];
 
   const propertyTz = detectPropertyTimezone(
-    `${event.location || ''} ${propertyAddress} ${event.notes || ''}`,
+    `${event.location || ''} ${propertyAddress} ${claim?.city || ''} ${event.notes || ''}`,
     event.timezone as any
   );
-  const timeWindowStr = formatTimeRangeForSubject(event.finalStartTime, event.finalEndTime, propertyTz);
+  const timeWindowStr = formatTimeRangeForSubject(
+    event.finalStartTime,
+    event.finalEndTime,
+    propertyTz,
+    claim?.city,
+    propertyAddress
+  );
   const timeSubjectPart = timeWindowStr
-    ? `${event.finalDate ? `${event.finalDate} · ` : ''}${timeWindowStr}`
-    : (event.finalDate || 'Confirmed');
+    ? `${event.finalDate ? `${formatUsDate(event.finalDate)} · ` : ''}${timeWindowStr}`
+    : (event.finalDate ? formatUsDate(event.finalDate) : (isCalendarUpdate ? 'Updated' : 'Confirmed'));
 
   const subject = type === 'selection_options'
     ? `Action Required: Choose your ${eventType} Date - Claim #${claimNumber}`
-    : `Confirmed: ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`;
+    : `${actionPrefix} ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`;
+
+  const badgeText = type === 'selection_options'
+    ? '1-Click Date Selection'
+    : isCalendarUpdate
+      ? 'Calendar Update'
+      : 'Calendar Confirmation';
 
   const recipientDisplay = type === 'selection_options'
     ? (insuredEmail ? `${insuredName} <${insuredEmail}>` : '⚠️ No email registered for Insured')
@@ -93,7 +110,7 @@ export function EmailPreviewModal({
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold tracking-tight">Email Preview & Verification</h3>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-tealBrand-500/20 text-tealBrand-300 border border-tealBrand-500/30">
-                  {type === 'selection_options' ? '1-Click Date Selection' : 'Calendar Update'}
+                  {badgeText}
                 </span>
               </div>
               <p className="text-xs text-slate-300">
@@ -266,7 +283,7 @@ export function EmailPreviewModal({
                               </span>
                               <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5 pt-1">
                                 <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
-                                <span>{slot.slotDate}</span>
+                                <span>{formatUsDate(slot.slotDate)}</span>
                               </div>
                               <div className="text-xs font-semibold text-slate-600">
                                 ⏰ {slot.startTime.slice(0, 5)} - {slot.endTime.slice(0, 5)}
@@ -292,16 +309,24 @@ export function EmailPreviewModal({
                   /* CALENDAR UPDATE PREVIEW */
                   <>
                     <p>
-                      This is an official calendar notification for the upcoming <strong>{eventType}</strong> regarding Claim <strong>#{claimNumber}</strong>.
+                      {isCalendarUpdate ? (
+                        <>
+                          This is an official calendar update notification for the upcoming <strong>{eventType}</strong> regarding Claim <strong>#{claimNumber}</strong>.
+                        </>
+                      ) : (
+                        <>
+                          This is an official calendar confirmation for the upcoming <strong>{eventType}</strong> regarding Claim <strong>#{claimNumber}</strong>.
+                        </>
+                      )}
                     </p>
 
                     <div className="bg-white rounded-lg border border-emerald-300 p-4 text-xs text-slate-800 space-y-2 shadow-2xs">
                       <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Confirmed Appointment Details</span>
+                        <span>{isCalendarUpdate ? 'Updated Appointment Details' : 'Confirmed Appointment Details'}</span>
                       </div>
                       <div className="text-sm font-bold text-slate-900">
-                        📅 {event.finalDate || 'Date pending'} &bull; ⏰ {event.finalStartTime?.slice(0, 5)} - {event.finalEndTime?.slice(0, 5)}
+                        📅 {event.finalDate ? formatUsDate(event.finalDate) : 'Date pending'} &bull; ⏰ {event.finalStartTime?.slice(0, 5)} - {event.finalEndTime?.slice(0, 5)}
                       </div>
                       <div><strong>Location:</strong> {propertyAddress}</div>
                       {event.location && event.location !== propertyAddress && (
@@ -368,7 +393,7 @@ The insurance company (${carrier}) has scheduled an upcoming ${eventType} for yo
 
 Property: ${propertyAddress}
 
-${sortedSlots.map((s, idx) => `Option #${idx + 1}: ${s.slotDate} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}
+${sortedSlots.map((s, idx) => `Option #${idx + 1}: ${formatUsDate(s.slotDate)} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}
 👉 Click here to confirm: [1-Click Confirmation Link]`).join('\n\n')}
 
 Warm regards,
@@ -382,9 +407,10 @@ To: ${recipientDisplay}
 
 Hello,
 
-This is a calendar notification for the upcoming ${eventType} regarding Claim #${claimNumber}.
+This is an official calendar ${isCalendarUpdate ? 'update' : 'confirmation'} notification for the upcoming ${eventType} regarding Claim #${claimNumber}.
 
-Date: ${event.finalDate}
+${isCalendarUpdate ? 'Updated Appointment Details:' : 'Confirmed Appointment Details:'}
+Date: ${formatUsDate(event.finalDate)}
 Time: ${event.finalStartTime?.slice(0, 5)} - ${event.finalEndTime?.slice(0, 5)}
 Location: ${propertyAddress}
 ${event.location && event.location !== propertyAddress ? `Event Location: ${event.location}\n` : ''}${event.gateCode ? `Gate Code: ${event.gateCode}\n` : ''}${event.lockboxCode ? `Lockbox Code: ${event.lockboxCode}\n` : ''}${event.accessInstructions ? `Access Instructions: ${event.accessInstructions}\n` : ''}${cleanNotes ? `Notes: ${cleanNotes}\n` : ''}
@@ -422,7 +448,13 @@ IP Scheduling Coordination Team`
             ) : (
               <>
                 <Send className="w-3.5 h-3.5" />
-                <span>Confirmar y Enviar Correo 🚀</span>
+                <span>
+                  {type === 'selection_options'
+                    ? 'Enviar Opciones por Correo ✉️'
+                    : isCalendarUpdate
+                      ? 'Confirmar y Enviar Actualización ✉️'
+                      : 'Confirmar y Enviar Correo 🚀'}
+                </span>
               </>
             )}
           </button>

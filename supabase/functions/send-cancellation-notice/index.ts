@@ -186,9 +186,35 @@ serve(async (req) => {
       claim?.timezone === 'CT' ||
       /\[timezone:\s*ct\]/i.test(combinedAddr) || 
       /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
-      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa'].some(kw => combinedAddr.includes(kw));
+      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa', 'molino'].some(kw => combinedAddr.includes(kw));
 
-    const tzCityLabel = isCt ? 'Pensacola Time CT' : 'Miami Time ET';
+    // Resolve city dynamically from claim.city or address
+    const rawCity = claim?.city?.trim();
+    let resolvedCity = '';
+    if (rawCity && !/\d{3,}/.test(rawCity) && !/,\s*fl\b/i.test(rawCity)) {
+      resolvedCity = rawCity;
+    } else {
+      const knownCities = [
+        'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton',
+        'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville',
+        'cantonment', 'santa rosa beach', 'miramar beach', 'molino', 'miami beach',
+        'miami', 'fort lauderdale', 'pompano beach', 'hollywood', 'coral gables',
+        'doral', 'hialeah', 'west palm beach', 'boca raton', 'delray beach',
+        'port st lucie', 'tampa', 'st petersburg', 'clearwater', 'orlando',
+        'jacksonville', 'tallahassee', 'fort myers', 'naples', 'sarasota'
+      ];
+      for (const kw of knownCities) {
+        if (combinedAddr.includes(kw)) {
+          resolvedCity = kw;
+          break;
+        }
+      }
+    }
+    const cityName = resolvedCity
+      ? resolvedCity.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+      : (isCt ? 'Pensacola' : 'Miami');
+
+    const tzCityLabel = `${cityName} Time ${isCt ? 'CT' : 'ET'}`;
 
     const formatTime12 = (t?: string): string => {
       if (!t) return '';
