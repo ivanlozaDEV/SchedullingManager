@@ -233,6 +233,21 @@ serve(async (req) => {
       return `${h12}${minutes} ${ampm}`;
     };
 
+    // Determine dynamic sequence number (RFC 5545) so updates modify existing calendar events instead of being ignored
+    let sequenceNumber = 0
+    if (event?.id && event.id !== 'test-calendar-event') {
+      try {
+        const { count } = await supabaseAdmin
+          .from('coordination_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', event.id)
+          .eq('channel', 'email')
+        sequenceNumber = Math.max(0, count || 0)
+      } catch (_) {
+        sequenceNumber = 1
+      }
+    }
+
     const hasEverSentInvites = Boolean(event.notice_sent_at) || sequenceNumber > 0;
     const isUpdateEvent = (Boolean(isUpdate) && hasEverSentInvites) || event.status === 'rescheduled';
     const actionLabel = isUpdateEvent ? 'Update' : 'Confirmed';
@@ -280,20 +295,6 @@ serve(async (req) => {
       uniqueRecipients.push({ email: smtpUser, name: 'IP Scheduling Coordinator' })
     }
 
-    // Determine dynamic sequence number (RFC 5545) so updates modify existing calendar events instead of being ignored
-    let sequenceNumber = 0
-    if (event?.id && event.id !== 'test-calendar-event') {
-      try {
-        const { count } = await supabaseAdmin
-          .from('coordination_logs')
-          .select('*', { count: 'exact', head: true })
-          .eq('event_id', event.id)
-          .eq('channel', 'email')
-        sequenceNumber = Math.max(0, count || 0)
-      } catch (_) {
-        sequenceNumber = 1
-      }
-    }
 
     const attendeesIcs = uniqueRecipients.map(r => 
       `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="${(r.name || r.email).replace(/[;:,"]/g, '')}":mailto:${r.email}`
@@ -345,7 +346,7 @@ serve(async (req) => {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${actionLabel}: ${eventType} | ${insuredName} - Claim #${claimNumber}</title>
+  <title>${emailSubject}</title>
   <style>
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
     table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }

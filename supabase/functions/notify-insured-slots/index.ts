@@ -353,7 +353,7 @@ serve(async (req) => {
       `
     })
 
-    const subject = `Action Required: Choose Your ${eventType} Date | ${insuredName} - Claim #${claimNumber}`
+    const subject = `Action Required: Choose Your ${eventType} Date - ${insuredName}`
 
     const plainText = `Dear ${insuredName},
 

@@ -91,7 +91,7 @@ export function EmailPreviewModal({
     : '';
 
   const subject = type === 'selection_options'
-    ? `Action Required: Choose your ${eventType} Date - Claim #${claimNumber}`
+    ? `Action Required: Choose your ${eventType} Date - ${insuredName}`
     : buildCalendarSubject({
         actionPrefix,
         eventType,

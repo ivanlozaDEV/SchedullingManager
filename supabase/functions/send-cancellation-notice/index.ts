@@ -238,11 +238,21 @@ serve(async (req) => {
       }
     }
 
-    const cancelSubjectDetail = cancelTimeLabel
-      ? (cancelDate ? `${cancelDate} · ${cancelTimeLabel}` : cancelTimeLabel)
-      : (cancelDate || '');
+    // Helper to format 24h time to clean short 12h (e.g. "13:00" -> "1 pm", "13:30" -> "1:30 pm")
+    const formatShortTime12 = (t?: string): string => {
+      if (!t) return '';
+      const clean = t.slice(0, 5);
+      const [hStr, mStr] = clean.split(':');
+      const h = parseInt(hStr, 10);
+      if (isNaN(h)) return clean;
+      const ampm = h >= 12 ? 'pm' : 'am';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const minutes = mStr && mStr !== '00' ? `:${mStr}` : '';
+      return `${h12}${minutes} ${ampm}`;
+    };
 
-    const subject = `Notice: ${eventType} Cancelled / Rescheduling${cancelSubjectDetail ? ` (${cancelSubjectDetail})` : ''} | ${insuredName} - Claim #${claimNumber}`;
+    const shortTimeStr = cancelStartTime ? ` - ${formatShortTime12(cancelStartTime)} ${cityName} Time` : '';
+    const subject = `Cancelled: ${eventType} - ${insuredName}${shortTimeStr}`;
 
     const plainText = `NOTICE OF ${eventType.toUpperCase()} CANCELLATION & RESCHEDULING
 
@@ -275,7 +285,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Notice: ${eventType} Cancelled</title>
+  <title>${subject}</title>
   <style>
     body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
     table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
