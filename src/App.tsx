@@ -30,7 +30,7 @@ import {
   Zap
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { schedulingService } from './lib/schedulingService';
+import { schedulingService, hasEventSentCalendarNotice } from './lib/schedulingService';
 import { LoginGate } from './components/LoginGate';
 import { HomeHub } from './components/HomeHub';
 import { ConfirmationPortal } from './components/ConfirmationPortal';
@@ -1623,6 +1623,17 @@ export function App() {
                                         )}
                                       </div>
 
+                                      {!isHistorical && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setEventToReset(evt)}
+                                          className="w-full h-7 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs mt-1"
+                                          title="Cancel coordination and reset flow back to Stage 1"
+                                        >
+                                          <RotateCcw className="w-3 h-3 text-rose-600" />
+                                          <span>Cancel & Reset Flow</span>
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                   );
@@ -1819,16 +1830,27 @@ export function App() {
                                       </div>
 
                                       {!isHistorical && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleReturnToPaReview(evt)}
-                                          disabled={revertingStageEventId === evt.id}
-                                          className="w-full h-7 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs mt-1"
-                                          title="Return to Stage 2 to re-evaluate options"
-                                        >
-                                          <RotateCcw className="w-3 h-3 text-slate-500" />
-                                          <span>{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to Stage 2 (${p2Name} Review)`}</span>
-                                        </button>
+                                        <div className="flex items-center gap-1.5 mt-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleReturnToPaReview(evt)}
+                                            disabled={revertingStageEventId === evt.id}
+                                            className="flex-1 h-7 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                                            title="Return to Stage 2 to re-evaluate options"
+                                          >
+                                            <RotateCcw className="w-3 h-3 text-slate-500" />
+                                            <span className="truncate">{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to Stage 2`}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEventToReset(evt)}
+                                            className="flex-1 h-7 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                            title="Cancel coordination and reset flow back to Stage 1"
+                                          >
+                                            <RotateCcw className="w-3 h-3 text-rose-600" />
+                                            <span className="truncate">Cancel & Reset Flow</span>
+                                          </button>
+                                        </div>
                                       )}
                                     </div>
                                   </div>
@@ -1874,15 +1896,22 @@ export function App() {
                                         <Clock className="w-3.5 h-3.5 text-tealBrand-200" />
                                         <span>Update Date / Time 🕒</span>
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenEmailPreview(evt, 'calendar_update')}
-                                        className="w-full h-8 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                                        title="Previsualizar y enviar invitaciones de calendario actualizadas (.ics) a todos los participantes"
-                                      >
-                                        <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                                        <span>Preview & Send Update ✉️</span>
-                                      </button>
+                                      {(() => {
+                                        const hasSent = hasEventSentCalendarNotice(evt);
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenEmailPreview(evt, hasSent ? 'calendar_update' : 'calendar_confirmation')}
+                                            className="w-full h-8 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                                            title={hasSent 
+                                              ? "Previsualizar y enviar invitaciones de calendario actualizadas (.ics) a todos los participantes"
+                                              : "Previsualizar y enviar invitaciones de calendario iniciales (.ics) a todos los participantes"}
+                                          >
+                                            <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
+                                            <span>{hasSent ? 'Preview & Send Update ✉️' : 'Preview & Send Confirmation ✉️'}</span>
+                                          </button>
+                                        );
+                                      })()}
                                       {getGoogleCalendarUrl(evt) && (
                                         <a
                                           href={getGoogleCalendarUrl(evt)!}

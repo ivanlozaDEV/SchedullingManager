@@ -31,7 +31,7 @@ import {
   RefreshCw,
   Zap
 } from 'lucide-react';
-import { schedulingService } from '../lib/schedulingService';
+import { schedulingService, hasEventSentCalendarNotice } from '../lib/schedulingService';
 import { RecordCarrierSlotsModal } from './RecordCarrierSlotsModal';
 import { DirectConfirmModal } from './DirectConfirmModal';
 import { ResetCoordinationModal } from './ResetCoordinationModal';
@@ -3102,6 +3102,15 @@ export function ClaimDetailView({
                               <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
                               <span>{skippingStage2EventId === evt.id ? 'Saltando...' : `⚡ Fechas Acordadas / Saltar a ${p3Name} ➔`}</span>
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setEventToReset(evt)}
+                              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 rounded-lg text-xs font-bold transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                              title="Cancel this coordination and reset flow back to Stage 1"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Cancel & Reset Flow</span>
+                            </button>
                           </div>
                         </div>
                         );
@@ -3183,6 +3192,15 @@ export function ClaimDetailView({
                                 <RotateCcw className="w-3 h-3 text-slate-500" />
                                 <span>{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to Stage 2 (${p2Name} Review)`}</span>
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => setEventToReset(evt)}
+                                className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 rounded-md text-[11px] font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                title="Cancel this coordination and reset flow back to Stage 1"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Cancel & Reset Flow</span>
+                              </button>
                             </div>
                           </div>
 
@@ -3256,15 +3274,22 @@ export function ClaimDetailView({
                                 <Clock className="w-3.5 h-3.5 text-tealBrand-200" />
                                 <span>Update Date / Time 🕒</span>
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEmailPreview(evt, 'calendar_update')}
-                                className="px-2.5 py-1 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-md text-xs font-bold transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
-                                title="Preview and send updated calendar invitations (.ics) to all participants"
-                              >
-                                <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                                <span>Preview & Send Update ✉️</span>
-                              </button>
+                              {(() => {
+                                const hasSent = hasEventSentCalendarNotice(evt);
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEmailPreview(evt, hasSent ? 'calendar_update' : 'calendar_confirmation')}
+                                    className="px-2.5 py-1 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-md text-xs font-bold transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
+                                    title={hasSent
+                                      ? "Preview and send updated calendar invitations (.ics) to all participants"
+                                      : "Preview and send initial calendar invitations (.ics) to all participants"}
+                                  >
+                                    <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
+                                    <span>{hasSent ? 'Preview & Send Update ✉️' : 'Preview & Send Confirmation ✉️'}</span>
+                                  </button>
+                                );
+                              })()}
                               {getGoogleCalendarUrl(evt) && (
                                 <a
                                   href={getGoogleCalendarUrl(evt)!}

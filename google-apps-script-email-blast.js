@@ -176,9 +176,7 @@ If you have any questions or need assistance after the hurricane, don’t hesita
 
 Stay safe,
 
-Iván Hernández
-Owner | Public Adjuster
-IP Adjusting Group LLC
+IP Adjusting Group
 Advocating for what’s yours
 
 1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986
@@ -380,9 +378,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
 
               <!-- CLOSING -->
               <p style="margin:0 0 4px 0; color:#004E91;">Stay safe,</p>
-              <p style="margin:0 0 2px 0; font-weight:bold; color:#004E91; font-size:16px;">Iván Hernández</p>
-              <p style="margin:0 0 2px 0; color:#555555; font-size:14px;">Owner | Public Adjuster</p>
-              <p style="margin:0 0 2px 0; font-weight:bold; color:#0071bc; font-size:14px;">IP Adjusting Group LLC</p>
+              <p style="margin:0 0 2px 0; font-weight:bold; color:#0071bc; font-size:15px;">IP Adjusting Group</p>
               <p style="margin:0 0 15px 0; color:#666666; font-style:italic; font-size:13px;">Advocating for what’s yours</p>
 
             </td>

@@ -481,8 +481,10 @@ admin@ipadjustinggroup.com | (772) 282-0862
 
               ${slotsHtml}
 
-              <p style="margin:20px 0 5px 0; font-size:14px; color:#004E91;">Warm regards,</p>
-              <p style="margin:0 0 15px 0; font-size:14px; font-weight:bold; color:#004E91;">IP Scheduling Coordination Team</p>
+              <!-- CLOSING -->
+              <p style="margin:20px 0 4px 0; color:#004E91;">Stay safe,</p>
+              <p style="margin:0 0 2px 0; font-weight:bold; color:#0071bc; font-size:15px;">IP Adjusting Group</p>
+              <p style="margin:0 0 15px 0; color:#666666; font-style:italic; font-size:13px;">Advocating for what’s yours</p>
 
             </td>
           </tr>

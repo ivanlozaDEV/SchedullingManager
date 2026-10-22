@@ -149,9 +149,7 @@ I sincerely hope you and your home make it through safely. If you need assistanc
 
 Stay safe,
 
-Peter Ramos
-Owner | Public Adjuster
-IP Adjusting Group LLC
+IP Adjusting Group
 Advocating for what’s yours
 
 1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986
@@ -320,9 +318,7 @@ admin@ipadjustinggroup.com | (772) 282-0862
 
               <!-- CLOSING & SIGNATURE -->
               <p style="margin:0 0 6px 0; color:#004E91;">Stay safe,</p>
-              <p style="margin:0 0 2px 0; font-weight:bold; color:#004E91; font-size:16px;">Peter Ramos</p>
-              <p style="margin:0 0 2px 0; color:#475569; font-size:14px;">Owner | Public Adjuster</p>
-              <p style="margin:0 0 2px 0; font-weight:bold; color:#0071bc; font-size:14px;">IP Adjusting Group LLC</p>
+              <p style="margin:0 0 2px 0; font-weight:bold; color:#0071bc; font-size:15px;">IP Adjusting Group</p>
               <p style="margin:0 0 15px 0; color:#64748b; font-style:italic; font-size:13px;">Advocating for what&#8217;s yours</p>
 
             </td>

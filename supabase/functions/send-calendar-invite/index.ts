@@ -143,9 +143,12 @@ serve(async (req) => {
 
     // Clean internal tags from notes
     const cleanNotes = (event.notes || '')
+      .replace(/\[CoordinationOrder:[^\]]*\]/gi, '')
       .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
       .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
       .replace(/\[Timezone:[^\]]*\]/gi, '')
+      .replace(/\[Stage:[^\]]*\]/gi, '')
+      .replace(/\[Status:[^\]]*\]/gi, '')
       .trim()
 
     // 4. Detect Property Timezone (Central Time vs Eastern Time)
@@ -217,12 +220,22 @@ serve(async (req) => {
       return dStr;
     };
 
-    const isUpdateEvent = Boolean(isUpdate) || event.status === 'rescheduled';
-    const actionLabel = isUpdateEvent ? 'Update' : 'Confirmed';
+    // Helper to format 24h time to clean short 12h (e.g. "13:00" -> "1 pm", "13:30" -> "1:30 pm")
+    const formatShortTime12 = (t?: string): string => {
+      if (!t) return '';
+      const clean = t.slice(0, 5);
+      const [hStr, mStr] = clean.split(':');
+      const h = parseInt(hStr, 10);
+      if (isNaN(h)) return clean;
+      const ampm = h >= 12 ? 'pm' : 'am';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const minutes = mStr && mStr !== '00' ? `:${mStr}` : '';
+      return `${h12}${minutes} ${ampm}`;
+    };
 
-    const timeSubjectPart = timeWindowStr
-      ? `${event.final_date ? `${formatUsDate(event.final_date)} · ` : ''}${timeWindowStr}`
-      : (event.final_date ? formatUsDate(event.final_date) : actionLabel);
+    const hasEverSentInvites = Boolean(event.notice_sent_at) || sequenceNumber > 0;
+    const isUpdateEvent = (Boolean(isUpdate) && hasEverSentInvites) || event.status === 'rescheduled';
+    const actionLabel = isUpdateEvent ? 'Update' : 'Confirmed';
 
     // 5. Generate Dates & .ics content
     const cleanDate = (event.final_date || '').replace(/-/g, '')
@@ -235,7 +248,9 @@ serve(async (req) => {
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'
     const title = `${eventType} ${actionLabel} | ${insuredName} - Claim #${claimNumber}`
-    const emailSubject = `${isTest ? '[TEST PREVIEW] ' : ''}${actionLabel}: ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`
+
+    const shortTimeStr = event.final_start_time ? ` - ${formatShortTime12(event.final_start_time)} ${cityName} Time` : ''
+    const emailSubject = `${isTest ? '[TEST PREVIEW] ' : ''}${actionLabel}: ${eventType} - ${insuredName}${shortTimeStr}`
 
     // Comprehensive description for .ics and calendar clients
     const descParts: string[] = [
@@ -395,7 +410,7 @@ serve(async (req) => {
                     </div>
                     <div style="font-size:14px; color:#111827; line-height:1.8;">
                       <strong>📅 Date:</strong> ${formatUsDate(event.final_date)}<br>
-                      <strong>⏰ Time Window:</strong> ${(event.final_start_time || '').slice(0, 5)} - ${(event.final_end_time || '').slice(0, 5)} (${tzLabel})<br>
+                      <strong>⏰ Time Window:</strong> ${formatTime12(event.final_start_time)}${event.final_end_time ? ` to ${formatTime12(event.final_end_time)}` : ''} (${tzLabel})<br>
                       <strong>📍 Location:</strong> ${event.location || event.claim?.property_address || 'N/A'}<br>
                       <strong>Claim Number:</strong> ${claimNumber}<br>
                       <strong>Insured Client:</strong> ${insuredName}<br>
@@ -476,9 +491,7 @@ serve(async (req) => {
 
               <!-- CLOSING -->
               <p style="margin:20px 0 4px 0; color:#004E91;">Stay safe,</p>
-              <p style="margin:0 0 2px 0; font-weight:bold; color:#004E91; font-size:16px;">Iván Hernández</p>
-              <p style="margin:0 0 2px 0; color:#555555; font-size:14px;">Owner | Public Adjuster</p>
-              <p style="margin:0 0 2px 0; font-weight:bold; color:#0071bc; font-size:14px;">IP Adjusting Group LLC</p>
+              <p style="margin:0 0 2px 0; font-weight:bold; color:#0071bc; font-size:15px;">IP Adjusting Group</p>
               <p style="margin:0 0 15px 0; color:#666666; font-style:italic; font-size:13px;">Advocating for what’s yours</p>
 
             </td>
@@ -555,6 +568,19 @@ serve(async (req) => {
 
     try {
       const info = await transporter.sendMail(mailOptions)
+
+      if (!isTest && event.id && event.id !== 'test-calendar-event') {
+        try {
+          await supabaseAdmin
+            .from('events')
+            .update({
+              notice_sent_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', event.id);
+        } catch (_) {}
+      }
+
       return new Response(JSON.stringify({ 
         success: true, 
         messageId: info.messageId,

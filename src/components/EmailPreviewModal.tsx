@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Mail, X, Send, Eye, FileText, CheckCircle2, Calendar, MapPin, Building, User, AlertCircle } from 'lucide-react';
 import type { CoordinationEvent } from '../types';
-import { detectPropertyTimezone, formatTimeRangeForSubject, formatUsDate } from '../lib/timezoneUtils';
+import { detectPropertyTimezone, formatUsDate, resolveCityName, format12Hour, buildCalendarSubject } from '../lib/timezoneUtils';
+import { hasEventSentCalendarNotice } from '../lib/schedulingService';
+import { getGoogleCalendarUrl } from '../lib/slaUtils';
 
 interface EmailPreviewModalProps {
   isOpen: boolean;
@@ -26,8 +28,15 @@ export function EmailPreviewModal({
 
   if (!isOpen) return null;
 
-  const isCalendarUpdate = type === 'calendar_update' || Boolean(isUpdate);
+  // An event is ONLY an update if calendar invitations have already been sent previously
+  // or if explicitly marked as an update / rescheduled. If invites were never sent yet, it is the initial Confirmation.
+  const hasEverSentInvites = hasEventSentCalendarNotice(event);
+  const isCalendarUpdate = 
+    Boolean(isUpdate) || 
+    event.status === 'rescheduled' || 
+    (type === 'calendar_update' && hasEverSentInvites);
   const actionPrefix = isCalendarUpdate ? 'Update:' : 'Confirmed:';
+  const actionLabel = isCalendarUpdate ? 'Update' : 'Confirmed';
 
   const claim = event.claim;
   const insured = claim?.insured;
@@ -40,10 +49,14 @@ export function EmailPreviewModal({
   const insuredEmail = insured?.email || '';
   const paName = pa?.name || 'Your Public Adjuster';
 
+  // Thoroughly strip internal tracking bracket tags from notes
   const cleanNotes = (event.notes || '')
+    .replace(/\[CoordinationOrder:[^\]]*\]/gi, '')
     .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
     .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
     .replace(/\[Timezone:[^\]]*\]/gi, '')
+    .replace(/\[Stage:[^\]]*\]/gi, '')
+    .replace(/\[Status:[^\]]*\]/gi, '')
     .trim();
 
   // Available slots for Stage 3 (selection_options)
@@ -59,24 +72,35 @@ export function EmailPreviewModal({
     .filter((em): em is string => Boolean(em && em.trim()));
   const calendarRecipients = Array.from(new Set([insuredEmail, pa?.email, ...otherEmails].filter(Boolean))) as string[];
 
+  // Timezone and City dynamic resolution
   const propertyTz = detectPropertyTimezone(
     `${event.location || ''} ${propertyAddress} ${claim?.city || ''} ${event.notes || ''}`,
     event.timezone as any
   );
-  const timeWindowStr = formatTimeRangeForSubject(
-    event.finalStartTime,
-    event.finalEndTime,
-    propertyTz,
-    claim?.city,
-    propertyAddress
-  );
-  const timeSubjectPart = timeWindowStr
-    ? `${event.finalDate ? `${formatUsDate(event.finalDate)} · ` : ''}${timeWindowStr}`
-    : (event.finalDate ? formatUsDate(event.finalDate) : (isCalendarUpdate ? 'Updated' : 'Confirmed'));
+  const cityName = resolveCityName(claim?.city, propertyAddress, propertyTz);
+  const tzLabel = propertyTz === 'CT' ? `Central Time (CT - ${cityName})` : `Eastern Time (ET - ${cityName})`;
+
+  // 12-hour formatted time helper
+  const formatTime12 = (t?: string): string => {
+    if (!t) return '';
+    return format12Hour(t).toLowerCase();
+  };
+
+  const formattedTimeRange = event.finalStartTime
+    ? `${formatTime12(event.finalStartTime)}${event.finalEndTime ? ` to ${formatTime12(event.finalEndTime)}` : ''}`
+    : '';
 
   const subject = type === 'selection_options'
     ? `Action Required: Choose your ${eventType} Date - Claim #${claimNumber}`
-    : `${actionPrefix} ${eventType} (${timeSubjectPart}) | ${insuredName} - Claim #${claimNumber}`;
+    : buildCalendarSubject({
+        actionPrefix,
+        eventType,
+        insuredName,
+        startTime: event.finalStartTime,
+        city: claim?.city,
+        address: propertyAddress,
+        timezone: propertyTz,
+      });
 
   const badgeText = type === 'selection_options'
     ? '1-Click Date Selection'
@@ -90,6 +114,58 @@ export function EmailPreviewModal({
 
   const hasRecipient = type === 'selection_options' ? Boolean(insuredEmail) : calendarRecipients.length > 0;
 
+  // Build complete In-Person Attendees / Coordination Team list
+  const attendeeList: { name: string; role?: string; contact?: string }[] = [];
+  if (insured?.name) {
+    attendeeList.push({
+      name: insured.name,
+      role: 'Insured Policyholder',
+      contact: insured.phone || undefined,
+    });
+  }
+  if (pa?.name) {
+    attendeeList.push({
+      name: pa.name,
+      role: `Public Adjuster (${pa.role ? pa.role.replace(/_/g, ' ') : 'Lead PA'})`,
+      contact: [pa.phone, pa.email].filter(Boolean).join(' | ') || undefined,
+    });
+  }
+  for (const p of participants) {
+    if (p.publicAdjuster && p.publicAdjusterId !== claim?.publicAdjusterId) {
+      attendeeList.push({
+        name: p.publicAdjuster.name,
+        role: `Support PA (${p.publicAdjuster.role ? p.publicAdjuster.role.replace(/_/g, ' ') : 'Adjuster'})`,
+        contact: [p.publicAdjuster.phone, p.publicAdjuster.email].filter(Boolean).join(' | ') || undefined,
+      });
+    }
+    if (p.carrierRep) {
+      attendeeList.push({
+        name: p.carrierRep.name,
+        role: `Insurance Adjuster (${p.carrierRep.company || carrier})`,
+        contact: [p.carrierRep.phone, p.carrierRep.email].filter(Boolean).join(' | ') || undefined,
+      });
+    }
+    if (p.externalActor) {
+      attendeeList.push({
+        name: p.externalActor.name,
+        role: `${p.externalActor.typeOfActor || 'Specialist'}${p.externalActor.company ? ` (${p.externalActor.company})` : ''}`,
+        contact: [p.externalActor.phone, p.externalActor.email].filter(Boolean).join(' | ') || undefined,
+      });
+    }
+    if (p.customName && !p.publicAdjuster && !p.carrierRep && !p.externalActor) {
+      if (p.customName.trim().toLowerCase() !== 'participant') {
+        attendeeList.push({
+          name: p.customName,
+          role: p.roleType === 'actor' ? 'Attendee' : 'Participant',
+          contact: [p.customPhone, p.customEmail].filter(Boolean).join(' | ') || undefined,
+        });
+      }
+    }
+  }
+
+  // Google Calendar Link
+  const googleCalendarUrl = getGoogleCalendarUrl(event);
+
   const handleSend = async () => {
     if (!hasRecipient) return;
     await onConfirmSend();
@@ -98,7 +174,7 @@ export function EmailPreviewModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6 flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6 flex flex-col max-h-[92vh]">
         
         {/* MODAL HEADER */}
         <div className="bg-gradient-to-r from-slate-900 via-maroon-950 to-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-white/10 shrink-0">
@@ -138,7 +214,7 @@ export function EmailPreviewModal({
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
             <span className="font-bold text-slate-500 w-16 shrink-0">To:</span>
-            <span className={`font-semibold ${!hasRecipient ? 'text-amber-700 font-bold' : 'text-slate-900'}`}>
+            <span className={`font-semibold ${!hasRecipient ? 'text-amber-700 font-bold' : 'text-slate-900'} break-all`}>
               {recipientDisplay}
             </span>
           </div>
@@ -183,7 +259,7 @@ export function EmailPreviewModal({
         </div>
 
         {/* EMAIL PREVIEW BODY (SCROLLABLE) */}
-        <div className="flex-1 overflow-y-auto p-5 bg-slate-100/70">
+        <div className="flex-1 overflow-y-auto p-5 bg-slate-200/60">
           {!hasRecipient && (
             <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -195,17 +271,16 @@ export function EmailPreviewModal({
           )}
 
           {activeTab === 'visual' ? (
-            /* BRANDED HTML EMAIL PREVIEW */
-            <div className="max-w-xl mx-auto bg-[#F0F0F0] rounded-xl border border-slate-300 shadow-sm overflow-hidden text-slate-800 font-sans">
+            /* BRANDED HTML EMAIL PREVIEW (1:1 with real sent email) */
+            <div className="max-w-xl mx-auto bg-[#F0F0F0] rounded-xl border border-slate-300 shadow-md overflow-hidden text-slate-800 font-sans">
               
               {/* BRAND HEADER */}
-              <div className="p-4 bg-[#F0F0F0] border-b-2 border-[#0071bc] text-center">
+              <div className="p-5 bg-[#F0F0F0] border-b-[3px] border-[#0071bc] text-center">
                 <img
                   src="https://drive.google.com/uc?export=view&id=15sfb2FC7bIfoVUfzJYJ9snM7WToqYb2l"
                   alt="IP Adjusting Group"
-                  className="h-10 mx-auto object-contain"
+                  className="h-11 mx-auto object-contain"
                   onError={(e) => {
-                    // Fallback text if google drive preview is blocked
                     e.currentTarget.style.display = 'none';
                     const parent = e.currentTarget.parentElement;
                     if (parent && !parent.querySelector('.brand-fallback')) {
@@ -219,8 +294,8 @@ export function EmailPreviewModal({
               </div>
 
               {/* CONTENT AREA */}
-              <div className="p-6 space-y-4 text-[13px] text-[#004E91] leading-relaxed">
-                <p className="font-semibold text-sm text-[#004E91]">
+              <div className="p-6 sm:p-8 space-y-4 text-[14px] text-[#004E91] leading-relaxed">
+                <p className="font-semibold text-[15px] text-[#004E91]">
                   Dear <span className="font-bold">{insuredName}</span>,
                 </p>
 
@@ -231,8 +306,8 @@ export function EmailPreviewModal({
                     </p>
 
                     {/* CLAIM SUMMARY CARD */}
-                    <div className="bg-white rounded-lg border-l-4 border-[#0071bc] p-3 text-xs text-slate-800 space-y-1 shadow-2xs">
-                      <div className="text-[10px] font-bold text-[#0071bc] uppercase tracking-wider mb-1">
+                    <div className="bg-white rounded-md border-l-4 border-[#0071bc] p-4 text-xs text-slate-800 space-y-1.5 shadow-xs">
+                      <div className="text-[11px] font-bold text-[#0071bc] uppercase tracking-wider mb-1">
                         Claim & Property Information
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -248,14 +323,14 @@ export function EmailPreviewModal({
                         <span className="truncate"><strong>Property:</strong> {propertyAddress}</span>
                       </div>
                       {event.accessInstructions && (
-                        <div className="flex items-center gap-1.5 pt-1 text-slate-700">
-                          <span className="font-bold text-slate-500">📝 Access Instructions:</span>
+                        <div className="pt-1 text-slate-700">
+                          <span className="font-bold text-slate-500">📝 Access Instructions: </span>
                           <em>{event.accessInstructions}</em>
                         </div>
                       )}
                       {cleanNotes && (
-                        <div className="flex items-center gap-1.5 pt-0.5 text-slate-700">
-                          <span className="font-bold text-slate-500">📋 Notes:</span>
+                        <div className="pt-1 text-slate-700">
+                          <span className="font-bold text-slate-500">📋 Notes: </span>
                           <span>{cleanNotes}</span>
                         </div>
                       )}
@@ -275,7 +350,7 @@ export function EmailPreviewModal({
                         sortedSlots.map((slot, idx) => (
                           <div
                             key={slot.id}
-                            className="bg-white rounded-lg border border-slate-200 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-[#0071bc] transition-colors"
+                            className="bg-white rounded-lg border border-slate-200 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs hover:border-[#0071bc] transition-colors"
                           >
                             <div className="space-y-0.5">
                               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-[#0071bc] border border-blue-200">
@@ -286,7 +361,7 @@ export function EmailPreviewModal({
                                 <span>{formatUsDate(slot.slotDate)}</span>
                               </div>
                               <div className="text-xs font-semibold text-slate-600">
-                                ⏰ {slot.startTime.slice(0, 5)} - {slot.endTime.slice(0, 5)}
+                                ⏰ {formatTime12(slot.startTime)} - {formatTime12(slot.endTime)}
                               </div>
                             </div>
 
@@ -306,83 +381,229 @@ export function EmailPreviewModal({
                     </div>
                   </>
                 ) : (
-                  /* CALENDAR UPDATE PREVIEW */
+                  /* FULL CALENDAR UPDATE / CONFIRMATION PREVIEW (1:1 with send-calendar-invite edge function) */
                   <>
                     <p>
                       {isCalendarUpdate ? (
                         <>
-                          This is an official calendar update notification for the upcoming <strong>{eventType}</strong> regarding Claim <strong>#{claimNumber}</strong>.
+                          Your upcoming <strong>{eventType}</strong> for Claim <strong>#{claimNumber}</strong> has been officially <strong>updated</strong>. Below are the complete appointment and access details:
                         </>
                       ) : (
                         <>
-                          This is an official calendar confirmation for the upcoming <strong>{eventType}</strong> regarding Claim <strong>#{claimNumber}</strong>.
+                          Your upcoming <strong>{eventType}</strong> for Claim <strong>#{claimNumber}</strong> has been officially <strong>confirmed and scheduled</strong>. Below are the complete appointment and access details:
                         </>
                       )}
                     </p>
 
-                    <div className="bg-white rounded-lg border border-emerald-300 p-4 text-xs text-slate-800 space-y-2 shadow-2xs">
-                      <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>{isCalendarUpdate ? 'Updated Appointment Details' : 'Confirmed Appointment Details'}</span>
+                    {/* CARD 1: APPOINTMENT DETAILS CARD */}
+                    <div className="bg-white rounded-md border-l-4 border-[#0071bc] p-4 text-xs text-slate-900 shadow-xs space-y-2">
+                      <div className="text-[11px] font-bold text-[#0071bc] uppercase tracking-wider">
+                        ✓ {actionLabel} Appointment Details
                       </div>
-                      <div className="text-sm font-bold text-slate-900">
-                        📅 {event.finalDate ? formatUsDate(event.finalDate) : 'Date pending'} &bull; ⏰ {event.finalStartTime?.slice(0, 5)} - {event.finalEndTime?.slice(0, 5)}
-                      </div>
-                      <div><strong>Location:</strong> {propertyAddress}</div>
-                      {event.location && event.location !== propertyAddress && (
-                        <div><strong>Event Location:</strong> {event.location}</div>
-                      )}
-                      {event.gateCode && (
-                        <div><strong>Gate Code:</strong> <span className="font-mono font-bold bg-emerald-50 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-200">{event.gateCode}</span></div>
-                      )}
-                      {event.lockboxCode && (
-                        <div><strong>Lockbox Code:</strong> <span className="font-mono font-bold bg-emerald-50 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-200">{event.lockboxCode}</span></div>
-                      )}
-                      {event.accessInstructions && (
-                        <div className="pt-0.5"><strong>Access Instructions:</strong> <em>{event.accessInstructions}</em></div>
-                      )}
-                      {cleanNotes && (
-                        <div className="pt-1.5 border-t border-slate-100 text-slate-700">
-                          <strong>Notes:</strong> {cleanNotes}
+                      <div className="space-y-1.5 text-slate-800 leading-relaxed text-[13px]">
+                        <div><strong>📅 Date:</strong> {event.finalDate ? formatUsDate(event.finalDate) : 'Date pending'}</div>
+                        <div>
+                          <strong>⏰ Time Window:</strong>{' '}
+                          {formattedTimeRange || `${(event.finalStartTime || '').slice(0, 5)} - ${(event.finalEndTime || '').slice(0, 5)}`} ({tzLabel})
                         </div>
-                      )}
-                      {participants.length > 0 && (
-                        <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-600">
-                          <strong>Coordination Team / Attendees:</strong>
-                          <div className="mt-0.5 pl-2 space-y-0.5">
-                            {participants.map((p, idx) => {
-                              const pName = p.customName || p.publicAdjuster?.name || p.carrierRep?.name || p.externalActor?.name || 'Participant';
-                              const pRole = p.roleType === 'actor' ? 'In-person' : 'Notified';
-                              return <div key={p.id || idx}>• {pName} ({pRole})</div>;
-                            })}
+                        <div><strong>📍 Location:</strong> {event.location || propertyAddress}</div>
+                        {event.location && event.location !== propertyAddress && (
+                          <div><strong>Property Address:</strong> {propertyAddress}</div>
+                        )}
+                        <div><strong>Claim Number:</strong> #{claimNumber}</div>
+                        <div><strong>Insured Client:</strong> {insuredName}</div>
+                        <div><strong>Insurance Carrier:</strong> {carrier}</div>
+                        {pa?.name && (
+                          <div>
+                            <strong>Public Adjuster:</strong> {pa.name}
+                            {pa.phone ? ` (${pa.phone})` : ''}
                           </div>
-                        </div>
-                      )}
-                      <div className="text-[11px] text-slate-500 pt-1">
-                        📎 An RFC-5545 compliant calendar file (<strong>invite.ics</strong>) is attached for 1-click addition to Google Calendar, Apple Calendar, and Outlook.
+                        )}
                       </div>
+                    </div>
+
+                    {/* CARD 2: PROPERTY ACCESS & ENTRY DETAILS CARD */}
+                    {(event.gateCode || event.lockboxCode || event.accessInstructions) && (
+                      <div className="bg-white rounded-md border-l-4 border-emerald-500 p-4 text-xs text-slate-900 shadow-xs space-y-2">
+                        <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">
+                          🔑 Property Access & Entry Details
+                        </div>
+                        <div className="space-y-1.5 text-slate-800 leading-relaxed text-[13px]">
+                          {event.gateCode && (
+                            <div>
+                              <strong>🚪 Gate / Community Code:</strong>{' '}
+                              <span className="font-mono font-bold bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded border border-emerald-200">
+                                {event.gateCode}
+                              </span>
+                            </div>
+                          )}
+                          {event.lockboxCode && (
+                            <div>
+                              <strong>🔐 Lockbox / Key Code:</strong>{' '}
+                              <span className="font-mono font-bold bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded border border-emerald-200">
+                                {event.lockboxCode}
+                              </span>
+                            </div>
+                          )}
+                          {event.accessInstructions && (
+                            <div>
+                              <strong>📝 Access Instructions:</strong> <em>{event.accessInstructions}</em>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CARD 3: APPOINTMENT NOTES & INSTRUCTIONS CARD */}
+                    {cleanNotes && (
+                      <div className="bg-white rounded-md border-l-4 border-amber-500 p-4 text-xs text-slate-900 shadow-xs space-y-1.5">
+                        <div className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">
+                          📋 Appointment Notes & Instructions
+                        </div>
+                        <div className="text-slate-700 text-[13px] leading-relaxed whitespace-pre-wrap">
+                          {cleanNotes}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CARD 4: IN-PERSON ATTENDEES & COORDINATION TEAM CARD */}
+                    {attendeeList.length > 0 && (
+                      <div className="bg-white rounded-md border-l-4 border-indigo-500 p-4 text-xs text-slate-900 shadow-xs space-y-2">
+                        <div className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">
+                          👥 In-Person Attendees & Coordination Team
+                        </div>
+                        <div className="space-y-1 text-slate-700 leading-relaxed text-[12px]">
+                          {attendeeList.map((a, idx) => (
+                            <div key={idx} className="flex items-start gap-1">
+                              <span>•</span>
+                              <div>
+                                <strong className="text-slate-900">{a.name}</strong>
+                                {a.role && <span className="text-slate-500"> ({a.role})</span>}
+                                {a.contact && <span className="text-blue-600"> — {a.contact}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CARD 5: ADD TO GOOGLE CALENDAR BUTTON */}
+                    {googleCalendarUrl && (
+                      <div className="my-3 text-center">
+                        <a
+                          href={googleCalendarUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center gap-2 bg-[#0071bc] hover:bg-[#005a96] text-white font-bold text-sm px-6 py-3 rounded-md shadow-xs transition-colors"
+                        >
+                          <span>📅 Add to Google Calendar →</span>
+                        </a>
+                      </div>
+                    )}
+
+                    {/* CARD 6: NOTE ABOUT ICS ATTACHMENT */}
+                    <div className="bg-[#e0f2fe] border border-[#bae6fd] rounded-md p-3 text-xs text-[#0369a1] leading-relaxed">
+                      📎 <strong>Calendar Invite Attached (.ics):</strong> An official calendar file is attached to this email. You can open it to automatically sync with Apple Calendar, Microsoft Outlook, or Google Calendar.
                     </div>
                   </>
                 )}
 
-                <div className="pt-3 text-xs text-[#004E91]">
-                  <p>Warm regards,</p>
-                  <p className="font-bold">IP Scheduling Coordination Team</p>
+                {/* CLOSING & SIGNATURE */}
+                <div className="pt-2 text-xs text-[#004E91] space-y-0.5">
+                  <p>Stay safe,</p>
+                  <p className="font-bold text-[15px] text-[#0071bc] pt-0.5">IP Adjusting Group</p>
+                  <p className="text-slate-500 italic text-[12px]">Advocating for what’s yours</p>
+                </div>
+
+                {/* SIGNATURE / LOGO */}
+                <div className="text-right pt-1 pb-1">
+                  <img
+                    src="https://drive.google.com/uc?export=view&id=15sfb2FC7bIfoVUfzJYJ9snM7WToqYb2l"
+                    alt="IP Adjusters"
+                    className="w-32 inline-block object-contain"
+                  />
                 </div>
               </div>
 
-              {/* EMAIL FOOTER */}
-              <div className="p-4 bg-[#0071bc] text-white text-center text-[10px] space-y-1">
-                <p className="font-medium">1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986</p>
-                <p>admin@ipadjustinggroup.com | (772) 282-0862</p>
-                <p className="text-[9px] text-blue-100 pt-1">
-                  IP Adjusting Group is a licensed public adjusting firm proudly serving homeowners and business owners across Florida.
+              {/* RICH EMAIL FOOTER (Identical to send-calendar-invite edge function) */}
+              <div className="p-5 bg-[#0071bc] text-white text-center text-xs space-y-3">
+                
+                {/* Social media links */}
+                <div className="flex items-center justify-center gap-6 flex-wrap text-xs">
+                  <a
+                    href="https://www.instagram.com/ip_adjusting_group/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-white underline hover:text-blue-100"
+                  >
+                    <img
+                      src="https://drive.google.com/uc?export=view&id=1eVdlspnkXxuauln84a3TvwX7CkoPzUtN"
+                      alt="Instagram"
+                      className="w-4 h-4 inline-block object-contain"
+                    />
+                    <span>Instagram</span>
+                  </a>
+
+                  <a
+                    href="https://wa.me/17722820862"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-white hover:text-blue-100"
+                  >
+                    <img
+                      src="https://drive.google.com/uc?export=view&id=1sNAL_a5ISR1Xa3SFz5DFxsdf5v6Ka7O0"
+                      alt="WhatsApp"
+                      className="w-4 h-4 inline-block object-contain"
+                    />
+                    <span>WhatsApp</span>
+                  </a>
+
+                  <a
+                    href="https://www.ipadjustinggroup.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-white underline hover:text-blue-100"
+                  >
+                    <img
+                      src="https://drive.google.com/uc?export=view&id=1OBMR1DYrpf7DEVIGoUGMGSTz9FAlOtsJ"
+                      alt="Website"
+                      className="w-4 h-4 inline-block object-contain"
+                    />
+                    <span>Website</span>
+                  </a>
+                </div>
+
+                {/* Address & contact info */}
+                <div className="text-xs text-white leading-relaxed space-y-0.5 pt-1">
+                  <a
+                    href="https://maps.google.com/?q=1729+NW+Saint+Lucie+West+Blvd+%231269,+Port+Saint+Lucie+FL,+34986"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white hover:underline block"
+                  >
+                    1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986
+                  </a>
+                  <div>
+                    <a href="mailto:admin@ipadjustinggroup.com" className="text-white underline">
+                      admin@ipadjustinggroup.com
+                    </a>
+                    <span> | </span>
+                    <a href="tel:17722820862" className="text-white">
+                      (772) 282-0862
+                    </a>
+                  </div>
+                </div>
+
+                {/* Legal disclaimer */}
+                <p className="text-[10px] text-blue-100 leading-tight pt-1 max-w-lg mx-auto">
+                  IP Adjusting Group is a licensed public adjusting firm proudly serving homeowners and business owners across Florida. The information in this email is meant to be general in nature and should not be taken as legal or insurance advice. For specific guidance about your policy or claim, please reach out to your licensed insurance professional or attorney.
                 </p>
               </div>
+
             </div>
           ) : (
-            /* PLAIN TEXT VIEW */
-            <div className="max-w-xl mx-auto bg-slate-900 text-slate-100 rounded-xl p-4 font-mono text-xs whitespace-pre-wrap leading-relaxed shadow-sm">
+            /* PLAIN TEXT VIEW (Full text equivalent of the sent email) */
+            <div className="max-w-xl mx-auto bg-slate-900 text-slate-100 rounded-xl p-5 font-mono text-xs whitespace-pre-wrap leading-relaxed shadow-sm">
               {type === 'selection_options' ? (
 `Subject: ${subject}
 To: ${recipientDisplay}
@@ -391,33 +612,50 @@ Dear ${insuredName},
 
 The insurance company (${carrier}) has scheduled an upcoming ${eventType} for your claim #${claimNumber}. Your Public Adjuster, ${paName}, has coordinated and pre-approved the following available dates for you:
 
-Property: ${propertyAddress}
+Claim Number: #${claimNumber}
+Carrier: ${carrier}
+Property: ${propertyAddress}${cleanNotes ? `\nNotes: ${cleanNotes}` : ''}
 
-${sortedSlots.map((s, idx) => `Option #${idx + 1}: ${formatUsDate(s.slotDate)} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}
-👉 Click here to confirm: [1-Click Confirmation Link]`).join('\n\n')}
+${sortedSlots.map((s, idx) => `Option #${idx + 1}: ${formatUsDate(s.slotDate)} from ${formatTime12(s.startTime)} to ${formatTime12(s.endTime)}
+👉 Confirm: [1-Click Confirmation Link]`).join('\n\n')}
 
-Warm regards,
-IP Scheduling Coordination Team
+Stay safe,
 IP Adjusting Group
+Advocating for what’s yours
+
 1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986
-(772) 282-0862 | admin@ipadjustinggroup.com`
+admin@ipadjustinggroup.com | (772) 282-0862
+Website: https://www.ipadjustinggroup.com`
               ) : (
 `Subject: ${subject}
 To: ${recipientDisplay}
 
-Hello,
+Dear ${insuredName},
 
-This is an official calendar ${isCalendarUpdate ? 'update' : 'confirmation'} notification for the upcoming ${eventType} regarding Claim #${claimNumber}.
+Your upcoming ${eventType} for Claim #${claimNumber} has been officially ${isCalendarUpdate ? 'updated' : 'confirmed and scheduled'}. Below are the complete appointment and access details:
 
-${isCalendarUpdate ? 'Updated Appointment Details:' : 'Confirmed Appointment Details:'}
-Date: ${formatUsDate(event.finalDate)}
-Time: ${event.finalStartTime?.slice(0, 5)} - ${event.finalEndTime?.slice(0, 5)}
-Location: ${propertyAddress}
-${event.location && event.location !== propertyAddress ? `Event Location: ${event.location}\n` : ''}${event.gateCode ? `Gate Code: ${event.gateCode}\n` : ''}${event.lockboxCode ? `Lockbox Code: ${event.lockboxCode}\n` : ''}${event.accessInstructions ? `Access Instructions: ${event.accessInstructions}\n` : ''}${cleanNotes ? `Notes: ${cleanNotes}\n` : ''}
-Calendar file (.ics) attached.
+✓ ${actionLabel} Appointment Details:
+📅 Date: ${formatUsDate(event.finalDate)}
+⏰ Time Window: ${formattedTimeRange} (${tzLabel})
+📍 Location: ${event.location || propertyAddress}${event.location && event.location !== propertyAddress ? `\nProperty Address: ${propertyAddress}` : ''}
+Claim Number: #${claimNumber}
+Insured Client: ${insuredName}
+Insurance Carrier: ${carrier}${pa?.name ? `\nPublic Adjuster: ${pa.name}${pa.phone ? ` (${pa.phone})` : ''}` : ''}
 
-Warm regards,
-IP Scheduling Coordination Team`
+${(event.gateCode || event.lockboxCode || event.accessInstructions) ? `🔑 Property Access & Entry Details:
+${event.gateCode ? `• Gate Code: ${event.gateCode}\n` : ''}${event.lockboxCode ? `• Lockbox Code: ${event.lockboxCode}\n` : ''}${event.accessInstructions ? `• Access Instructions: ${event.accessInstructions}\n` : ''}` : ''}${cleanNotes ? `📋 Appointment Notes & Instructions:
+${cleanNotes}\n\n` : ''}${attendeeList.length > 0 ? `👥 In-Person Attendees & Coordination Team:
+${attendeeList.map(a => `• ${a.name}${a.role ? ` (${a.role})` : ''}${a.contact ? ` — ${a.contact}` : ''}`).join('\n')}\n\n` : ''}${googleCalendarUrl ? `📅 Add to Google Calendar: ${googleCalendarUrl}\n\n` : ''}📎 Calendar Invite Attached (.ics): An official calendar file is attached to this email. You can open it to automatically sync with Apple Calendar, Microsoft Outlook, or Google Calendar.
+
+Stay safe,
+IP Adjusting Group
+Advocating for what’s yours
+
+1729 NW Saint Lucie West Blvd. #1269, Port Saint Lucie FL, 34986
+admin@ipadjustinggroup.com | (772) 282-0862
+Instagram: https://www.instagram.com/ip_adjusting_group/
+WhatsApp: https://wa.me/17722820862
+Website: https://www.ipadjustinggroup.com`
               )}
             </div>
           )}

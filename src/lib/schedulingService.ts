@@ -263,7 +263,15 @@ export const schedulingService = {
       lockboxCode: row.lockbox_code,
       gateCode: row.gate_code,
       accessInstructions: row.access_instructions,
-      noticeSentAt: row.notice_sent_at,
+      noticeSentAt: (() => {
+        if (row.notice_sent_at) return row.notice_sent_at;
+        const logs = row.logs || [];
+        const calLog = logs.find((l: any) => 
+          l.channel === 'email' && 
+          (l.notes?.toLowerCase().includes('calendar') || l.notes?.toLowerCase().includes('.ics') || l.notes?.toLowerCase().includes('invitation'))
+        );
+        return calLog ? calLog.created_at : null;
+      })(),
       notes: row.notes,
       openAvailabilityActor: (() => {
         const m = row.notes?.match(/\[OpenAvailability:\s*([a-zA-Z0-9_-]+)/);
@@ -938,8 +946,16 @@ export const schedulingService = {
       contact_target: 'internal',
       contact_target_name: 'Coordinator',
       channel: 'email',
-      notes: `📧 Calendar update invitations (.ics) sent manually to all participants.${recipientsSummary}`
+      notes: `📧 Calendar invitations (.ics) sent manually to all participants.${recipientsSummary}`
     });
+
+    await supabase
+      .from('events')
+      .update({
+        notice_sent_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', eventId);
 
     return data;
   },
@@ -1858,3 +1874,16 @@ export const schedulingService = {
     }
   }
 };
+
+export function hasEventSentCalendarNotice(event?: CoordinationEvent | null): boolean {
+  if (!event) return false;
+  if (event.noticeSentAt) return true;
+  const logs = event.logs || [];
+  return logs.some((l) => {
+    const notes = (l.notes || '').toLowerCase();
+    return (
+      l.channel === 'email' &&
+      (notes.includes('calendar') || notes.includes('.ics') || notes.includes('invitation'))
+    );
+  });
+}

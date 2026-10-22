@@ -420,4 +420,38 @@ export function formatTimeRangeForSubject(
   return `${s12} ${tzCityLabel}`;
 }
 
+/**
+ * Formats a 24h time into a clean concise 12h string for subject lines (e.g. "13:00" -> "1 pm", "13:30" -> "1:30 pm").
+ */
+export function formatShortTime12(time24?: string): string {
+  if (!time24) return '';
+  const clean = time24.slice(0, 5);
+  const [hStr, mStr] = clean.split(':');
+  const h = parseInt(hStr, 10);
+  if (isNaN(h)) return clean;
+  const ampm = h >= 12 ? 'pm' : 'am';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const minutes = mStr && mStr !== '00' ? `:${mStr}` : '';
+  return `${h12}${minutes} ${ampm}`;
+}
+
+/**
+ * Builds the streamlined calendar confirmation/update subject line:
+ * e.g. "Confirmed: Initial Inspection - Jay Drinkard & William Croley - 1 pm Molino Time"
+ */
+export function buildCalendarSubject(options: {
+  actionPrefix: 'Confirmed:' | 'Update:';
+  eventType: string;
+  insuredName: string;
+  startTime?: string;
+  city?: string | null;
+  address?: string | null;
+  timezone?: FloridaTimezone;
+}): string {
+  const { actionPrefix, eventType, insuredName, startTime, city, address, timezone = 'ET' } = options;
+  const cityName = resolveCityName(city, address, timezone);
+  const timePart = startTime ? ` - ${formatShortTime12(startTime)} ${cityName} Time` : '';
+  return `${actionPrefix} ${eventType} - ${insuredName}${timePart}`;
+}
+
 export { formatUsDate } from './formatters';
