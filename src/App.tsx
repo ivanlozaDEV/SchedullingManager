@@ -48,6 +48,7 @@ import { MasterCatalogsView } from './components/MasterCatalogsView';
 import { useToast } from './context/ToastContext';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from './lib/slaUtils';
 import { appSettingsService } from './lib/appSettingsService';
+import { getSlotConflict, getConfirmedConflict } from './lib/scheduleConflictUtils';
 import { formatTimeRangeWithDualTimezone, getLiveOperatingTimes, cleanAddress, formatUsDate, type FloridaTimezone } from './lib/timezoneUtils';
 import type { 
   CoordinationEvent, 
@@ -649,6 +650,44 @@ export function App() {
     );
   }
 
+  const handleScrollToEventCard = (matchedEventId?: string, claimNumber?: string) => {
+    if (!matchedEventId && !claimNumber) return;
+
+    const performScroll = () => {
+      let el = matchedEventId ? document.getElementById(`event-card-${matchedEventId}`) : null;
+      if (!el && claimNumber) {
+        el = document.querySelector(`[data-claim-number="${claimNumber}"]`);
+      }
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        el.classList.add('ring-4', 'ring-amber-500', 'shadow-2xl', 'scale-[1.02]');
+        setTimeout(() => {
+          el?.classList.remove('ring-4', 'ring-amber-500', 'shadow-2xl', 'scale-[1.02]');
+        }, 2500);
+        return true;
+      }
+      return false;
+    };
+
+    if (selectedClaim) {
+      setSelectedClaim(null);
+    }
+    if (viewMode !== 'funnel') {
+      setViewMode('funnel');
+    }
+
+    setTimeout(() => {
+      if (!performScroll()) {
+        if (claimNumber) {
+          setSearchQuery(claimNumber);
+        } else {
+          setSearchQuery('');
+        }
+        setTimeout(performScroll, 200);
+      }
+    }, 120);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Clean Light Header */}
@@ -771,10 +810,13 @@ export function App() {
                 if (refreshed) setSelectedClaim(refreshed);
               }
             }}
-            onViewInFunnel={(claimNumber) => {
+            onViewInFunnel={(claimNumber, eventId) => {
+              setSelectedClaim(null);
               setViewMode('funnel');
               setSearchQuery(claimNumber);
-              setSelectedClaim(null);
+              setTimeout(() => {
+                handleScrollToEventCard(eventId, claimNumber);
+              }, 250);
             }}
           />
         ) : (
@@ -988,6 +1030,8 @@ export function App() {
                           return (
                             <div 
                               key={`${stage.key}-${evt.id}`} 
+                              id={isHistorical ? `event-card-hist-${stage.key}-${evt.id}` : `event-card-${evt.id}`}
+                              data-claim-number={evt.claim?.claimNumber}
                               className={`rounded-2xl p-3.5 flex flex-col justify-between shadow-xs hover:shadow-md transition-all relative overflow-hidden bg-white ${
                                 isHistorical
                                   ? 'bg-slate-50/75 border border-slate-200 hover:bg-white hover:border-slate-300'
@@ -1297,36 +1341,66 @@ export function App() {
 
                                           {/* Slots */}
                                           <div className="space-y-1.5">
-                                            {(evt.slots || []).map((s, idx) => (
-                                              <div 
-                                                key={s.id || idx} 
-                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between min-h-[44px] ${
-                                                  isHistorical ? 'border-slate-200 bg-white/70 text-slate-700' : 'border-slate-200 bg-slate-50 text-slate-800'
-                                                }`}
-                                              >
-                                                <div>
-                                                  <span className="font-semibold block">📅 {formatUsDate(s.slotDate)}</span>
-                                                  <span className="text-slate-500 font-mono text-[10px] block">
-                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
-                                                  </span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
-                                                  {!isHistorical && (
+                                            {(evt.slots || []).map((s, idx) => {
+                                              const conflict = getSlotConflict(s, evt, events);
+                                              const isIdentical = conflict.level === 'identical';
+                                              const isClose = conflict.level === 'close';
+                                              return (
+                                                <div 
+                                                  key={s.id || idx} 
+                                                  title={conflict.tooltipText}
+                                                  className={`p-2 rounded-lg border text-xs flex flex-col justify-between gap-1 min-h-[44px] transition-colors ${
+                                                    isIdentical 
+                                                      ? 'border-orange-400 bg-orange-50 text-orange-950 ring-1 ring-orange-300' 
+                                                      : isClose 
+                                                      ? 'border-amber-400 bg-amber-50 text-amber-950 ring-1 ring-amber-300' 
+                                                      : isHistorical 
+                                                      ? 'border-slate-200 bg-white/70 text-slate-700' 
+                                                      : 'border-slate-200 bg-slate-50 text-slate-800'
+                                                  }`}
+                                                >
+                                                  <div className="flex items-center justify-between w-full">
+                                                    <div>
+                                                      <span className="font-semibold block">📅 {formatUsDate(s.slotDate)}</span>
+                                                      <span className="text-slate-500 font-mono text-[10px] block">
+                                                        {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                      </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                      {!isHistorical && (
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => setEditingSlotTarget({ slot: s, event: evt })}
+                                                          className="h-6 w-6 rounded bg-white hover:bg-slate-200 text-slate-500 hover:text-tealBrand-800 border border-slate-200 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                                                          title="Modificar fecha u horario de esta opción"
+                                                        >
+                                                          <Pencil className="w-3 h-3" />
+                                                        </button>
+                                                      )}
+                                                      <span className="text-[10px] font-bold text-tealBrand-700 bg-tealBrand-50 px-2 py-0.5 rounded border border-tealBrand-200">
+                                                        Option #{idx + 1}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                  {conflict.level !== 'none' && conflict.badgeText && (
                                                     <button
-                                                      type="button"
-                                                      onClick={() => setEditingSlotTarget({ slot: s, event: evt })}
-                                                      className="h-6 w-6 rounded bg-white hover:bg-slate-200 text-slate-500 hover:text-tealBrand-800 border border-slate-200 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-                                                      title="Modificar fecha u horario de esta opción"
-                                                    >
-                                                      <Pencil className="w-3 h-3" />
-                                                    </button>
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleScrollToEventCard(conflict.primaryMatch?.matchedEventId, conflict.primaryMatch?.claimNumber);
+  }}
+  title="Hacer clic para ir y resaltar este claim en el tablero"
+  className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+    isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+  }`}
+>
+  <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+  <span className="text-[9px] opacity-75">↗</span>
+</button>
                                                   )}
-                                                  <span className="text-[10px] font-bold text-tealBrand-700 bg-tealBrand-50 px-2 py-0.5 rounded border border-tealBrand-200">
-                                                    Option #{idx + 1}
-                                                  </span>
                                                 </div>
-                                              </div>
-                                            ))}
+                                              );
+                                            })}
                                           </div>
                                         </div>
 
@@ -1493,72 +1567,128 @@ export function App() {
                                         {isHistorical ? (
                                           (evt.slots || []).map((s) => {
                                             const isApproved = s.status === 'pa_accepted' || s.status === 'insured_chosen';
+                                            const conflict = getSlotConflict(s, evt, events);
+                                            const isIdentical = conflict.level === 'identical';
+                                            const isClose = conflict.level === 'close';
                                             return (
                                               <div
                                                 key={s.id}
-                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between min-h-[44px] ${
-                                                  isApproved
+                                                title={conflict.tooltipText}
+                                                className={`w-full p-2 rounded-lg border text-left text-xs flex flex-col justify-between min-h-[44px] gap-1 ${
+                                                  isIdentical
+                                                    ? 'bg-orange-50 border-orange-400 text-orange-950 ring-1 ring-orange-300'
+                                                    : isClose
+                                                    ? 'bg-amber-50 border-amber-400 text-amber-950 ring-1 ring-amber-300'
+                                                    : isApproved
                                                     ? 'bg-tealBrand-50/40 border-tealBrand-300 text-tealBrand-950 font-semibold'
                                                     : 'bg-white/50 border-slate-200 text-slate-400 opacity-60'
                                                 }`}
                                               >
-                                                <div>
-                                                  <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
-                                                  <span className="text-[10px] font-mono block opacity-80">
-                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                <div className="flex items-center justify-between w-full">
+                                                  <div>
+                                                    <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
+                                                    <span className="text-[10px] font-mono block opacity-80">
+                                                      {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                    </span>
+                                                  </div>
+                                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                                    isApproved ? 'bg-white text-tealBrand-800 border-tealBrand-200' : 'bg-slate-100 text-slate-400 border-slate-200'
+                                                  }`}>
+                                                    {isApproved ? '✓ PA Picked' : 'Excluded'}
                                                   </span>
                                                 </div>
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                                                  isApproved ? 'bg-white text-tealBrand-800 border-tealBrand-200' : 'bg-slate-100 text-slate-400 border-slate-200'
-                                                }`}>
-                                                  {isApproved ? '✓ PA Picked' : 'Excluded'}
-                                                </span>
+                                                {conflict.level !== 'none' && conflict.badgeText && (
+                                                  <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleScrollToEventCard(conflict.primaryMatch?.matchedEventId, conflict.primaryMatch?.claimNumber);
+  }}
+  title="Hacer clic para ir y resaltar este claim en el tablero"
+  className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+    isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+  }`}
+>
+  <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+  <span className="text-[9px] opacity-75">↗</span>
+</button>
+                                                )}
                                               </div>
                                             );
                                           })
                                         ) : (
                                           (evt.slots || []).map((s) => {
                                             const isSelected = (paSelectedSlotIds[evt.id] || []).includes(s.id);
+                                            const conflict = getSlotConflict(s, evt, events);
+                                            const isIdentical = conflict.level === 'identical';
+                                            const isClose = conflict.level === 'close';
                                             return (
                                               <div
                                                 key={s.id}
-                                                className={`w-full p-2 rounded-lg border text-left text-xs flex items-center justify-between transition-all min-h-[44px] ${
-                                                  isSelected
+                                                title={conflict.tooltipText}
+                                                className={`w-full p-2 rounded-lg border text-left text-xs flex flex-col justify-between transition-all min-h-[44px] gap-1 ${
+                                                  isIdentical
+                                                    ? isSelected
+                                                      ? 'bg-orange-100 border-2 border-orange-500 text-orange-950 font-bold ring-2 ring-orange-400'
+                                                      : 'bg-orange-50/90 border-orange-400 text-orange-950 hover:bg-orange-100/70 ring-1 ring-orange-300'
+                                                    : isClose
+                                                    ? isSelected
+                                                      ? 'bg-amber-100 border-2 border-amber-500 text-amber-950 font-bold ring-2 ring-amber-400'
+                                                      : 'bg-amber-50/90 border-amber-400 text-amber-950 hover:bg-amber-100/70 ring-1 ring-amber-300'
+                                                    : isSelected
                                                     ? 'bg-tealBrand-50 border-tealBrand-600 text-tealBrand-950 font-bold'
                                                     : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                                                 }`}
                                               >
-                                                <div
-                                                  onClick={() => handleTogglePaSlot(evt.id, s.id)}
-                                                  className="flex-1 cursor-pointer"
-                                                >
-                                                  <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
-                                                  <span className="text-[10px] text-slate-500 block font-mono">
-                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
-                                                  </span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 shrink-0">
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setEditingSlotTarget({ slot: s, event: evt });
-                                                    }}
-                                                    className="h-6 w-6 rounded bg-white hover:bg-slate-200 text-slate-500 hover:text-tealBrand-800 border border-slate-200 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-                                                    title="Modificar fecha u horario de esta opción"
-                                                  >
-                                                    <Pencil className="w-3 h-3" />
-                                                  </button>
-                                                  <button
-                                                    type="button"
+                                                <div className="flex items-center justify-between w-full">
+                                                  <div
                                                     onClick={() => handleTogglePaSlot(evt.id, s.id)}
-                                                    className={`w-5 h-5 rounded border flex items-center justify-center text-[10px] font-bold cursor-pointer ${
-                                                      isSelected ? 'bg-tealBrand-800 border-tealBrand-800 text-white' : 'border-slate-300 bg-white'
-                                                    }`}
+                                                    className="flex-1 cursor-pointer"
                                                   >
-                                                    {isSelected ? '✓' : ''}
-                                                  </button>
+                                                    <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
+                                                    <span className="text-[10px] text-slate-500 block font-mono">
+                                                      {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex items-center gap-1.5 shrink-0">
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingSlotTarget({ slot: s, event: evt });
+                                                      }}
+                                                      className="h-6 w-6 rounded bg-white hover:bg-slate-200 text-slate-500 hover:text-tealBrand-800 border border-slate-200 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                                                      title="Modificar fecha u horario de esta opción"
+                                                    >
+                                                      <Pencil className="w-3 h-3" />
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleTogglePaSlot(evt.id, s.id)}
+                                                      className={`w-5 h-5 rounded border flex items-center justify-center text-[10px] font-bold cursor-pointer ${
+                                                        isSelected ? 'bg-tealBrand-800 border-tealBrand-800 text-white' : 'border-slate-300 bg-white'
+                                                      }`}
+                                                    >
+                                                      {isSelected ? '✓' : ''}
+                                                    </button>
+                                                  </div>
                                                 </div>
+                                                {conflict.level !== 'none' && conflict.badgeText && (
+                                                  <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleScrollToEventCard(conflict.primaryMatch?.matchedEventId, conflict.primaryMatch?.claimNumber);
+  }}
+  title="Hacer clic para ir y resaltar este claim en el tablero"
+  className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+    isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+  }`}
+>
+  <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+  <span className="text-[9px] opacity-75">↗</span>
+</button>
+                                                )}
                                               </div>
                                             );
                                           })
@@ -1667,26 +1797,52 @@ export function App() {
                                         {isHistorical ? (
                                           (evt.slots || []).map((s) => {
                                             const isChosen = s.slotDate === evt.finalDate || s.status === 'insured_chosen';
+                                            const conflict = getSlotConflict(s, evt, events);
+                                            const isIdentical = conflict.level === 'identical';
+                                            const isClose = conflict.level === 'close';
                                             return (
                                               <div
                                                 key={s.id}
-                                                className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1 min-h-[44px] ${
-                                                  isChosen
+                                                title={conflict.tooltipText}
+                                                className={`p-2 rounded-lg border text-xs flex flex-col justify-between gap-1 min-h-[44px] ${
+                                                  isIdentical
+                                                    ? 'border-orange-400 bg-orange-50 text-orange-950 ring-1 ring-orange-300'
+                                                    : isClose
+                                                    ? 'border-amber-400 bg-amber-50 text-amber-950 ring-1 ring-amber-300'
+                                                    : isChosen
                                                     ? 'border-emerald-400 bg-emerald-50/70 text-emerald-950 font-bold'
                                                     : 'border-slate-200 bg-white/50 text-slate-400 opacity-60'
                                                 }`}
                                               >
-                                                <div>
-                                                  <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
-                                                  <span className="text-[10px] font-mono block opacity-80">
-                                                    {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                <div className="flex items-center justify-between gap-1 w-full">
+                                                  <div>
+                                                    <span className="block font-semibold">📅 {formatUsDate(s.slotDate)}</span>
+                                                    <span className="text-[10px] font-mono block opacity-80">
+                                                      {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                    </span>
+                                                  </div>
+                                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                                    isChosen ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-100 text-slate-400 border-slate-200'
+                                                  }`}>
+                                                    {isChosen ? '✓ Selected' : 'Not selected'}
                                                   </span>
                                                 </div>
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                                                  isChosen ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-100 text-slate-400 border-slate-200'
-                                                }`}>
-                                                  {isChosen ? '✓ Selected' : 'Not selected'}
-                                                </span>
+                                                {conflict.level !== 'none' && conflict.badgeText && (
+                                                  <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleScrollToEventCard(conflict.primaryMatch?.matchedEventId, conflict.primaryMatch?.claimNumber);
+  }}
+  title="Hacer clic para ir y resaltar este claim en el tablero"
+  className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+    isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+  }`}
+>
+  <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+  <span className="text-[9px] opacity-75">↗</span>
+</button>
+                                                )}
                                               </div>
                                             );
                                           })
@@ -1694,37 +1850,67 @@ export function App() {
                                           <>
                                             {(evt.slots || [])
                                               .filter((s) => s.status === 'pa_accepted' || s.status === 'proposed')
-                                              .map((s) => (
-                                                <div
-                                                  key={s.id}
-                                                  className="p-2 rounded-lg border border-tealBrand-300 bg-tealBrand-50/70 text-xs flex items-center justify-between gap-1 min-h-[44px]"
-                                                >
-                                                  <div>
-                                                    <span className="font-bold text-slate-900 block">📅 {formatUsDate(s.slotDate)}</span>
-                                                    <span className="text-[10px] text-slate-600 font-mono block">
-                                                      {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
-                                                    </span>
+                                              .map((s) => {
+                                                const conflict = getSlotConflict(s, evt, events);
+                                                const isIdentical = conflict.level === 'identical';
+                                                const isClose = conflict.level === 'close';
+                                                return (
+                                                  <div
+                                                    key={s.id}
+                                                    title={conflict.tooltipText}
+                                                    className={`p-2 rounded-lg border text-xs flex flex-col justify-between gap-1 min-h-[44px] ${
+                                                      isIdentical
+                                                        ? 'border-orange-400 bg-orange-50 text-orange-950 ring-1 ring-orange-300'
+                                                        : isClose
+                                                        ? 'border-amber-400 bg-amber-50 text-amber-950 ring-1 ring-amber-300'
+                                                        : 'border-tealBrand-300 bg-tealBrand-50/70 text-slate-900'
+                                                    }`}
+                                                  >
+                                                    <div className="flex items-center justify-between gap-1 w-full">
+                                                      <div>
+                                                        <span className="font-bold text-slate-900 block">📅 {formatUsDate(s.slotDate)}</span>
+                                                        <span className="text-[10px] text-slate-600 font-mono block">
+                                                          {formatTimeRangeWithDualTimezone(s.startTime, s.endTime, evt.timezone || 'ET').displayFull}
+                                                        </span>
+                                                      </div>
+                                                      <div className="flex items-center gap-1.5 shrink-0">
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => setEditingSlotTarget({ slot: s, event: evt })}
+                                                          className="h-7 w-7 rounded bg-white hover:bg-slate-100 text-slate-500 hover:text-tealBrand-800 border border-tealBrand-300 hover:border-slate-400 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                                                          title="Modificar fecha u horario de esta opción"
+                                                        >
+                                                          <Pencil className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          disabled={insuredConfirmingSlotId === s.id}
+                                                          onClick={() => handleInsuredConfirmSlot(evt, s)}
+                                                          className="h-7 px-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center cursor-pointer"
+                                                        >
+                                                          {insuredConfirmingSlotId === s.id ? '...' : `${p3Name} Picked ➔`}
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                    {conflict.level !== 'none' && conflict.badgeText && (
+                                                      <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleScrollToEventCard(conflict.primaryMatch?.matchedEventId, conflict.primaryMatch?.claimNumber);
+  }}
+  title="Hacer clic para ir y resaltar este claim en el tablero"
+  className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+    isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+  }`}
+>
+  <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+  <span className="text-[9px] opacity-75">↗</span>
+</button>
+                                                    )}
                                                   </div>
-                                                  <div className="flex items-center gap-1.5 shrink-0">
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => setEditingSlotTarget({ slot: s, event: evt })}
-                                                      className="h-7 w-7 rounded bg-white hover:bg-slate-100 text-slate-500 hover:text-tealBrand-800 border border-tealBrand-300 hover:border-slate-400 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-                                                      title="Modificar fecha u horario de esta opción"
-                                                    >
-                                                      <Pencil className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      disabled={insuredConfirmingSlotId === s.id}
-                                                      onClick={() => handleInsuredConfirmSlot(evt, s)}
-                                                      className="h-7 px-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center cursor-pointer"
-                                                    >
-                                                      {insuredConfirmingSlotId === s.id ? '...' : `${p3Name} Picked ➔`}
-                                                    </button>
-                                                  </div>
-                                                </div>
-                                              ))}
+                                                );
+                                              })}
 
                                             {(evt.slots || [])
                                               .filter((s) => s.status === 'pa_rejected' || s.status === 'discarded')
@@ -1868,21 +2054,56 @@ export function App() {
                                         </span>
                                       </div>
 
-                                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1 min-h-[120px] flex flex-col justify-center">
-                                        <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
-                                          <Check className="w-4 h-4 text-emerald-600" />
-                                          <span>Appointment Confirmed</span>
-                                        </div>
-                                        <p className="text-[12px] text-emerald-800 font-bold pl-5.5">
-                                          📅 {formatUsDate(evt.finalDate)}
-                                        </p>
-                                        <p className="text-[11px] text-slate-600 font-mono pl-5.5">
-                                          ⏰ {formatTimeRangeWithDualTimezone(evt.finalStartTime || '09:00', evt.finalEndTime || '11:00', evt.timezone || 'ET').displayFull}
-                                        </p>
-                                        <p className="text-[10px] text-emerald-700 pl-5.5 pt-1 font-medium">
-                                          All parties confirmed
-                                        </p>
-                                      </div>
+                                      {(() => {
+                                        const confConflict = getConfirmedConflict(evt, events);
+                                        const isIdentical = confConflict.level === 'identical';
+                                        const isClose = confConflict.level === 'close';
+                                        return (
+                                          <div 
+                                            title={confConflict.tooltipText}
+                                            className={`p-3 rounded-lg space-y-1 min-h-[120px] flex flex-col justify-center border transition-all ${
+                                              isIdentical
+                                                ? 'bg-orange-50/90 border-2 border-orange-400 text-orange-950 ring-1 ring-orange-300'
+                                                : isClose
+                                                ? 'bg-amber-50/90 border-2 border-amber-400 text-amber-950 ring-1 ring-amber-300'
+                                                : 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+                                            }`}
+                                          >
+                                            <div className="flex items-center gap-1.5 font-bold text-xs">
+                                              <Check className={`w-4 h-4 ${isIdentical ? 'text-orange-600' : isClose ? 'text-amber-600' : 'text-emerald-600'}`} />
+                                              <span className={isIdentical ? 'text-orange-950' : isClose ? 'text-amber-950' : 'text-emerald-900'}>
+                                                Appointment Confirmed
+                                              </span>
+                                            </div>
+                                            <p className={`text-[12px] font-bold pl-5.5 ${isIdentical ? 'text-orange-900' : isClose ? 'text-amber-900' : 'text-emerald-800'}`}>
+                                              📅 {formatUsDate(evt.finalDate)}
+                                            </p>
+                                            <p className="text-[11px] text-slate-600 font-mono pl-5.5">
+                                              ⏰ {formatTimeRangeWithDualTimezone(evt.finalStartTime || '09:00', evt.finalEndTime || '11:00', evt.timezone || 'ET').displayFull}
+                                            </p>
+                                            {confConflict.level !== 'none' && confConflict.badgeText ? (
+                                              <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleScrollToEventCard(confConflict.primaryMatch?.matchedEventId, confConflict.primaryMatch?.claimNumber);
+  }}
+  title="Hacer clic para ir y resaltar este claim en el tablero"
+  className={`ml-5.5 mt-1 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+    isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+  }`}
+>
+  <span className="underline decoration-dotted underline-offset-2">{confConflict.badgeText}</span>
+  <span className="text-[9px] opacity-75">↗</span>
+</button>
+                                            ) : (
+                                              <p className="text-[10px] text-emerald-700 pl-5.5 pt-1 font-medium">
+                                                All parties confirmed
+                                              </p>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
 
                                     {/* Action Buttons in Delimited Card Footer */}

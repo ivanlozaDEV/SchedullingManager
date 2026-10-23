@@ -41,6 +41,7 @@ import { useToast } from '../context/ToastContext';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from '../lib/slaUtils';
 import { appSettingsService } from '../lib/appSettingsService';
 import { formatFullAddress, formatUsDate } from '../lib/timezoneUtils';
+import { getSlotConflict, getConfirmedConflict } from '../lib/scheduleConflictUtils';
 import { 
   formatPhoneAsYouType, 
   isValidPhone, 
@@ -66,7 +67,7 @@ interface ClaimDetailViewProps {
   events: CoordinationEvent[];
   onEventCreated: () => void;
   onClaimUpdated: () => Promise<void>;
-  onViewInFunnel: (claimNumber: string) => void;
+  onViewInFunnel: (claimNumber: string, eventId?: string) => void;
   onClaimDeleted?: () => void;
 }
 
@@ -2960,42 +2961,75 @@ export function ClaimDetailView({
                             </button>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            {evt.slots.map((s, idx) => (
-                              <div key={s.id || idx} className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs flex flex-col justify-between gap-2 shadow-2xs">
-                                <div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-bold text-slate-800 block">Option #{idx + 1}: 📅 {formatUsDate(s.slotDate)}</span>
-                                    {s.status === 'insured_chosen' && (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">Chosen</span>
+                            {evt.slots.map((s, idx) => {
+                              const conflict = getSlotConflict(s, evt, events, claim);
+                              const isIdentical = conflict.level === 'identical';
+                              const isClose = conflict.level === 'close';
+                              return (
+                                <div 
+                                  key={s.id || idx} 
+                                  title={conflict.tooltipText}
+                                  className={`rounded-lg p-2.5 text-xs flex flex-col justify-between gap-2 shadow-2xs border transition-colors ${
+                                    isIdentical
+                                      ? 'bg-orange-50 border-orange-400 text-orange-950 ring-1 ring-orange-300'
+                                      : isClose
+                                      ? 'bg-amber-50 border-amber-400 text-amber-950 ring-1 ring-amber-300'
+                                      : 'bg-white border-slate-200 text-slate-800'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-bold block">Option #{idx + 1}: 📅 {formatUsDate(s.slotDate)}</span>
+                                      {s.status === 'insured_chosen' && (
+                                        <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">Chosen</span>
+                                      )}
+                                    </div>
+                                    <span className="text-[11px] text-slate-500 font-mono mt-0.5 block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                    {conflict.level !== 'none' && conflict.badgeText && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (conflict.primaryMatch?.claimNumber) {
+                                            onViewInFunnel(conflict.primaryMatch.claimNumber, conflict.primaryMatch.matchedEventId);
+                                          }
+                                        }}
+                                        title="Hacer clic para ir y resaltar este claim en el tablero"
+                                        className={`mt-1.5 text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+                                          isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+                                        }`}
+                                      >
+                                        <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+                                        <span className="text-[9px] opacity-75">↗</span>
+                                      </button>
                                     )}
                                   </div>
-                                  <span className="text-[11px] text-slate-500 font-mono mt-0.5 block">{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                  {evt.coordinationStage !== '4_confirmed' && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await schedulingService.directConfirmEvent(evt.id, {
+                                            finalDate: s.slotDate,
+                                            finalStartTime: s.startTime,
+                                            finalEndTime: s.endTime,
+                                            sendCalendarInvite: true,
+                                          });
+                                          onEventCreated();
+                                        } catch (err: any) {
+                                          alert(err.message);
+                                        }
+                                      }}
+                                      className="w-full py-1 px-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
+                                      title="Directly confirm this option as the final appointment"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Confirm This Date ➔</span>
+                                    </button>
+                                  )}
                                 </div>
-                                {evt.coordinationStage !== '4_confirmed' && (
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      try {
-                                        await schedulingService.directConfirmEvent(evt.id, {
-                                          finalDate: s.slotDate,
-                                          finalStartTime: s.startTime,
-                                          finalEndTime: s.endTime,
-                                          sendCalendarInvite: true,
-                                        });
-                                        onEventCreated();
-                                      } catch (err: any) {
-                                        alert(err.message);
-                                      }
-                                    }}
-                                    className="w-full py-1 px-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold transition-colors shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
-                                    title="Directly confirm this option as the final appointment"
-                                  >
-                                    <Check className="w-3 h-3" />
-                                    <span>Confirm This Date ➔</span>
-                                  </button>
-                                )}
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -3043,13 +3077,25 @@ export function ClaimDetailView({
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             {(evt.slots || []).map((s) => {
                               const isSelected = (paSelectedSlotIds[evt.id] || []).includes(s.id);
+                              const conflict = getSlotConflict(s, evt, events, claim);
+                              const isIdentical = conflict.level === 'identical';
+                              const isClose = conflict.level === 'close';
                               return (
                                 <button
                                   type="button"
                                   key={s.id}
+                                  title={conflict.tooltipText}
                                   onClick={() => handleTogglePaSlot(evt.id, s.id)}
-                                  className={`p-2.5 rounded-lg border text-left transition-all flex flex-col justify-between ${
-                                    isSelected
+                                  className={`p-2.5 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                                    isIdentical
+                                      ? isSelected
+                                        ? 'bg-orange-100 border-2 border-orange-500 text-orange-950 shadow-xs ring-2 ring-orange-400'
+                                        : 'bg-orange-50/90 border-2 border-orange-400 text-orange-950 hover:bg-orange-100/70'
+                                      : isClose
+                                      ? isSelected
+                                        ? 'bg-amber-100 border-2 border-amber-500 text-amber-950 shadow-xs ring-2 ring-amber-400'
+                                        : 'bg-amber-50/90 border-2 border-amber-400 text-amber-950 hover:bg-amber-100/70'
+                                      : isSelected
                                       ? 'bg-tealBrand-50 border-tealBrand-600 text-tealBrand-950 shadow-xs ring-1 ring-tealBrand-600'
                                       : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                                   }`}
@@ -3068,6 +3114,24 @@ export function ClaimDetailView({
                                     <Clock className="w-3 h-3" />
                                     <span>{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
                                   </span>
+                                  {conflict.level !== 'none' && conflict.badgeText && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (conflict.primaryMatch?.claimNumber) {
+                                          onViewInFunnel(conflict.primaryMatch.claimNumber, conflict.primaryMatch.matchedEventId);
+                                        }
+                                      }}
+                                      title="Hacer clic para ir y resaltar este claim en el tablero"
+                                      className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+                                        isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+                                      }`}
+                                    >
+                                      <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+                                      <span className="text-[9px] opacity-75">↗</span>
+                                    </button>
+                                  )}
                                 </button>
                               );
                             })}
@@ -3207,29 +3271,61 @@ export function ClaimDetailView({
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             {(evt.slots || [])
                               .filter((s) => s.status === 'pa_accepted' || s.status === 'proposed')
-                              .map((s) => (
-                                <div
-                                  key={s.id}
-                                  className="p-3 bg-white border-2 border-tealBrand-300 rounded-lg flex items-center justify-between gap-2 shadow-xs"
-                                >
-                                  <div>
-                                    <span className="font-bold text-slate-900 text-xs block">📅 {formatUsDate(s.slotDate)}</span>
-                                    <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                      <Clock className="w-3 h-3" />
-                                      <span>{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    disabled={insuredConfirmingSlotId === s.id}
-                                    onClick={() => handleInsuredConfirmSlot(evt, s)}
-                                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs shrink-0 flex items-center gap-1"
+                              .map((s) => {
+                                const conflict = getSlotConflict(s, evt, events, claim);
+                                const isIdentical = conflict.level === 'identical';
+                                const isClose = conflict.level === 'close';
+                                return (
+                                  <div
+                                    key={s.id}
+                                    title={conflict.tooltipText}
+                                    className={`p-3 rounded-lg flex flex-col justify-between gap-2 shadow-xs transition-colors ${
+                                      isIdentical
+                                        ? 'bg-orange-50 border-2 border-orange-400 text-orange-950 ring-1 ring-orange-300'
+                                        : isClose
+                                        ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 ring-1 ring-amber-300'
+                                        : 'bg-white border-2 border-tealBrand-300 text-slate-900'
+                                    }`}
                                   >
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span>{insuredConfirmingSlotId === s.id ? 'Locking...' : `${p3Name} Picked This ➔`}</span>
-                                  </button>
-                                </div>
-                              ))}
+                                    <div className="flex items-center justify-between gap-2 w-full">
+                                      <div>
+                                        <span className="font-bold text-slate-900 text-xs block">📅 {formatUsDate(s.slotDate)}</span>
+                                        <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                          <Clock className="w-3 h-3" />
+                                          <span>{s.startTime.slice(0, 5)} - {s.endTime.slice(0, 5)}</span>
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        disabled={insuredConfirmingSlotId === s.id}
+                                        onClick={() => handleInsuredConfirmSlot(evt, s)}
+                                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs shrink-0 flex items-center gap-1"
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>{insuredConfirmingSlotId === s.id ? 'Locking...' : `${p3Name} Picked This ➔`}</span>
+                                      </button>
+                                    </div>
+                                    {conflict.level !== 'none' && conflict.badgeText && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (conflict.primaryMatch?.claimNumber) {
+                                            onViewInFunnel(conflict.primaryMatch.claimNumber, conflict.primaryMatch.matchedEventId);
+                                          }
+                                        }}
+                                        title="Hacer clic para ir y resaltar este claim en el tablero"
+                                        className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 w-fit cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+                                          isIdentical ? 'bg-orange-200/90 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200/90 hover:bg-amber-300 text-amber-950 border border-amber-300'
+                                        }`}
+                                      >
+                                        <span className="underline decoration-dotted underline-offset-2">{conflict.badgeText}</span>
+                                        <span className="text-[9px] opacity-75">↗</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
                           </div>
                         </div>
                         );
@@ -3243,25 +3339,67 @@ export function ClaimDetailView({
                           ['carrier', 'pa', 'insured']
                         );
                         const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
+                        const confConflict = getConfirmedConflict(evt, events, claim);
+                        const isIdentical = confConflict.level === 'identical';
+                        const isClose = confConflict.level === 'close';
                         return (
-                        <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl space-y-2">
+                        <div className={`p-3.5 border rounded-xl space-y-2 transition-all ${
+                          isIdentical
+                            ? 'bg-orange-50/90 border-2 border-orange-400'
+                            : isClose
+                            ? 'bg-amber-50/90 border-2 border-amber-400'
+                            : 'bg-emerald-50 border border-emerald-300'
+                        }`}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
+                              <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center font-bold text-xs ${
+                                isIdentical ? 'bg-orange-600' : isClose ? 'bg-amber-600' : 'bg-emerald-600'
+                              }`}>
                                 ✓
                               </div>
-                              <span className="text-xs font-bold text-emerald-950">
+                              <span className={`text-xs font-bold ${
+                                isIdentical ? 'text-orange-950' : isClose ? 'text-amber-950' : 'text-emerald-950'
+                              }`}>
                                 Inspection Confirmed & Locked!
                               </span>
                             </div>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 uppercase tracking-wide">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                              isIdentical ? 'bg-orange-200 text-orange-900' : isClose ? 'bg-amber-200 text-amber-900' : 'bg-emerald-200 text-emerald-900'
+                            }`}>
                               Step 4: Confirmed
                             </span>
                           </div>
-                          <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-xs font-medium text-emerald-900 flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-4">
+                          <div 
+                            title={confConflict.tooltipText}
+                            className={`p-2.5 rounded-lg border text-xs font-medium flex items-center justify-between flex-wrap gap-2 transition-all ${
+                              isIdentical
+                                ? 'bg-orange-100/70 border-2 border-orange-400 text-orange-950'
+                                : isClose
+                                ? 'bg-amber-100/70 border-2 border-amber-400 text-amber-950'
+                                : 'bg-white border-emerald-200 text-emerald-900'
+                            }`}
+                          >
+                            <div className="flex items-center gap-4 flex-wrap">
                               <span>📅 Date: <strong>{formatUsDate(evt.finalDate)}</strong></span>
                               <span>⏰ Time: <strong>{evt.finalStartTime?.slice(0, 5)} - {evt.finalEndTime?.slice(0, 5)}</strong></span>
+                              {confConflict.level !== 'none' && confConflict.badgeText && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confConflict.primaryMatch?.claimNumber) {
+                                      onViewInFunnel(confConflict.primaryMatch.claimNumber, confConflict.primaryMatch.matchedEventId);
+                                    }
+                                  }}
+                                  title="Hacer clic para ir y resaltar este claim en el tablero"
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-all hover:scale-[1.02] active:scale-95 text-left ${
+                                    isIdentical ? 'bg-orange-200 hover:bg-orange-300 text-orange-950 border border-orange-300' : 'bg-amber-200 hover:bg-amber-300 text-amber-950 border border-amber-300'
+                                  }`}
+                                >
+                                  <span className="underline decoration-dotted underline-offset-2">{confConflict.badgeText}</span>
+                                  <span className="text-[9px] opacity-75">↗</span>
+                                </button>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-[11px] text-emerald-700 font-semibold">Locked on Calendar</span>
