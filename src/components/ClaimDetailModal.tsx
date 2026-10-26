@@ -271,6 +271,16 @@ export function ClaimDetailModal({
                         {claim.timezone === 'CT' ? '🏖️ Pensacola / Panhandle (Central Time - CT)' : '🌴 Miami / Sur de la Florida (Eastern Time - ET)'}
                       </span>
                     </div>
+                    <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100">
+                      <span className="text-[11px] text-slate-500 font-medium">Tarp Status:</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        claim.hasTarp
+                          ? 'bg-teal-50 text-teal-800 border-teal-300'
+                          : 'bg-slate-50 text-slate-600 border-slate-200'
+                      }`}>
+                        {claim.hasTarp ? '⛺ Has Tarp Installed' : 'No Tarp'}
+                      </span>
+                    </div>
                   </div>
                   {claim.notes && (
                     <div className="pt-2 border-t border-slate-200">

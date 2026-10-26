@@ -2375,9 +2375,16 @@ export function App() {
                           >
                             {/* Claim & Carrier */}
                             <td className="py-3 px-4 align-top">
-                              <span className="font-mono font-bold text-maroon-800 text-xs">
-                                {claim.claimNumber}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono font-bold text-maroon-800 text-xs">
+                                  {claim.claimNumber}
+                                </span>
+                                {claim.hasTarp && (
+                                  <span className="text-[10px] bg-teal-50 text-teal-800 border border-teal-200 px-1.5 py-0.2 rounded-md font-bold" title="Property has a tarp installed">
+                                    ⛺ Tarp
+                                  </span>
+                                )}
+                              </div>
                               <div className="font-semibold text-slate-900 mt-0.5">
                                 {claim.carrier}
                               </div>
