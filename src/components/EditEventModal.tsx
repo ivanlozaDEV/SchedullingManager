@@ -3,6 +3,7 @@ import {
   X, 
   Pencil, 
   Calendar, 
+  Clock,
   MapPin, 
   Users, 
   Bell, 
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { useToast } from '../context/ToastContext';
+import { supabase } from '../lib/supabase';
 import type { 
   CoordinationEvent, 
   Claim, 
@@ -151,10 +153,11 @@ export function EditEventModal({
         .trim();
       setNotes(cleanNotes);
 
-      // Confirmed appointment
-      setFinalDate(event.finalDate || '');
-      setFinalStartTime(event.finalStartTime?.slice(0, 5) || '09:00');
-      setFinalEndTime(event.finalEndTime?.slice(0, 5) || '11:00');
+      // Confirmed appointment or tentative slot
+      const firstSlot = (event.slots && event.slots.length > 0) ? event.slots[0] : null;
+      setFinalDate(event.finalDate || firstSlot?.slotDate || '');
+      setFinalStartTime(event.finalStartTime?.slice(0, 5) || firstSlot?.startTime?.slice(0, 5) || '09:00');
+      setFinalEndTime(event.finalEndTime?.slice(0, 5) || firstSlot?.endTime?.slice(0, 5) || '11:00');
 
       // Participants
       const participants = event.participants || [];
@@ -307,6 +310,25 @@ export function EditEventModal({
         finalEndTime: coordinationStage === '4_confirmed' ? finalEndTime : undefined,
         participants,
       });
+
+      // Update or insert tentative slot if not confirmed
+      if (coordinationStage !== '4_confirmed' && finalDate) {
+        if (event.slots && event.slots.length > 0) {
+          await supabase.from('event_slots').update({
+            slot_date: finalDate,
+            start_time: `${finalStartTime}:00`,
+            end_time: `${finalEndTime}:00`
+          }).eq('id', event.slots[0].id);
+        } else {
+          await supabase.from('event_slots').insert({
+            event_id: event.id,
+            slot_date: finalDate,
+            start_time: `${finalStartTime}:00`,
+            end_time: `${finalEndTime}:00`,
+            status: 'proposed'
+          });
+        }
+      }
 
       // Update timezone if changed
       if (timezone !== event.timezone) {
@@ -524,7 +546,7 @@ export function EditEventModal({
             )}
 
             {/* Confirmed Details if Stage 4 */}
-            {coordinationStage === '4_confirmed' && (
+            {coordinationStage === '4_confirmed' ? (
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl space-y-2.5">
                 <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-700" />
@@ -559,6 +581,47 @@ export function EditEventModal({
                       onChange={(e) => setFinalEndTime(e.target.value)}
                       required={coordinationStage === '4_confirmed'}
                       className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-700" />
+                    <span>Horario Tentativo Propuesto (En Coordinación)</span>
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
+                    Opción Tentativa
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Fecha de la Opción</label>
+                    <input
+                      type="date"
+                      value={finalDate}
+                      onChange={(e) => setFinalDate(e.target.value)}
+                      className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora Inicio</label>
+                    <input
+                      type="time"
+                      value={finalStartTime}
+                      onChange={(e) => setFinalStartTime(e.target.value)}
+                      className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Hora Fin</label>
+                    <input
+                      type="time"
+                      value={finalEndTime}
+                      onChange={(e) => setFinalEndTime(e.target.value)}
+                      className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none"
                     />
                   </div>
                 </div>

@@ -45,6 +45,7 @@ import { EditEventModal } from './components/EditEventModal';
 import { EditSlotModal } from './components/EditSlotModal';
 import { EmailPreviewModal } from './components/EmailPreviewModal';
 import { MasterCatalogsView } from './components/MasterCatalogsView';
+import { CalendarView } from './components/CalendarView';
 import { useToast } from './context/ToastContext';
 import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from './lib/slaUtils';
 import { appSettingsService } from './lib/appSettingsService';
@@ -104,7 +105,7 @@ export function App() {
   const [isNewClaimOpen, setIsNewClaimOpen] = useState(false);
   const [isSlaSettingsOpen, setIsSlaSettingsOpen] = useState(false);
   const [slaConfig, setSlaConfig] = useState<SlaConfig>(getSlaConfig());
-  const [viewMode, setViewMode] = useState<'funnel' | 'claims' | 'catalogs'>('funnel');
+  const [viewMode, setViewMode] = useState<'funnel' | 'claims' | 'calendar' | 'catalogs'>('funnel');
   const [claimsEventFilter, setClaimsEventFilter] = useState<'all' | 'unassigned' | 'assigned'>('all');
   const [claimsLayoutMode, setClaimsLayoutMode] = useState<'list' | 'grid'>('list');
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
@@ -857,6 +858,17 @@ export function App() {
               )}
             </button>
             <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                viewMode === 'calendar'
+                  ? 'bg-white text-maroon-800 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Calendar</span>
+            </button>
+            <button
               onClick={() => setViewMode('catalogs')}
               className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${
                 viewMode === 'catalogs'
@@ -870,7 +882,7 @@ export function App() {
           </div>
 
           {/* Search Box (For Funnel and Claims views) */}
-          {viewMode !== 'catalogs' && (
+          {viewMode !== 'catalogs' && viewMode !== 'calendar' && (
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -2622,7 +2634,21 @@ export function App() {
         )}
 
         {/* ======================================================== */}
-        {/* VIEW 3: MASTER CATALOGS & ACTORS (CRUD) */}
+        {/* VIEW 3: CALENDAR VIEW */}
+        {/* ======================================================== */}
+        {viewMode === 'calendar' && (
+          <CalendarView
+            events={events}
+            claims={claims}
+            pas={pas}
+            onSelectClaim={(claim) => setSelectedClaim(claim)}
+            onEditEvent={(evt) => setEditingEventTarget(evt)}
+            onDataRefresh={loadData}
+          />
+        )}
+
+        {/* ======================================================== */}
+        {/* VIEW 4: MASTER CATALOGS & ACTORS (CRUD) */}
         {/* ======================================================== */}
         {viewMode === 'catalogs' && (
           <MasterCatalogsView
