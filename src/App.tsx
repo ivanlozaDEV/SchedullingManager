@@ -1244,6 +1244,12 @@ export function App() {
 
                                 {/* Actors Badges */}
                                 <div className="flex flex-wrap gap-1.5 pt-1 border-t border-slate-100 min-h-[26px]">
+                                  {evt.claim?.hasTarp && (
+                                    <span className="text-[10px] bg-teal-50 text-teal-800 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-teal-200" title="This property has a tarp installed">
+                                      <span>⛺</span>
+                                      <span>Has Tarp</span>
+                                    </span>
+                                  )}
                                   {paParticipant?.publicAdjuster ? (
                                     <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1.5 border border-slate-200">
                                       <span 
@@ -2093,6 +2099,33 @@ export function App() {
                                             <p className="text-[11px] text-slate-600 font-mono pl-5.5">
                                               ⏰ {formatTimeRangeWithDualTimezone(evt.finalStartTime || '09:00', evt.finalEndTime || '11:00', evt.timezone || 'ET').displayFull}
                                             </p>
+                                            {evt.claim?.hasTarp && (
+                                              <div className="mt-2 pt-2 border-t border-emerald-200/60 flex items-center justify-between pl-5.5">
+                                                <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                                                  <span className="text-xs">⛺</span>
+                                                  <span className={evt.tarpRemovalCoordinated ? 'text-emerald-800' : 'text-amber-800'}>
+                                                    {evt.tarpRemovalCoordinated ? 'Tarp Removal Coordinated' : 'Tarp Removal Pending'}
+                                                  </span>
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    const nextState = !evt.tarpRemovalCoordinated;
+                                                    await schedulingService.toggleTarpRemovalCoordinated(evt.id, nextState);
+                                                    setEvents(prev => prev.map(ev => ev.id === evt.id ? { ...ev, tarpRemovalCoordinated: nextState } : ev));
+                                                  }}
+                                                  title={evt.tarpRemovalCoordinated ? 'Click to mark as pending' : 'Click to mark as coordinated'}
+                                                  className={`text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer transition-all ${
+                                                    evt.tarpRemovalCoordinated 
+                                                      ? 'bg-emerald-200 text-emerald-900 hover:bg-emerald-300' 
+                                                      : 'bg-amber-200 text-amber-900 hover:bg-amber-300'
+                                                  }`}
+                                                >
+                                                  {evt.tarpRemovalCoordinated ? '✓ Done' : 'Pending'}
+                                                </button>
+                                              </div>
+                                            )}
                                             {confConflict.level !== 'none' && confConflict.badgeText ? (
                                               <button
   type="button"

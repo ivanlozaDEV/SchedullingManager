@@ -219,7 +219,7 @@ export function CalendarView({
 }: CalendarViewProps) {
   // Navigation & View Mode
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
-  const [viewType, setViewType] = useState<'month' | 'week' | 'agenda'>('month');
+  const [viewType, setViewType] = useState<'month' | 'week' | 'agenda'>('week');
 
   // Filters
   const [selectedPaId, setSelectedPaId] = useState<string | 'all'>('all');
@@ -964,7 +964,7 @@ export function CalendarView({
                         >
                           <div className="flex items-center justify-between gap-1 leading-tight">
                             <span className="font-extrabold text-slate-900 truncate">
-                              {format12Hour(item.startTime)}
+                              {format12Hour(item.startTime)} – {format12Hour(item.endTime)}
                             </span>
                             <div className="flex items-center gap-1 shrink-0">
                               <span 
@@ -1256,8 +1256,8 @@ export function CalendarView({
                           {/* Time & TZ */}
                           <div className="flex items-center justify-between gap-1 mb-1">
                             <span className="font-extrabold text-slate-900 flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-slate-500" />
-                              {format12Hour(item.startTime)}
+                              <Clock className="w-3 h-3 text-slate-500 shrink-0" />
+                              <span>{format12Hour(item.startTime)} – {format12Hour(item.endTime)}</span>
                             </span>
                             <div className="flex items-center gap-1">
                               <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
@@ -1283,8 +1283,18 @@ export function CalendarView({
 
                           {/* Line 1: Claim Number & Carrier */}
                           <div className="flex items-center justify-between gap-1 text-[10px] font-mono font-bold text-slate-500">
-                            <span className="truncate">
-                              {item.claim?.claimNumber ? `#${item.claim.claimNumber}` : 'Claim'}
+                            <span className="truncate flex items-center gap-1">
+                              <span>{item.claim?.claimNumber ? `#${item.claim.claimNumber}` : 'Claim'}</span>
+                              {item.claim?.hasTarp && (
+                                <span 
+                                  title={item.event?.tarpRemovalCoordinated ? '⛺ Tarp Removal Coordinated' : '⛺ Has Tarp (Removal Pending)'}
+                                  className={`px-1 py-0.2 rounded text-[9px] font-bold ${
+                                    item.event?.tarpRemovalCoordinated ? 'bg-emerald-100 text-emerald-800' : 'bg-teal-100 text-teal-800'
+                                  }`}
+                                >
+                                  {item.event?.tarpRemovalCoordinated ? '✓ ⛺' : '⛺'}
+                                </span>
+                              )}
                             </span>
                             {item.claim?.carrier && (
                               <span className="text-[9px] font-sans font-semibold text-slate-400 truncate max-w-[80px]" title={item.claim.carrier}>

@@ -1366,6 +1366,16 @@ export function ClaimDetailView({
                   </span>
                 </div>
               </div>
+              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
+                  <span className="text-slate-500 font-medium">Tarp Status:</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    claim.hasTarp
+                      ? 'bg-teal-50 text-teal-800 border-teal-300'
+                      : 'bg-slate-50 text-slate-600 border-slate-200'
+                  }`}>
+                    {claim.hasTarp ? '⛺ Has Tarp Installed' : 'No Tarp'}
+                  </span>
+                </div>
               {claim.notes && (
                 <div className="pt-2 border-t border-slate-100">
                   <span className="text-slate-500 block mb-0.5 font-medium">Remarks / Instructions:</span>
@@ -2631,6 +2641,21 @@ export function ClaimDetailView({
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="text-xs font-bold text-slate-900">{evt.eventType}</h4>
+                          {claim.hasTarp && (
+                            <span className="text-[10px] bg-teal-50 text-teal-800 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-teal-200">
+                              <span>⛺</span>
+                              <span>Has Tarp</span>
+                            </span>
+                          )}
+                          {claim.hasTarp && evt.coordinationStage === '4_confirmed' && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              evt.tarpRemovalCoordinated
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                            }`}>
+                              {evt.tarpRemovalCoordinated ? '✓ Tarp Removal Coordinated' : '⚠️ Tarp Removal Pending'}
+                            </span>
+                          )}
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             evt.coordinationStage === '4_confirmed' 
                               ? 'bg-emerald-100 text-emerald-800'

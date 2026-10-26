@@ -34,6 +34,21 @@ async function parseEdgeFunctionError(error: any): Promise<string> {
 }
 
 export const schedulingService = {
+  // Toggle Tarp Removal Coordination
+  async toggleTarpRemovalCoordinated(eventId: string, coordinated: boolean, notes?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const { error } = await supabase.from('events').update({
+      tarp_removal_coordinated: coordinated,
+      tarp_removal_coordinated_at: coordinated ? new Date().toISOString() : null,
+      tarp_removal_notes: notes || null
+    }).eq('id', eventId);
+    if (error) {
+      console.warn('Error updating tarp_removal_coordinated:', error.message);
+      return false;
+    }
+    return true;
+  },
+
   // 1. Obtener Public Adjusters
   async getPublicAdjusters(includeInactive = false): Promise<PublicAdjuster[]> {
     if (!isSupabaseConfigured) return [];
@@ -173,6 +188,7 @@ export const schedulingService = {
       dateOfLoss: row.date_of_loss,
       status: row.status,
       notes: row.notes || '',
+      hasTarp: Boolean(row.has_tarp),
       timezone: detectPropertyTimezone(`${row.property_address || ''} ${row.city || ''} ${row.zip_code || ''} ${row.notes || ''}`),
       insured: row.insured ? {
         id: row.insured.id,
@@ -301,6 +317,9 @@ export const schedulingService = {
         const m = row.notes?.match(/\[SlotsOriginator:\s*([a-zA-Z0-9_-]+)\]/);
         return m ? (m[1] as 'carrier' | 'insured' | 'pa' | 'office') : 'carrier';
       })(),
+      tarpRemovalCoordinated: Boolean(row.tarp_removal_coordinated),
+      tarpRemovalCoordinatedAt: row.tarp_removal_coordinated_at,
+      tarpRemovalNotes: row.tarp_removal_notes,
       timezone: detectPropertyTimezone(
         `${row.notes || ''} ${row.location || ''} ${row.claim?.property_address || ''} ${row.claim?.city || ''} ${row.claim?.zip_code || ''}`
       ),
@@ -317,6 +336,7 @@ export const schedulingService = {
         state: row.claim.state,
         zipCode: row.claim.zip_code,
         status: row.claim.status,
+        hasTarp: Boolean(row.claim.has_tarp),
         timezone: detectPropertyTimezone(
           `${row.claim.notes || ''} ${row.claim.property_address || ''} ${row.claim.city || ''} ${row.claim.zip_code || ''}`
         ),

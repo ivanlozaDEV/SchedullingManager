@@ -90,6 +90,7 @@ export interface Claim {
   notes?: string;
   publicAdjusterId?: string;
   timezone?: 'CT' | 'ET' | null;
+  hasTarp?: boolean;
   insured?: Insured;
   publicAdjuster?: PublicAdjuster;
   carrierReps?: CarrierRepresentative[];
@@ -158,6 +159,9 @@ export interface CoordinationEvent {
   slotsOriginator?: 'carrier' | 'insured' | 'pa' | 'office' | null;
   coordinationSequence?: CoordinationParty[] | null;
   timezone?: 'CT' | 'ET' | null;
+  tarpRemovalCoordinated?: boolean;
+  tarpRemovalCoordinatedAt?: string;
+  tarpRemovalNotes?: string;
   createdAt: string;
   updatedAt: string;
   // Joins
