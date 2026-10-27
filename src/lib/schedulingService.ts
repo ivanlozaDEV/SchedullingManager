@@ -506,6 +506,9 @@ export const schedulingService = {
       if (matchingSlot) {
         await supabase.from('event_slots').update({ status: 'insured_chosen' }).eq('id', matchingSlot.id);
         await supabase.from('event_slots').update({ status: 'discarded' }).eq('event_id', eventId).neq('id', matchingSlot.id);
+      } else {
+        // Discard existing tentative proposals so they don't linger on the calendar
+        await supabase.from('event_slots').update({ status: 'discarded' }).eq('event_id', eventId);
       }
     }
 

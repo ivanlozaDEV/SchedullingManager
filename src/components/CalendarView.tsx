@@ -32,7 +32,8 @@ import {
   Trash2,
   Car,
   Save,
-  Loader2
+  Loader2,
+  Kanban
 } from 'lucide-react';
 import type { CoordinationEvent, Claim, PublicAdjuster } from '../types';
 import { 
@@ -188,6 +189,8 @@ interface CalendarViewProps {
   onSelectClaim: (claim: Claim) => void;
   onEditEvent: (event: CoordinationEvent) => void;
   onDataRefresh?: () => void;
+  onViewInFunnel?: (claimNumber: string, eventId?: string) => void;
+  initialDate?: Date | null;
 }
 
 export interface CalendarEventItem {
@@ -215,11 +218,19 @@ export function CalendarView({
   pas,
   onSelectClaim,
   onEditEvent,
-  onDataRefresh
+  onDataRefresh,
+  onViewInFunnel,
+  initialDate,
 }: CalendarViewProps) {
   // Navigation & View Mode
-  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
+  const [currentDate, setCurrentDate] = useState<Date>(() => initialDate || new Date());
   const [viewType, setViewType] = useState<'month' | 'week' | 'agenda'>('week');
+
+  useEffect(() => {
+    if (initialDate) {
+      setCurrentDate(initialDate);
+    }
+  }, [initialDate]);
 
   // Filters
   const [selectedPaId, setSelectedPaId] = useState<string | 'all'>('all');
@@ -1896,6 +1907,22 @@ export function CalendarView({
                   >
                     <FolderOpen className="w-3.5 h-3.5" />
                     <span>Open Claim Detail</span>
+                  </button>
+                )}
+
+                {onViewInFunnel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const claimNum = activeItem.claim?.claimNumber || '';
+                      onViewInFunnel(claimNum, activeItem.eventId);
+                      setActiveItem(null);
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-tealBrand-700 hover:bg-tealBrand-800 text-white transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Ir a gestionar y completar esta cita en el Embudo de Coordinación"
+                  >
+                    <Kanban className="w-3.5 h-3.5" />
+                    <span>Gestionar en Embudo</span>
                   </button>
                 )}
 

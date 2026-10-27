@@ -27,7 +27,8 @@ import {
   LogOut,
   Trash2,
   SlidersHorizontal,
-  Zap
+  Zap,
+  MoreVertical
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { schedulingService, hasEventSentCalendarNotice } from './lib/schedulingService';
@@ -231,6 +232,7 @@ export function App() {
   const [emailPreviewEvent, setEmailPreviewEvent] = useState<CoordinationEvent | null>(null);
   const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update' | 'calendar_confirmation'>('selection_options');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
 
   const handleOpenEmailPreview = (
     evt: CoordinationEvent, 
@@ -689,6 +691,20 @@ export function App() {
     }, 120);
   };
 
+  const [calendarInitialDate, setCalendarInitialDate] = useState<Date | null>(null);
+
+  const handleViewInCalendar = (dateStr?: string) => {
+    if (dateStr) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const parsedDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
+        setCalendarInitialDate(parsedDate);
+      }
+    }
+    setSelectedClaim(null);
+    setViewMode('calendar');
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Clean Light Header */}
@@ -1100,44 +1116,91 @@ export function App() {
                                         </span>
                                       )}
 
-                                      {/* Edit Event Details */}
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditingEventTarget(evt);
-                                        }}
-                                        className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-maroon-800 hover:bg-maroon-50 border border-transparent hover:border-maroon-200 transition-colors cursor-pointer"
-                                        title="Edit event details, location & participants"
-                                      >
-                                        <Pencil className="w-3 h-3" />
-                                      </button>
+                                      {/* Dropdown de Opciones Secundarias / Avanzadas */}
+                                      <div className="relative">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const menuKey = `${stage.key}-${evt.id}`;
+                                            setOpenCardMenuId(openCardMenuId === menuKey ? null : menuKey);
+                                          }}
+                                          className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 border border-transparent hover:border-slate-300 transition-colors cursor-pointer"
+                                          title="Opciones del evento (Editar, Historial, Reiniciar)"
+                                        >
+                                          <MoreVertical className="w-3.5 h-3.5" />
+                                        </button>
 
-                                      {/* View Event History & Audit Log */}
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setHistoryEventTarget(evt);
-                                        }}
-                                        className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-tealBrand-700 hover:bg-tealBrand-50 border border-transparent hover:border-tealBrand-200 transition-colors"
-                                        title={`View event history & audit logs (${evt.logs?.length || 0} entries)`}
-                                      >
-                                        <History className="w-3 h-3" />
-                                      </button>
+                                        {openCardMenuId === `${stage.key}-${evt.id}` && (
+                                          <>
+                                            <div 
+                                              className="fixed inset-0 z-40" 
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenCardMenuId(null);
+                                              }} 
+                                            />
+                                            <div className="absolute right-0 top-7 z-50 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 text-xs">
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEditingEventTarget(evt);
+                                                  setOpenCardMenuId(null);
+                                                }}
+                                                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 font-medium cursor-pointer"
+                                              >
+                                                <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                                                <span>Editar Cita & Personas</span>
+                                              </button>
 
-                                      {/* Reset / Cancel Flow button */}
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEventToReset(evt);
-                                        }}
-                                        className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
-                                        title="Reset flow / Cancel (returns to Stage 1)"
-                                      >
-                                        <RotateCcw className="w-3 h-3" />
-                                      </button>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setHistoryEventTarget(evt);
+                                                  setOpenCardMenuId(null);
+                                                }}
+                                                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 font-medium cursor-pointer"
+                                              >
+                                                <History className="w-3.5 h-3.5 text-tealBrand-600" />
+                                                <span>Historial ({evt.logs?.length || 0})</span>
+                                              </button>
+
+                                              {(evt.finalDate || (evt.slots && evt.slots.length > 0)) && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const targetD = evt.finalDate || evt.slots?.find(s => s.status !== 'discarded')?.slotDate;
+                                                    handleViewInCalendar(targetD);
+                                                    setOpenCardMenuId(null);
+                                                  }}
+                                                  className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 font-medium cursor-pointer"
+                                                >
+                                                  <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
+                                                  <span>Ver en Calendario</span>
+                                                </button>
+                                              )}
+
+                                              <div className="border-t border-slate-100 my-1" />
+
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEventToReset(evt);
+                                                  setOpenCardMenuId(null);
+                                                }}
+                                                className="w-full px-3 py-2 text-left hover:bg-rose-50 flex items-center gap-2.5 text-rose-700 font-medium cursor-pointer"
+                                              >
+                                                <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+                                                <span>Reiniciar Coordinación</span>
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
 
@@ -1385,6 +1448,15 @@ export function App() {
                                                       </span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => handleViewInCalendar(s.slotDate)}
+                                                        className="h-6 px-1.5 rounded bg-white hover:bg-slate-200 text-slate-600 hover:text-tealBrand-800 border border-slate-200 flex items-center gap-1 transition-colors shadow-2xs cursor-pointer text-[10px] font-semibold"
+                                                        title="Ver este horario y la disponibilidad del PA en el Calendario"
+                                                      >
+                                                        <Calendar className="w-3 h-3 text-tealBrand-700" />
+                                                        <span className="hidden sm:inline">Calendario</span>
+                                                      </button>
                                                       {!isHistorical && (
                                                         <button
                                                           type="button"
@@ -1673,6 +1745,18 @@ export function App() {
                                                       type="button"
                                                       onClick={(e) => {
                                                         e.stopPropagation();
+                                                        handleViewInCalendar(s.slotDate);
+                                                      }}
+                                                      className="h-6 px-1.5 rounded bg-white hover:bg-slate-200 text-slate-600 hover:text-tealBrand-800 border border-slate-200 flex items-center gap-1 transition-colors shadow-2xs cursor-pointer text-[10px] font-semibold"
+                                                      title="Ver este horario y la disponibilidad del PA en el Calendario"
+                                                    >
+                                                      <Calendar className="w-3 h-3 text-tealBrand-700" />
+                                                      <span className="hidden sm:inline">Calendario</span>
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
                                                         setEditingSlotTarget({ slot: s, event: evt });
                                                       }}
                                                       className="h-6 w-6 rounded bg-white hover:bg-slate-200 text-slate-500 hover:text-tealBrand-800 border border-slate-200 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
@@ -1894,6 +1978,15 @@ export function App() {
                                                       <div className="flex items-center gap-1.5 shrink-0">
                                                         <button
                                                           type="button"
+                                                          onClick={() => handleViewInCalendar(s.slotDate)}
+                                                          className="h-7 px-2 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-tealBrand-800 border border-tealBrand-300 hover:border-slate-400 flex items-center gap-1 transition-colors shadow-2xs cursor-pointer text-[10px] font-semibold"
+                                                          title="Ver este horario y la disponibilidad del PA en el Calendario"
+                                                        >
+                                                          <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
+                                                          <span className="hidden sm:inline">Calendario</span>
+                                                        </button>
+                                                        <button
+                                                          type="button"
                                                           onClick={() => setEditingSlotTarget({ slot: s, event: evt })}
                                                           className="h-7 w-7 rounded bg-white hover:bg-slate-100 text-slate-500 hover:text-tealBrand-800 border border-tealBrand-300 hover:border-slate-400 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
                                                           title="Modificar fecha u horario de esta opción"
@@ -2087,11 +2180,22 @@ export function App() {
                                                 : 'bg-emerald-50 border border-emerald-200 text-emerald-900'
                                             }`}
                                           >
-                                            <div className="flex items-center gap-1.5 font-bold text-xs">
-                                              <Check className={`w-4 h-4 ${isIdentical ? 'text-orange-600' : isClose ? 'text-amber-600' : 'text-emerald-600'}`} />
-                                              <span className={isIdentical ? 'text-orange-950' : isClose ? 'text-amber-950' : 'text-emerald-900'}>
-                                                Appointment Confirmed
-                                              </span>
+                                            <div className="flex items-center justify-between gap-1.5 font-bold text-xs">
+                                              <div className="flex items-center gap-1.5">
+                                                <Check className={`w-4 h-4 ${isIdentical ? 'text-orange-600' : isClose ? 'text-amber-600' : 'text-emerald-600'}`} />
+                                                <span className={isIdentical ? 'text-orange-950' : isClose ? 'text-amber-950' : 'text-emerald-900'}>
+                                                  Appointment Confirmed
+                                                </span>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleViewInCalendar(evt.finalDate)}
+                                                className="h-6 px-2 rounded bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 text-[10px] font-bold transition-colors shadow-2xs cursor-pointer ml-auto"
+                                                title="Ver esta cita confirmada en el Calendario"
+                                              >
+                                                <Calendar className="w-3 h-3 text-emerald-700" />
+                                                <span>Ver en Calendario</span>
+                                              </button>
                                             </div>
                                             <p className={`text-[12px] font-bold pl-5.5 ${isIdentical ? 'text-orange-900' : isClose ? 'text-amber-900' : 'text-emerald-800'}`}>
                                               📅 {formatUsDate(evt.finalDate)}
@@ -2684,6 +2788,15 @@ export function App() {
             onSelectClaim={(claim) => setSelectedClaim(claim)}
             onEditEvent={(evt) => setEditingEventTarget(evt)}
             onDataRefresh={loadData}
+            onViewInFunnel={(claimNumber, eventId) => {
+              setSelectedClaim(null);
+              setViewMode('funnel');
+              setSearchQuery(claimNumber);
+              setTimeout(() => {
+                handleScrollToEventCard(eventId, claimNumber);
+              }, 250);
+            }}
+            initialDate={calendarInitialDate}
           />
         )}
 
