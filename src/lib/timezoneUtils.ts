@@ -9,10 +9,10 @@ export type FloridaTimezone = 'CT' | 'ET';
 // Central Time Florida ZIP prefixes (Escambia, Santa Rosa, Okaloosa, Walton, Bay, etc.)
 const CT_ZIP_PREFIXES = ['324', '325'];
 
-// Key cities and localities in Florida Central Time
 const CT_KEYWORDS = [
   'pensacola',
   'panama city',
+  'panama city beach',
   'destin',
   'fort walton',
   'ft walton',
@@ -24,6 +24,7 @@ const CT_KEYWORDS = [
   'gulf breeze',
   'niceville',
   'defuniak',
+  'defuniak springs',
   'marianna',
   'bonifay',
   'chipley',
@@ -31,6 +32,7 @@ const CT_KEYWORDS = [
   'santa rosa beach',
   'miramar beach',
   'perdido',
+  'perdido key',
   'escambia',
   'okaloosa',
   'walton county',
@@ -41,10 +43,20 @@ const CT_KEYWORDS = [
   'century',
   'molino',
   'molina', // Typo alias for Molino, FL
+  'jay',
   'mexico beach',
   'wewahitchka',
   'port st joe',
-  'port st. joe'
+  'port st. joe',
+  'baker',
+  'laurel hill',
+  'shalimar',
+  'freeport',
+  'rosemary beach',
+  'seaside',
+  'alys beach',
+  'grayton beach',
+  'inlet beach'
 ];
 
 /**
@@ -356,46 +368,75 @@ export function formatCityTitleCase(rawCity: string): string {
 
 /**
  * Resolves the property city name dynamically from claim.city or address.
- * Prioritizes the real city of the property (e.g. Molino, Tampa, Miami Beach)
- * instead of hardcoding Pensacola or Miami.
+ * Prioritizes the real city of the property (e.g. Molino, Jay, Pensacola, Miami Beach).
+ * If the property is detected in Central Time (CT), any "Miami" or South Florida
+ * candidate is STRICTLY REJECTED as an invalid default and replaced by the actual city or Pensacola.
  */
 export function resolveCityName(
   city?: string | null,
   address?: string | null,
-  timezone: FloridaTimezone = 'ET'
+  timezone?: FloridaTimezone
 ): string {
-  // 1. If explicit city provided, ensure it's not a full street address
-  if (city && city.trim()) {
-    const c = city.trim();
-    if (!/\d{3,}/.test(c) && !/,\s*fl\b/i.test(c)) {
-      return formatCityTitleCase(c);
-    }
-  }
-
-  // 2. Search in combined text (city + address) for known city keywords (longest first)
   const combined = `${city || ''} ${address || ''}`.trim();
+  const effectiveTz = timezone || detectPropertyTimezone(combined);
+
+  // Non-CT cities that must NEVER be accepted if the property is in CT
+  const isInvalidCityForCt = (name: string) => {
+    const l = name.toLowerCase().trim();
+    return [
+      'miami', 'miami beach', 'doral', 'hialeah', 'fort lauderdale', 'ft lauderdale',
+      'pompano beach', 'hollywood', 'coral gables', 'west palm beach', 'boca raton',
+      'delray beach', 'tampa', 'orlando', 'jacksonville', 'fort myers', 'naples'
+    ].includes(l);
+  };
+
+  const cityCandidate = (city || '').trim();
+  const hasSuspiciousCity = !cityCandidate ||
+    /\d{3,}/.test(cityCandidate) ||
+    /,\s*fl\b/i.test(cityCandidate) ||
+    (effectiveTz === 'CT' && isInvalidCityForCt(cityCandidate));
+
+  // 1. Search combined text for known Florida cities (longest first)
   if (combined) {
     const lower = combined.toLowerCase();
     const sortedCities = [...FLORIDA_CITIES].sort((a, b) => b.length - a.length);
     for (const kw of sortedCities) {
+      if (effectiveTz === 'CT' && !CT_KEYWORDS.includes(kw)) continue;
       const regex = new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i');
       if (regex.test(lower)) {
-        return formatCityTitleCase(kw);
+        const norm = (kw === 'molina') ? 'molino' : kw;
+        return formatCityTitleCase(norm);
       }
     }
 
-    // 3. Fallback: match standard US address pattern: "..., <City>, FL <ZIP>"
-    const addrMatch = combined.match(/,\s*([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i);
-    if (addrMatch) {
-      const candidate = addrMatch[1].trim();
-      if (candidate.length > 2 && !/\d/.test(candidate)) {
-        return formatCityTitleCase(candidate);
+    // 2. Fallback regex to capture city name right before ", FL" or " FL <zip>"
+    const regexes = [
+      /,\s*([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i,
+      /(?:^|[\s,])([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i,
+      /(?:^|[\s,])([A-Za-z\s.]+?)\s+(?:FL|Florida)\s+\d{5}\b/i
+    ];
+    for (const rx of regexes) {
+      const match = combined.match(rx);
+      if (match) {
+        let candidate = match[1].trim();
+        // Remove street suffixes like "Durand Ave", "Oakforest Dr", "Godwin Rd", "Main St"
+        candidate = candidate.replace(/^(?:.*?\b(?:ave|avenue|st|street|dr|drive|rd|road|blvd|lane|ln|ct|court|way|loop|cir|hwy|highway|pkwy)\b\s*)/i, '').trim();
+        if (candidate.length >= 3 && !/\d/.test(candidate)) {
+          if (effectiveTz !== 'CT' || !isInvalidCityForCt(candidate)) {
+            return formatCityTitleCase(candidate);
+          }
+        }
       }
     }
   }
 
+  // 3. If explicit city was provided and is valid for the timezone, use it
+  if (cityCandidate && !hasSuspiciousCity) {
+    return formatCityTitleCase(cityCandidate);
+  }
+
   // 4. Default timezone fallback
-  return timezone === 'CT' ? 'Pensacola' : 'Miami';
+  return effectiveTz === 'CT' ? 'Pensacola' : 'Miami';
 }
 
 /**
@@ -405,13 +446,15 @@ export function resolveCityName(
 export function formatTimeRangeForSubject(
   startTime24?: string,
   endTime24?: string,
-  timezone: FloridaTimezone = 'ET',
+  timezone?: FloridaTimezone,
   city?: string,
   address?: string
 ): string {
   if (!startTime24) return '';
-  const cityName = resolveCityName(city, address, timezone);
-  const tzCityLabel = `${cityName} Time ${timezone}`;
+  const combined = `${city || ''} ${address || ''}`.trim();
+  const effectiveTz = timezone || detectPropertyTimezone(combined);
+  const cityName = resolveCityName(city, address, effectiveTz);
+  const tzCityLabel = `${cityName} Time ${effectiveTz}`;
   const s12 = format12Hour(startTime24).toLowerCase();
   if (endTime24) {
     const e12 = format12Hour(endTime24).toLowerCase();
@@ -448,10 +491,13 @@ export function buildCalendarSubject(options: {
   address?: string | null;
   timezone?: FloridaTimezone;
 }): string {
-  const { actionPrefix, eventType, insuredName, startTime, city, address, timezone = 'ET' } = options;
-  const cityName = resolveCityName(city, address, timezone);
+  const { actionPrefix, eventType, insuredName, startTime, city, address } = options;
+  const combined = `${city || ''} ${address || ''}`.trim();
+  const effectiveTz = options.timezone || detectPropertyTimezone(combined);
+  const cityName = resolveCityName(city, address, effectiveTz);
   const timePart = startTime ? ` - ${formatShortTime12(startTime)} ${cityName} Time` : '';
   return `${actionPrefix} ${eventType} - ${insuredName}${timePart}`;
 }
 
 export { formatUsDate } from './formatters';
+

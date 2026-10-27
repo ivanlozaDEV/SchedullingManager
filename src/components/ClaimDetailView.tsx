@@ -11,7 +11,6 @@ import {
   Plus, 
   Calendar, 
   Clock, 
-  Check, 
   CheckCircle2,
   AlertCircle, 
   ArrowRight, 
@@ -20,16 +19,13 @@ import {
   Edit3, 
   Pencil,
   Trash2, 
-  Copy,
   X,
   Bell,
   Users,
-  Send,
   AlertTriangle,
   RotateCcw,
   History,
   RefreshCw,
-  Zap,
   Kanban
 } from 'lucide-react';
 import { schedulingService, hasEventSentCalendarNotice } from '../lib/schedulingService';
@@ -37,12 +33,10 @@ import { RecordCarrierSlotsModal } from './RecordCarrierSlotsModal';
 import { DirectConfirmModal } from './DirectConfirmModal';
 import { ResetCoordinationModal } from './ResetCoordinationModal';
 import { EventHistoryModal } from './EventHistoryModal';
-import { EmailPreviewModal } from './EmailPreviewModal';
 import { useToast } from '../context/ToastContext';
-import { getEventSlaStatus, getNextivaTelUri, formatPhoneNumber, getSlaConfig, getGoogleCalendarUrl, type SlaConfig } from '../lib/slaUtils';
+import { getEventSlaStatus, getSlaConfig, type SlaConfig } from '../lib/slaUtils';
 import { appSettingsService } from '../lib/appSettingsService';
 import { formatFullAddress, formatUsDate } from '../lib/timezoneUtils';
-import { getSlotConflict, getConfirmedConflict } from '../lib/scheduleConflictUtils';
 import { 
   formatPhoneAsYouType, 
   isValidPhone, 
@@ -230,118 +224,8 @@ export function ClaimDetailView({
     }).catch(console.error);
   }, []);
 
-  // Copied slot message state
-  const [copiedSlotId, setCopiedSlotId] = useState<string | null>(null);
-  const [emailPreviewEvent, setEmailPreviewEvent] = useState<CoordinationEvent | null>(null);
-  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update' | 'calendar_confirmation'>('selection_options');
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const toast = useToast();
 
-  const handleOpenEmailPreview = (
-    evt: CoordinationEvent, 
-    type: 'selection_options' | 'calendar_update' | 'calendar_confirmation' = 'selection_options'
-  ) => {
-    if (type === 'selection_options') {
-      if (!claim.insured?.email || !claim.insured.email.trim()) {
-        toast.warning(
-          'Falta correo del asegurado',
-          `El cliente (${claim.insured?.name || 'Asegurado'}) no tiene un correo registrado. Haz clic en editar cliente para ingresarlo.`
-        );
-        return;
-      }
-    } else {
-      const insuredEmail = claim.insured?.email;
-      const paEmail = claim.publicAdjuster?.email;
-      const participants = evt.participants || [];
-      const otherEmails = participants
-        .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
-        .filter((em): em is string => Boolean(em && em.trim()));
-      const allEmails = Array.from(new Set([insuredEmail, paEmail, ...otherEmails].filter(Boolean))) as string[];
-      if (allEmails.length === 0) {
-        toast.warning('Sin destinatarios', 'No hay correos registrados para ninguno de los participantes de este evento.');
-        return;
-      }
-    }
-
-    setEmailPreviewEvent(evt);
-    setEmailPreviewType(type);
-  };
-
-  const handleConfirmSendEmail = async () => {
-    if (!emailPreviewEvent) return;
-    setIsSendingEmail(true);
-    try {
-      if (emailPreviewType === 'selection_options') {
-        const res = await schedulingService.notifyInsuredSlots(emailPreviewEvent.id);
-        if (res && res.success === false) {
-          toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
-        } else {
-          toast.success(
-            '¡Correo enviado con éxito!',
-            `Se enviaron las opciones de fechas a ${claim.insured?.name || 'Asegurado'} (${claim.insured?.email})`
-          );
-        }
-      } else {
-        const isUpdate = emailPreviewType === 'calendar_update';
-        const res = await schedulingService.sendCalendarInvites(emailPreviewEvent.id, { isUpdate });
-        const sentList = res?.sentTo?.join(', ') || 'todos los participantes';
-        toast.success(
-          isUpdate ? '¡Actualización de calendario enviada!' : '¡Invitaciones enviadas con éxito!',
-          `Invitaciones de calendario (.ics) enviadas a:\n${sentList}`
-        );
-      }
-      if (onEventCreated) onEventCreated();
-    } catch (err: any) {
-      toast.error('Error enviando correo', err.message || String(err));
-    } finally {
-      setIsSendingEmail(false);
-    }
-  };
-
-  const [revertingStageEventId, setRevertingStageEventId] = useState<string | null>(null);
-
-  const handleReturnToInsuredSelection = async (evt: CoordinationEvent) => {
-    const confirmMsg = `¿Deseas regresar este evento a la Etapa 3 (Selección del Asegurado)?\n\n` +
-      `• Se liberará la cita actual fijada (${evt.finalDate} ${evt.finalStartTime?.slice(0, 5)} - ${evt.finalEndTime?.slice(0, 5)}).\n` +
-      `• Las opciones de fechas aprobadas volverán a estar activas para que el cliente o el coordinador elija otra opción.`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    setRevertingStageEventId(evt.id);
-    try {
-      await schedulingService.returnToInsuredSelection(evt.id);
-      toast.success(
-        'Regresado a Selección del Cliente',
-        'La cita ha sido liberada y las fechas aprobadas vuelven a estar disponibles para escoger.'
-      );
-      if (onEventCreated) onEventCreated();
-    } catch (err: any) {
-      toast.error('Error al regresar de etapa', err.message || String(err));
-    } finally {
-      setRevertingStageEventId(null);
-    }
-  };
-
-  const handleReturnToPaReview = async (evt: CoordinationEvent) => {
-    const confirmMsg = `¿Deseas regresar este evento a la Etapa 2 (Revisión de PA)?\n\n` +
-      `• El Public Adjuster podrá volver a evaluar y seleccionar cuáles fechas enviar al cliente.`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    setRevertingStageEventId(evt.id);
-    try {
-      await schedulingService.returnToPaReview(evt.id);
-      toast.success(
-        'Regresado a Revisión de PA',
-        'Las fechas vuelven a estar en estado propuesto para revisión del PA.'
-      );
-      if (onEventCreated) onEventCreated();
-    } catch (err: any) {
-      toast.error('Error al regresar de etapa', err.message || String(err));
-    } finally {
-      setRevertingStageEventId(null);
-    }
-  };
 
   // Actor Edit Modal State
   const [editingActor, setEditingActor] = useState<ActorEditTarget | null>(null);
@@ -489,9 +373,6 @@ export function ClaimDetailView({
   const [recordingSlotsEvent, setRecordingSlotsEvent] = useState<CoordinationEvent | null>(null);
   const [eventToReset, setEventToReset] = useState<CoordinationEvent | null>(null);
   const [historyEventTarget, setHistoryEventTarget] = useState<CoordinationEvent | null>(null);
-  const [paSelectedSlotIds, setPaSelectedSlotIds] = useState<Record<string, string[]>>({});
-  const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
-  const [insuredConfirmingSlotId, setInsuredConfirmingSlotId] = useState<string | null>(null);
 
   const handleConfirmReset = async (options: { cancelledBy?: string; cancellationReason?: string }) => {
     if (!eventToReset) return;
@@ -506,78 +387,6 @@ export function ClaimDetailView({
     }
   };
 
-  const handleTogglePaSlot = (eventId: string, slotId: string) => {
-    const current = paSelectedSlotIds[eventId] || [];
-    if (current.includes(slotId)) {
-      setPaSelectedSlotIds({
-        ...paSelectedSlotIds,
-        [eventId]: current.filter((id) => id !== slotId),
-      });
-    } else {
-      if (current.length >= 2) return; // Only allow selecting 2
-      setPaSelectedSlotIds({
-        ...paSelectedSlotIds,
-        [eventId]: [...current, slotId],
-      });
-    }
-  };
-
-  const handlePaConfirmSlots = async (evt: CoordinationEvent) => {
-    const selected = paSelectedSlotIds[evt.id] || [];
-    if (selected.length !== 2) return;
-    const allSlotIds = (evt.slots || []).map((s) => s.id);
-    setPaConfirmingEventId(evt.id);
-    try {
-      await schedulingService.paSelectSlots(evt.id, selected, allSlotIds);
-      onEventCreated();
-    } catch (err) {
-      console.error('Failed to confirm PA selection:', err);
-    } finally {
-      setPaConfirmingEventId(null);
-    }
-  };
-
-  const [skippingStage2EventId, setSkippingStage2EventId] = useState<string | null>(null);
-
-  const handleSkipToStage3 = async (evt: CoordinationEvent) => {
-    const seq = evt.coordinationSequence || (
-      evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
-      evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
-      ['carrier', 'pa', 'insured']
-    );
-    const p3Name = seq[2] === 'insured' ? 'Client' : seq[2] === 'pa' ? 'PA' : 'Carrier';
-    const confirmSkip = window.confirm(
-      `¿Confirmas que las partes ya están de acuerdo y deseas saltar la etapa de revisión para ir directo a la selección final de ${p3Name}?`
-    );
-    if (!confirmSkip) return;
-
-    setSkippingStage2EventId(evt.id);
-    try {
-      await schedulingService.skipToFinalSelection(evt.id, 'Coordinator');
-      onEventCreated();
-    } catch (err: any) {
-      console.error('Failed to skip to Stage 3:', err);
-      alert('Error al saltar a etapa 3: ' + (err.message || 'Error desconocido'));
-    } finally {
-      setSkippingStage2EventId(null);
-    }
-  };
-
-  const handleInsuredConfirmSlot = async (evt: CoordinationEvent, slot: any) => {
-    setInsuredConfirmingSlotId(slot.id);
-    try {
-      await schedulingService.insuredConfirmSlot(evt.id, slot.id, {
-        date: slot.slotDate,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-      });
-      onEventCreated();
-    } catch (err) {
-      console.error('Failed to confirm insured slot:', err);
-    } finally {
-      setInsuredConfirmingSlotId(null);
-    }
-  };
 
   // Filter events belonging to this claim
   const claimEvents = events.filter((e) => e.claimId === claim.id);
@@ -1006,23 +815,7 @@ export function ClaimDetailView({
     }
   };
 
-  const copyInsuredMessage = (evt: CoordinationEvent) => {
-    const insuredName = claim.insured?.name || 'Insured';
-    const carrierName = claim.carrier;
-    const address = evt.location;
-    const acceptedSlots = (evt.slots || []).filter(s => s.status === 'pa_accepted' || s.status === 'proposed');
 
-    let text = `Hello ${insuredName}, this is IP Adjusters coordinating the inspection for your claim with ${carrierName} (${address}).\n\n`;
-    text += `We have the following date and time options available:\n`;
-    acceptedSlots.forEach((s, idx) => {
-      text += `📍 Option ${idx + 1}: ${s.slotDate} from ${s.startTime.slice(0, 5)} to ${s.endTime.slice(0, 5)}\n`;
-    });
-    text += `\nPlease let us know which option works best for you. Thank you!`;
-
-    navigator.clipboard.writeText(text);
-    setCopiedSlotId(evt.id);
-    setTimeout(() => setCopiedSlotId(null), 2500);
-  };
 
   // Open Actor Edit Modal
   const openEditActor = (target: ActorEditTarget) => {
@@ -2622,9 +2415,6 @@ export function ClaimDetailView({
                 claimEvents.map((evt) => {
                   const paParticipant = evt.participants?.find(p => p.participantType === 'public_adjuster');
                   const carrierParticipant = evt.participants?.find(p => p.participantType === 'carrier_representative');
-                  const adjusterPhone = carrierParticipant?.carrierRep?.phone || (claim.carrierReps && claim.carrierReps[0]?.phone);
-                  const paPhone = paParticipant?.publicAdjuster?.phone || claim.publicAdjuster?.phone;
-                  const insuredPhone = claim.insured?.phone;
                   const sla = getEventSlaStatus(evt, slaConfig);
 
                   return (
@@ -2763,7 +2553,7 @@ export function ClaimDetailView({
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                 <span>Cita Confirmada y Agendada</span>
                               </span>
-                              {hasEventSentCalendarNotice(evt.id) && (
+                              {hasEventSentCalendarNotice(evt) && (
                                 <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.2 rounded">
                                   ✓ Invitaciones (.ics) Enviadas
                                 </span>
@@ -3646,18 +3436,6 @@ export function ClaimDetailView({
             </div>
           </div>
         </div>
-      )}
-
-      {/* EMAIL PREVIEW MODAL */}
-      {emailPreviewEvent && (
-        <EmailPreviewModal
-          isOpen={Boolean(emailPreviewEvent)}
-          onClose={() => setEmailPreviewEvent(null)}
-          event={emailPreviewEvent}
-          type={emailPreviewType}
-          onConfirmSend={handleConfirmSendEmail}
-          isSending={isSendingEmail}
-        />
       )}
 
     </div>

@@ -62,37 +62,64 @@ function parseAddress(addrStr) {
     result.zip = zipMatch[1];
   }
 
-  // Known cities in Florida
-  const knownCities = [
-    'pensacola', 'gulf breeze', 'molino', 'milton', 'crestview', 'destin',
-    'fort walton', 'navarre', 'pace', 'loxahatchee', 'fort lauderdale',
-    'miami', 'tampa', 'orlando', 'jacksonville', 'fort myers', 'naples'
+  const ctKeywords = [
+    'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton', 'ft walton',
+    'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville', 'defuniak', 'defuniak springs',
+    'marianna', 'bonifay', 'chipley', 'cantonment', 'santa rosa beach', 'santa rosa', 'miramar beach',
+    'perdido', 'perdido key', 'escambia', 'okaloosa', 'walton county', 'bay county', 'lynn haven',
+    'valparaiso', 'mary esther', 'century', 'molino', 'molina', 'jay', 'mexico beach',
+    'wewahitchka', 'port st joe', 'baker', 'freeport', 'rosemary beach', 'seaside', 'alys beach', 'grayton beach'
   ];
+
   const addrLower = result.address.toLowerCase();
+  const isCt = (result.zip && (result.zip.startsWith('324') || result.zip.startsWith('325'))) ||
+    ctKeywords.some(kw => addrLower.includes(kw));
+
+  // Known cities in Florida (longest first)
+  const knownCities = [
+    ...ctKeywords,
+    'miami beach', 'miami lakes', 'miami gardens', 'miami shores', 'north miami', 'south miami', 'miami',
+    'fort lauderdale', 'pompano beach', 'hollywood', 'coral gables', 'doral', 'hialeah',
+    'west palm beach', 'boca raton', 'delray beach', 'port st lucie', 'tampa', 'st petersburg',
+    'clearwater', 'orlando', 'kissimmee', 'jacksonville', 'tallahassee', 'fort myers', 'naples',
+    'sarasota', 'bradenton', 'gainesville', 'ocala', 'lakeland', 'daytona beach'
+  ].sort((a, b) => b.length - a.length);
+
   for (const c of knownCities) {
-    if (addrLower.includes(c)) {
-      result.city = c.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    if (isCt && !ctKeywords.includes(c)) continue;
+    const regex = new RegExp(`\\b${c.replace('.', '\\.')}\\b`, 'i');
+    if (regex.test(addrLower)) {
+      const norm = (c === 'molina') ? 'molino' : c;
+      result.city = norm.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       break;
     }
   }
 
-  // If not matched by known cities, try regex match: e.g. "..., City, FL 12345"
+  // If not matched by known cities, try regex match: e.g. "..., City, FL 12345" or "Ave City, FL 12345"
   if (!result.city) {
-    const regex = /,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/i;
-    const match = result.address.match(regex);
-    if (match) {
-      result.city = match[1].trim();
-      result.state = match[2].trim().toUpperCase();
-      if (match[3] && !result.zip) result.zip = match[3].trim();
+    const rxList = [
+      /,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/i,
+      /(?:^|[\s,])([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/i,
+      /(?:^|[\s,])([A-Za-z\s.]+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i
+    ];
+    for (const rx of rxList) {
+      const match = result.address.match(rx);
+      if (match) {
+        let candidate = match[1].trim();
+        candidate = candidate.replace(/^(?:.*?\b(?:ave|avenue|st|street|dr|drive|rd|road|blvd|lane|ln|ct|court|way|loop|cir|hwy|highway|pkwy)\b\s*)/i, '').trim();
+        if (candidate.length >= 3 && !/\d/.test(candidate)) {
+          result.city = candidate.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          if (match[2]) result.state = match[2].trim().toUpperCase();
+          if (match[3] && !result.zip) result.zip = match[3].trim();
+          break;
+        }
+      }
     }
   }
 
-  // If still no city, check if city appears before ", FL"
+  // Strict Fallback Safeguard: never default to Miami if in CT
   if (!result.city) {
-    const singleCommaMatch = result.address.match(/(?:,\s*|\s+)([A-Za-z\s]+?),\s*FL\b/i);
-    if (singleCommaMatch) {
-      result.city = singleCommaMatch[1].trim();
-    }
+    result.city = isCt ? 'Pensacola' : 'Miami';
   }
 
   return result;
@@ -229,8 +256,8 @@ serve(async (req) => {
       carrier: carrier ? String(carrier).trim() : 'Unknown Carrier',
       type_of_loss: typeOfLoss ? String(typeOfLoss).trim() : 'Water Damage',
       property_address: parsedAddr.address || 'Address pending',
-      city: parsedAddr.city,
-      state: parsedAddr.state,
+      city: parsedAddr.city || (parsedAddr.zip && (parsedAddr.zip.startsWith('324') || parsedAddr.zip.startsWith('325')) ? 'Pensacola' : 'Miami'),
+      state: parsedAddr.state || 'FL',
       zip_code: parsedAddr.zip || null,
       date_of_loss: parsedDol,
       status: 'Open',

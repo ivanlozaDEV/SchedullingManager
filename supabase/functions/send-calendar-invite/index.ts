@@ -153,42 +153,108 @@ serve(async (req) => {
 
     // 4. Detect Property Timezone (Central Time vs Eastern Time)
     const combinedAddr = `${event.location || ''} ${event.claim?.property_address || ''} ${event.claim?.city || ''} ${event.claim?.zip_code || ''} ${event.notes || ''}`.toLowerCase();
+    
+    const ctKeywords = [
+      'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton', 'ft walton',
+      'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville', 'defuniak', 'defuniak springs',
+      'marianna', 'bonifay', 'chipley', 'cantonment', 'santa rosa beach', 'santa rosa', 'miramar beach',
+      'perdido', 'perdido key', 'escambia', 'okaloosa', 'walton county', 'bay county', 'lynn haven',
+      'valparaiso', 'mary esther', 'century', 'molino', 'molina', 'jay', 'mexico beach',
+      'wewahitchka', 'port st joe', 'baker', 'freeport', 'rosemary beach', 'seaside', 'alys beach', 'grayton beach'
+    ];
+
     const isCt = event.timezone === 'CT' || 
       event.claim?.timezone === 'CT' ||
       /\[timezone:\s*ct\]/i.test(combinedAddr) || 
       /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
-      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa', 'molino'].some(kw => combinedAddr.includes(kw));
+      ctKeywords.some(kw => combinedAddr.includes(kw));
     
     const ianaTz = isCt ? 'America/Chicago' : 'America/New_York';
 
-    // Resolve city dynamically from claim.city or address
+    // Non-CT cities that must NEVER be accepted if the property is in CT (prevents "Miami" default leaks)
+    const isInvalidCityForCt = (name: string) => {
+      const l = name.toLowerCase().trim();
+      return [
+        'miami', 'miami beach', 'doral', 'hialeah', 'fort lauderdale', 'ft lauderdale',
+        'pompano beach', 'hollywood', 'coral gables', 'west palm beach', 'boca raton',
+        'delray beach', 'tampa', 'orlando', 'jacksonville', 'fort myers', 'naples'
+      ].includes(l);
+    };
+
     const rawCity = event.claim?.city?.trim();
+    const isRawCitySuspicious = !rawCity ||
+      /\d{3,}/.test(rawCity) ||
+      /,\s*fl\b/i.test(rawCity) ||
+      (isCt && isInvalidCityForCt(rawCity));
+
+    // Resolve city dynamically with priority for actual property location
     let resolvedCity = '';
-    if (rawCity && !/\d{3,}/.test(rawCity) && !/,\s*fl\b/i.test(rawCity)) {
-      resolvedCity = rawCity;
-    } else {
-      const knownCities = [
-        'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton',
-        'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville',
-        'cantonment', 'santa rosa beach', 'miramar beach', 'molino', 'miami beach',
-        'miami', 'fort lauderdale', 'pompano beach', 'hollywood', 'coral gables',
-        'doral', 'hialeah', 'west palm beach', 'boca raton', 'delray beach',
-        'port st lucie', 'tampa', 'st petersburg', 'clearwater', 'orlando',
-        'jacksonville', 'tallahassee', 'fort myers', 'naples', 'sarasota'
+
+    const allFloridaCities = [
+      ...ctKeywords,
+      'miami beach', 'miami lakes', 'miami gardens', 'miami',
+      'fort lauderdale', 'pompano beach', 'hollywood', 'coral gables',
+      'doral', 'hialeah', 'west palm beach', 'boca raton', 'delray beach',
+      'port st lucie', 'tampa', 'st petersburg', 'clearwater', 'orlando',
+      'jacksonville', 'tallahassee', 'fort myers', 'naples', 'sarasota', 'bradenton',
+      'gainesville', 'ocala', 'lakeland', 'daytona beach'
+    ].sort((a, b) => b.length - a.length);
+
+    // Search combined address for known cities
+    for (const kw of allFloridaCities) {
+      if (isCt && !ctKeywords.includes(kw)) continue;
+      const regex = new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i');
+      if (regex.test(combinedAddr)) {
+        resolvedCity = (kw === 'molina') ? 'molino' : kw;
+        break;
+      }
+    }
+
+    // Fallback regex to capture city name right before ", FL" or " FL <zip>"
+    if (!resolvedCity) {
+      const addrRegexes = [
+        /,\s*([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i,
+        /(?:^|[\s,])([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i,
+        /(?:^|[\s,])([A-Za-z\s.]+?)\s+(?:FL|Florida)\s+\d{5}\b/i
       ];
-      for (const kw of knownCities) {
-        if (combinedAddr.includes(kw)) {
-          resolvedCity = kw;
-          break;
+      for (const rx of addrRegexes) {
+        const match = combinedAddr.match(rx);
+        if (match) {
+          let candidate = match[1].trim();
+          candidate = candidate.replace(/^(?:.*?\b(?:ave|avenue|st|street|dr|drive|rd|road|blvd|lane|ln|ct|court|way|loop|cir|hwy|highway|pkwy)\b\s*)/i, '').trim();
+          if (candidate.length >= 3 && !/\d/.test(candidate)) {
+            if (!isCt || !isInvalidCityForCt(candidate)) {
+              resolvedCity = candidate;
+              break;
+            }
+          }
         }
       }
     }
+
+    if (!resolvedCity && rawCity && !isRawCitySuspicious) {
+      resolvedCity = rawCity;
+    }
+
     const cityName = resolvedCity
       ? resolvedCity.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
       : (isCt ? 'Pensacola' : 'Miami');
 
     const tzLabel = isCt ? `Central Time (CT - ${cityName})` : `Eastern Time (ET - ${cityName})`;
     const tzCityLabel = `${cityName} Time ${isCt ? 'CT' : 'ET'}`;
+
+    // Helper to convert CT time to Miami (ET) time (+1 hour)
+    const convertCtToEt12 = (t?: string): string => {
+      if (!t) return '';
+      const clean = t.slice(0, 5);
+      const [hStr, mStr] = clean.split(':');
+      const h = parseInt(hStr, 10);
+      if (isNaN(h)) return '';
+      const etH = (h + 1) % 24;
+      const ampm = etH >= 12 ? 'pm' : 'am';
+      const h12 = etH % 12 === 0 ? 12 : etH % 12;
+      return `${h12}:${mStr || '00'} ${ampm}`;
+    };
 
     // Helper to format 24h time to 12h lowercase am/pm
     const formatTime12 = (t?: string): string => {
@@ -411,7 +477,7 @@ serve(async (req) => {
                     </div>
                     <div style="font-size:14px; color:#111827; line-height:1.8;">
                       <strong>📅 Date:</strong> ${formatUsDate(event.final_date)}<br>
-                      <strong>⏰ Time Window:</strong> ${formatTime12(event.final_start_time)}${event.final_end_time ? ` to ${formatTime12(event.final_end_time)}` : ''} (${tzLabel})<br>
+                      <strong>⏰ Time Window:</strong> ${formatTime12(event.final_start_time)}${event.final_end_time ? ` to ${formatTime12(event.final_end_time)}` : ''} (${tzLabel})${isCt ? ` <span style="color:#6b7280; font-size:13px;">(Miami ET: ${convertCtToEt12(event.final_start_time)}${event.final_end_time ? ` to ${convertCtToEt12(event.final_end_time)}` : ''})</span>` : ''}<br>
                       <strong>📍 Location:</strong> ${event.location || event.claim?.property_address || 'N/A'}<br>
                       <strong>Claim Number:</strong> ${claimNumber}<br>
                       <strong>Insured Client:</strong> ${insuredName}<br>

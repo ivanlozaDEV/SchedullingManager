@@ -20,7 +20,7 @@ import {
   formatZipCode, 
   formatClaimNumber 
 } from '../lib/formatters';
-import { detectPropertyTimezone } from '../lib/timezoneUtils';
+import { detectPropertyTimezone, resolveCityName } from '../lib/timezoneUtils';
 import type { Insured, PublicAdjuster, CarrierRepresentative, ExternalActor, Claim } from '../types';
 
 const DEFAULT_CARRIERS = [
@@ -71,7 +71,7 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
   const [claimStatus, setClaimStatus] = useState<'Open' | 'Under Review' | 'Appraisal' | 'Settled' | 'Closed'>('Open');
   const [typeOfLoss, setTypeOfLoss] = useState('Water Damage');
   const [propertyAddress, setPropertyAddress] = useState('');
-  const [city, setCity] = useState('Miami');
+  const [city, setCity] = useState('');
   const [state, setState] = useState('FL');
   const [zipCode, setZipCode] = useState('');
   const [dateOfLoss, setDateOfLoss] = useState('');
@@ -709,21 +709,11 @@ export function NewClaimModal({ isOpen, onClose, onClaimCreated, claimToEdit }: 
                               setZipCode(zipMatch[1]);
                             }
 
-                            // Check known cities
-                            const knownCities = [
-                              'molino', 'molina', 'pensacola', 'gulf breeze', 'milton', 'crestview', 
-                              'destin', 'fort walton', 'navarre', 'pace', 'loxahatchee', 'fort lauderdale', 
-                              'miami', 'tampa', 'orlando', 'jacksonville', 'fort myers', 'naples'
-                            ];
-                            const rawLower = raw.toLowerCase();
-                            for (const kc of knownCities) {
-                              if (rawLower.includes(kc)) {
-                                const norm = (kc === 'molina' || kc === 'molino') ? 'Molino' : kc.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                                if (!city || city === 'Miami' || city === 'Molina') {
-                                  setCity(norm);
-                                }
-                                break;
-                              }
+                            // Auto-extract city using comprehensive Florida timezone & locality solver
+                            const tz = detectPropertyTimezone(raw);
+                            const autoCity = resolveCityName('', raw, tz);
+                            if (autoCity && (!city || city === 'Miami' || (tz === 'CT' && city.toLowerCase() === 'miami') || city === 'Molina')) {
+                              setCity(autoCity);
                             }
                           }}
                           className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800"

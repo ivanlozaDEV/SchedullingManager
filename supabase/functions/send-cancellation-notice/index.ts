@@ -182,34 +182,85 @@ serve(async (req) => {
     }
 
     const combinedAddr = `${event?.location || ''} ${propertyAddress} ${claim?.city || ''} ${claim?.zip_code || ''} ${event?.notes || ''}`.toLowerCase();
+    
+    const ctKeywords = [
+      'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton', 'ft walton',
+      'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville', 'defuniak', 'defuniak springs',
+      'marianna', 'bonifay', 'chipley', 'cantonment', 'santa rosa beach', 'santa rosa', 'miramar beach',
+      'perdido', 'perdido key', 'escambia', 'okaloosa', 'walton county', 'bay county', 'lynn haven',
+      'valparaiso', 'mary esther', 'century', 'molino', 'molina', 'jay', 'mexico beach',
+      'wewahitchka', 'port st joe', 'baker', 'freeport', 'rosemary beach', 'seaside', 'alys beach', 'grayton beach'
+    ];
+
     const isCt = event?.timezone === 'CT' ||
       claim?.timezone === 'CT' ||
       /\[timezone:\s*ct\]/i.test(combinedAddr) || 
       /\b(324\d{2}|325\d{2})\b/.test(combinedAddr) ||
-      ['pensacola', 'panama city', 'destin', 'fort walton', 'milton', 'crestview', 'navarre', 'gulf breeze', 'pace', 'escambia', 'santa rosa', 'molino'].some(kw => combinedAddr.includes(kw));
+      ctKeywords.some(kw => combinedAddr.includes(kw));
+
+    // Non-CT cities that must NEVER be accepted if the property is in CT (prevents "Miami" default leaks)
+    const isInvalidCityForCt = (name: string) => {
+      const l = name.toLowerCase().trim();
+      return [
+        'miami', 'miami beach', 'doral', 'hialeah', 'fort lauderdale', 'ft lauderdale',
+        'pompano beach', 'hollywood', 'coral gables', 'west palm beach', 'boca raton',
+        'delray beach', 'tampa', 'orlando', 'jacksonville', 'fort myers', 'naples'
+      ].includes(l);
+    };
+
+    const rawCity = claim?.city?.trim();
+    const isRawCitySuspicious = !rawCity ||
+      /\d{3,}/.test(rawCity) ||
+      /,\s*fl\b/i.test(rawCity) ||
+      (isCt && isInvalidCityForCt(rawCity));
 
     // Resolve city dynamically from claim.city or address
-    const rawCity = claim?.city?.trim();
     let resolvedCity = '';
-    if (rawCity && !/\d{3,}/.test(rawCity) && !/,\s*fl\b/i.test(rawCity)) {
-      resolvedCity = rawCity;
-    } else {
-      const knownCities = [
-        'pensacola', 'panama city', 'destin', 'fort walton beach', 'fort walton',
-        'crestview', 'milton', 'navarre', 'pace', 'gulf breeze', 'niceville',
-        'cantonment', 'santa rosa beach', 'miramar beach', 'molino', 'miami beach',
-        'miami', 'fort lauderdale', 'pompano beach', 'hollywood', 'coral gables',
-        'doral', 'hialeah', 'west palm beach', 'boca raton', 'delray beach',
-        'port st lucie', 'tampa', 'st petersburg', 'clearwater', 'orlando',
-        'jacksonville', 'tallahassee', 'fort myers', 'naples', 'sarasota'
+
+    const allFloridaCities = [
+      ...ctKeywords,
+      'miami beach', 'miami lakes', 'miami gardens', 'miami',
+      'fort lauderdale', 'pompano beach', 'hollywood', 'coral gables',
+      'doral', 'hialeah', 'west palm beach', 'boca raton', 'delray beach',
+      'port st lucie', 'tampa', 'st petersburg', 'clearwater', 'orlando',
+      'jacksonville', 'tallahassee', 'fort myers', 'naples', 'sarasota', 'bradenton',
+      'gainesville', 'ocala', 'lakeland', 'daytona beach'
+    ].sort((a, b) => b.length - a.length);
+
+    for (const kw of allFloridaCities) {
+      if (isCt && !ctKeywords.includes(kw)) continue;
+      const regex = new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i');
+      if (regex.test(combinedAddr)) {
+        resolvedCity = (kw === 'molina') ? 'molino' : kw;
+        break;
+      }
+    }
+
+    if (!resolvedCity) {
+      const addrRegexes = [
+        /,\s*([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i,
+        /(?:^|[\s,])([A-Za-z\s.]+?),\s*(?:FL|Florida)\b/i,
+        /(?:^|[\s,])([A-Za-z\s.]+?)\s+(?:FL|Florida)\s+\d{5}\b/i
       ];
-      for (const kw of knownCities) {
-        if (combinedAddr.includes(kw)) {
-          resolvedCity = kw;
-          break;
+      for (const rx of addrRegexes) {
+        const match = combinedAddr.match(rx);
+        if (match) {
+          let candidate = match[1].trim();
+          candidate = candidate.replace(/^(?:.*?\b(?:ave|avenue|st|street|dr|drive|rd|road|blvd|lane|ln|ct|court|way|loop|cir|hwy|highway|pkwy)\b\s*)/i, '').trim();
+          if (candidate.length >= 3 && !/\d/.test(candidate)) {
+            if (!isCt || !isInvalidCityForCt(candidate)) {
+              resolvedCity = candidate;
+              break;
+            }
+          }
         }
       }
     }
+
+    if (!resolvedCity && rawCity && !isRawCitySuspicious) {
+      resolvedCity = rawCity;
+    }
+
     const cityName = resolvedCity
       ? resolvedCity.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
       : (isCt ? 'Pensacola' : 'Miami');
