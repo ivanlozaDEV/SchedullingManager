@@ -327,11 +327,12 @@ serve(async (req) => {
 
     const insuredName = event.claim?.insured?.name || 'Insured Client'
     const claimNumber = event.claim?.claim_number || 'N/A'
-    const eventType = event.event_type || 'Inspection'
-    const title = `${eventType} ${actionLabel} | ${insuredName} - Claim #${claimNumber}`
-
-    const shortTimeStr = event.final_start_time ? ` - ${formatShortTime12(event.final_start_time)} ${cityName} Time` : ''
-    const emailSubject = `${isTest ? '[TEST PREVIEW] ' : ''}${actionLabel}: ${eventType} - ${insuredName}${shortTimeStr}`
+    const assignedEventPa = (participants || []).find((p: any) => p.public_adjuster && (!p.role_type || p.role_type === 'actor'))?.public_adjuster || event.claim?.public_adjuster
+    const paFirstName = assignedEventPa?.name ? assignedEventPa.name.trim().split(/\s+/)[0] : ''
+    const tzCode = isCt ? 'CT' : 'ET'
+    const shortTimeStr = event.final_start_time ? ` - ${formatShortTime12(event.final_start_time)} ${tzCode}` : ''
+    const paStr = paFirstName ? ` - ${paFirstName}` : ''
+    const emailSubject = `${isTest ? '[TEST PREVIEW] ' : ''}${actionLabel}: ${eventType} - ${insuredName}${shortTimeStr}${paStr}`
 
     // Comprehensive description for .ics and calendar clients
     const descParts: string[] = [

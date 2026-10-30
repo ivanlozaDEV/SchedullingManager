@@ -480,7 +480,7 @@ export function formatShortTime12(time24?: string): string {
 
 /**
  * Builds the streamlined calendar confirmation/update subject line:
- * e.g. "Confirmed: Initial Inspection - Jay Drinkard & William Croley - 1 pm Molino Time"
+ * e.g. "Confirmed: Initial Inspection - Harrington Abreu - 2 pm CT - Peter"
  */
 export function buildCalendarSubject(options: {
   actionPrefix: 'Confirmed:' | 'Update:';
@@ -490,13 +490,14 @@ export function buildCalendarSubject(options: {
   city?: string | null;
   address?: string | null;
   timezone?: FloridaTimezone;
+  paName?: string | null;
 }): string {
-  const { actionPrefix, eventType, insuredName, startTime, city, address } = options;
+  const { actionPrefix, eventType, insuredName, startTime, city, address, paName } = options;
   const combined = `${city || ''} ${address || ''}`.trim();
   const effectiveTz = options.timezone || detectPropertyTimezone(combined);
-  const cityName = resolveCityName(city, address, effectiveTz);
-  const timePart = startTime ? ` - ${formatShortTime12(startTime)} ${cityName} Time` : '';
-  return `${actionPrefix} ${eventType} - ${insuredName}${timePart}`;
+  const timePart = startTime ? ` - ${formatShortTime12(startTime)} ${effectiveTz}` : '';
+  const paPart = paName ? ` - ${paName.trim().split(/\s+/)[0]}` : '';
+  return `${actionPrefix} ${eventType} - ${insuredName}${timePart}${paPart}`;
 }
 
 export { formatUsDate } from './formatters';

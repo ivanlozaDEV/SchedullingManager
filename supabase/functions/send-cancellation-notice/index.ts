@@ -302,8 +302,12 @@ serve(async (req) => {
       return `${h12}${minutes} ${ampm}`;
     };
 
-    const shortTimeStr = cancelStartTime ? ` - ${formatShortTime12(cancelStartTime)} ${cityName} Time` : '';
-    const subject = `Cancelled: ${eventType} - ${insuredName}${shortTimeStr}`;
+    const assignedEventPa = (participants || []).find((p: any) => p.public_adjuster && (!p.role_type || p.role_type === 'actor'))?.public_adjuster || event.claim?.public_adjuster;
+    const paFirstName = assignedEventPa?.name ? assignedEventPa.name.trim().split(/\s+/)[0] : '';
+    const tzCode = isCt ? 'CT' : 'ET';
+    const shortTimeStr = cancelStartTime ? ` - ${formatShortTime12(cancelStartTime)} ${tzCode}` : '';
+    const paStr = paFirstName ? ` - ${paFirstName}` : '';
+    const subject = `Cancelled: ${eventType} - ${insuredName}${shortTimeStr}${paStr}`;
 
     const plainText = `NOTICE OF ${eventType.toUpperCase()} CANCELLATION & RESCHEDULING
 

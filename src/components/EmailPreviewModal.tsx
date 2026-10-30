@@ -40,7 +40,8 @@ export function EmailPreviewModal({
 
   const claim = event.claim;
   const insured = claim?.insured;
-  const pa = claim?.publicAdjuster;
+  const assignedEventPa = event.publicAdjuster || (event.participants || []).find((p) => p.participantType === 'public_adjuster' && (!p.roleType || p.roleType === 'actor'))?.publicAdjuster;
+  const pa = assignedEventPa || claim?.publicAdjuster;
   const eventType = event.eventType || 'Inspection';
   const claimNumber = claim?.claimNumber || 'N/A';
   const carrier = claim?.carrier || 'Insurance Carrier';
@@ -100,6 +101,7 @@ export function EmailPreviewModal({
         city: claim?.city,
         address: propertyAddress,
         timezone: propertyTz,
+        paName: pa?.name,
       });
 
   const badgeText = type === 'selection_options'
