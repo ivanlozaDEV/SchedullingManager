@@ -16,6 +16,7 @@ import {
 import { schedulingService } from '../lib/schedulingService';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../lib/supabase';
+import { isPublicAdjusterRole, formatPaRole } from '../lib/appSettingsService';
 import type { 
   CoordinationEvent, 
   Claim, 
@@ -85,6 +86,7 @@ export function EditEventModal({
 
   // Participants: In-Person Attendees (Actors)
   const [attendInsured, setAttendInsured] = useState(true);
+  const [eventPaId, setEventPaId] = useState<string>(event.publicAdjusterId || claim.publicAdjusterId || '');
   const [attendAssignedPa, setAttendAssignedPa] = useState(true);
   const [attendRepIds, setAttendRepIds] = useState<string[]>([]);
   const [attendExtActorIds, setAttendExtActorIds] = useState<string[]>([]);
@@ -164,11 +166,19 @@ export function EditEventModal({
       const actors = participants.filter((p) => !p.roleType || p.roleType === 'actor');
       const informed = participants.filter((p) => p.roleType === 'informed');
 
+      const primaryPaPart = actors.find((p) => p.participantType === 'public_adjuster');
+      const initialEventPaId = event.publicAdjusterId 
+        || event.publicAdjuster?.id 
+        || primaryPaPart?.publicAdjusterId 
+        || claim.publicAdjusterId 
+        || '';
+      setEventPaId(initialEventPaId);
+
       setAttendInsured(actors.some((p) => p.participantType === 'insured'));
-      setAttendAssignedPa(actors.some((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId === claim.publicAdjusterId));
+      setAttendAssignedPa(initialEventPaId ? actors.some((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId === initialEventPaId) : true);
       setAttendRepIds(actors.filter((p) => p.participantType === 'carrier_representative' && p.carrierRepId).map((p) => p.carrierRepId!));
       setAttendExtActorIds(actors.filter((p) => p.participantType === 'external_actor' && p.externalActorId && (claim.externalActors || []).some(a => a.id === p.externalActorId)).map((p) => p.externalActorId!));
-      setSupportPaIds(actors.filter((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId && p.publicAdjusterId !== claim.publicAdjusterId).map((p) => p.publicAdjusterId!));
+      setSupportPaIds(actors.filter((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId && p.publicAdjusterId !== initialEventPaId).map((p) => p.publicAdjusterId!));
       setAdditionalExtIds(actors.filter((p) => p.participantType === 'external_actor' && p.externalActorId && !(claim.externalActors || []).some(a => a.id === p.externalActorId)).map((p) => p.externalActorId!));
 
       setNotifyPaIds(informed.filter((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId).map((p) => p.publicAdjusterId!));
@@ -260,8 +270,8 @@ export function EditEventModal({
       if (attendInsured && claim.insuredId) {
         participants.push({ participantType: 'insured', roleType: 'actor', insuredId: claim.insuredId });
       }
-      if (attendAssignedPa && claim.publicAdjusterId) {
-        participants.push({ participantType: 'public_adjuster', roleType: 'actor', publicAdjusterId: claim.publicAdjusterId });
+      if (attendAssignedPa && eventPaId) {
+        participants.push({ participantType: 'public_adjuster', roleType: 'actor', publicAdjusterId: eventPaId });
       }
       attendRepIds.forEach((id) => {
         participants.push({ participantType: 'carrier_representative', roleType: 'actor', carrierRepId: id });
@@ -269,7 +279,7 @@ export function EditEventModal({
       attendExtActorIds.forEach((id) => {
         participants.push({ participantType: 'external_actor', roleType: 'actor', externalActorId: id });
       });
-      supportPaIds.forEach((id) => {
+      supportPaIds.filter(id => id !== eventPaId).forEach((id) => {
         participants.push({ participantType: 'public_adjuster', roleType: 'actor', publicAdjusterId: id });
       });
       additionalExtIds.forEach((id) => {
@@ -296,6 +306,7 @@ export function EditEventModal({
       // Update event
       await schedulingService.updateEvent(event.id, {
         eventType: finalEventType,
+        publicAdjusterId: eventPaId || null,
         status: eventStatus,
         coordinationStage,
         slotsOriginator: coordinationStage === '4_confirmed' ? undefined : coordinationSequence[0],
@@ -346,7 +357,8 @@ export function EditEventModal({
     }
   };
 
-  const assignedPa = pas.find((p) => p.id === claim.publicAdjusterId);
+  const eligiblePas = pas.filter((p) => p.isActive !== false && isPublicAdjusterRole(p.role));
+  const selectedEventPa = pas.find((p) => p.id === eventPaId) || (claim.publicAdjusterId ? pas.find((p) => p.id === claim.publicAdjusterId) : null);
   const claimCarrierReps = claim.carrierReps || carrierReps.filter((r) => r.carrierName === claim.carrier);
   const claimExternalActors = claim.externalActors || [];
 
@@ -712,21 +724,62 @@ export function EditEventModal({
                 </label>
               )}
 
-              {/* Assigned PA */}
-              {assignedPa && (
-                <label className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100/80">
-                  <input
-                    type="checkbox"
-                    checked={attendAssignedPa}
-                    onChange={(e) => setAttendAssignedPa(e.target.checked)}
-                    className="rounded border-slate-300 text-maroon-800 focus:ring-maroon-800"
-                  />
-                  <div className="truncate">
-                    <span className="font-bold text-slate-900 block truncate">{assignedPa.name}</span>
-                    <span className="text-[10px] text-slate-500 block">Assigned Public Adjuster</span>
-                  </div>
-                </label>
-              )}
+              {/* Event Assigned PA */}
+              <div className="p-2.5 bg-white border border-slate-200 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={attendAssignedPa}
+                      onChange={(e) => setAttendAssignedPa(e.target.checked)}
+                      className="rounded border-slate-300 text-maroon-800 focus:ring-maroon-800"
+                    />
+                    <div className="truncate">
+                      <span className="font-bold text-slate-900 block truncate text-xs">
+                        {selectedEventPa ? selectedEventPa.name : 'Sin PA asignado'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 block">
+                        Assigned Public Adjuster (Atiende inspección)
+                      </span>
+                    </div>
+                  </label>
+                  {selectedEventPa && (
+                    <span 
+                      className="w-3 h-3 rounded-full shrink-0 shadow-2xs" 
+                      style={{ backgroundColor: selectedEventPa.colorCode || '#0284c7' }} 
+                    />
+                  )}
+                </div>
+
+                <div className="pt-1">
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    Cambiar PA que atiende este evento:
+                  </label>
+                  <select
+                    value={eventPaId}
+                    onChange={(e) => {
+                      setEventPaId(e.target.value);
+                      if (e.target.value) setAttendAssignedPa(true);
+                    }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-maroon-800"
+                  >
+                    <option value="">-- Sin PA asignado --</option>
+                    {eligiblePas.map((pa) => {
+                      const isClaimGeneral = claim.publicAdjusterId === pa.id;
+                      return (
+                        <option key={pa.id} value={pa.id}>
+                          {pa.name} ({formatPaRole(pa.role)}) {isClaimGeneral ? '★ [PA General del Claim]' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {claim.publicAdjuster && eventPaId && eventPaId !== claim.publicAdjusterId && (
+                    <p className="text-[10px] text-amber-700 font-medium mt-1">
+                      ℹ️ PA general del claim: <strong>{claim.publicAdjuster.name}</strong> (este evento lo atenderá {selectedEventPa?.name || 'otro PA'}).
+                    </p>
+                  )}
+                </div>
+              </div>
 
               {/* Claim Carrier Reps */}
               {claimCarrierReps.map((rep) => {
@@ -787,10 +840,10 @@ export function EditEventModal({
                   className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
                 >
                   <option value="">+ Add Support PA (PA de apoyo)...</option>
-                  {pas
-                    .filter((p) => p.id !== claim.publicAdjusterId && !supportPaIds.includes(p.id))
+                  {eligiblePas
+                    .filter((p) => p.id !== eventPaId && !supportPaIds.includes(p.id))
                     .map((p) => (
-                      <option key={p.id} value={p.id}>PA: {p.name} ({p.role.replace('_', ' ')})</option>
+                      <option key={p.id} value={p.id}>Support PA: {p.name} ({formatPaRole(p.role)})</option>
                     ))}
                 </select>
 

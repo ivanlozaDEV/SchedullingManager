@@ -46,6 +46,30 @@ export const DEFAULT_PA_ROLES = [
   'Office Coordinator',
 ];
 
+export function formatPaRole(role?: string): string {
+  if (!role) return 'Public Adjuster';
+  if (role === 'adjuster') return 'Public Adjuster';
+  if (role === 'senior_adjuster') return 'Senior Public Adjuster';
+  if (role === 'director') return 'Managing Director';
+  if (role === 'apprentice') return 'Assistant / Apprentice';
+  return role.replace(/_/g, ' ');
+}
+
+export function isPublicAdjusterRole(role?: string): boolean {
+  if (!role) return true;
+  const lower = role.toLowerCase().trim();
+  if (
+    lower.includes('assistant') ||
+    lower.includes('apprentice') ||
+    lower.includes('coordinator') ||
+    lower.includes('office') ||
+    lower === 'admin'
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export const DEFAULT_CARRIER_REP_ROLES = [
   'Field Adjuster',
   'Desk Adjuster',

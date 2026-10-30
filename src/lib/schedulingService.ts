@@ -246,7 +246,8 @@ export const schedulingService = {
         *,
         claim:claims (
           *,
-          insured:insureds (*)
+          insured:insureds (*),
+          public_adjuster:public_adjusters (*)
         ),
         slots:event_slots (*),
         participants:event_participants (
@@ -265,14 +266,41 @@ export const schedulingService = {
       return [];
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      claimId: row.claim_id,
-      eventType: row.event_type,
-      status: row.status,
-      coordinationStage: row.coordination_stage,
-      carrierSlotsDeadline: row.carrier_slots_deadline,
-      finalDate: row.final_date,
+    return (data || []).map((row) => {
+      const paParticipant = (row.participants || []).find((p: any) => 
+        p.participant_type === 'public_adjuster' && (!p.role_type || p.role_type === 'actor')
+      );
+      const resolvedPaId = row.public_adjuster_id || paParticipant?.public_adjuster_id || row.claim?.public_adjuster_id || undefined;
+      const resolvedPa = paParticipant?.public_adjuster ? {
+        id: paParticipant.public_adjuster.id,
+        name: paParticipant.public_adjuster.name,
+        phone: paParticipant.public_adjuster.phone,
+        email: paParticipant.public_adjuster.email,
+        role: paParticipant.public_adjuster.role,
+        generalAvailability: paParticipant.public_adjuster.general_availability,
+        colorCode: paParticipant.public_adjuster.color_code,
+        isActive: paParticipant.public_adjuster.is_active,
+      } : (row.claim?.public_adjuster ? {
+        id: row.claim.public_adjuster.id,
+        name: row.claim.public_adjuster.name,
+        phone: row.claim.public_adjuster.phone,
+        email: row.claim.public_adjuster.email,
+        role: row.claim.public_adjuster.role,
+        generalAvailability: row.claim.public_adjuster.general_availability,
+        colorCode: row.claim.public_adjuster.color_code,
+        isActive: row.claim.public_adjuster.is_active,
+      } : undefined);
+
+      return {
+        id: row.id,
+        claimId: row.claim_id,
+        publicAdjusterId: resolvedPaId,
+        publicAdjuster: resolvedPa,
+        eventType: row.event_type,
+        status: row.status,
+        coordinationStage: row.coordination_stage,
+        carrierSlotsDeadline: row.carrier_slots_deadline,
+        finalDate: row.final_date,
       finalStartTime: row.final_start_time,
       finalEndTime: row.final_end_time,
       location: cleanAddress(row.location),
@@ -340,6 +368,17 @@ export const schedulingService = {
         timezone: detectPropertyTimezone(
           `${row.claim.notes || ''} ${row.claim.property_address || ''} ${row.claim.city || ''} ${row.claim.zip_code || ''}`
         ),
+        publicAdjusterId: row.claim.public_adjuster_id,
+        publicAdjuster: row.claim.public_adjuster ? {
+          id: row.claim.public_adjuster.id,
+          name: row.claim.public_adjuster.name,
+          phone: row.claim.public_adjuster.phone,
+          email: row.claim.public_adjuster.email,
+          role: row.claim.public_adjuster.role,
+          generalAvailability: row.claim.public_adjuster.general_availability,
+          colorCode: row.claim.public_adjuster.color_code,
+          isActive: row.claim.public_adjuster.is_active,
+        } : undefined,
         insured: row.claim.insured ? {
           id: row.claim.insured.id,
           name: row.claim.insured.name,
@@ -422,7 +461,8 @@ export const schedulingService = {
         notes: l.notes,
         createdAt: l.created_at,
       })),
-    }));
+    };
+  });
   },
 
   // 6. Actualizar Estado de Slot en el Embudo
@@ -1635,6 +1675,7 @@ export const schedulingService = {
   async createEvent(eventData: {
     claimId: string;
     eventType: string;
+    publicAdjusterId?: string;
     status?: EventStatus;
     coordinationStage?: CoordinationStage;
     location: string;
@@ -1686,29 +1727,61 @@ export const schedulingService = {
       combinedNotes = combinedNotes ? `${combinedNotes}\n${origTag}` : origTag;
     }
 
-    const { data: newEvent, error: eventErr } = await supabase
+    const insertPayload: any = {
+      claim_id: eventData.claimId,
+      event_type: eventData.eventType || 'Initial Inspection',
+      status: finalStatus,
+      coordination_stage: finalStage,
+      location: eventData.location,
+      lockbox_code: eventData.lockboxCode || null,
+      gate_code: eventData.gateCode || null,
+      access_instructions: eventData.accessInstructions || null,
+      notes: combinedNotes,
+      final_date: isDirectConfirm ? eventData.finalDate || null : null,
+      final_start_time: isDirectConfirm ? eventData.finalStartTime || null : null,
+      final_end_time: isDirectConfirm ? (eventData.finalEndTime || '12:00:00') : null,
+    };
+
+    if (eventData.publicAdjusterId) {
+      insertPayload.public_adjuster_id = eventData.publicAdjusterId;
+    }
+
+    let newEvent: any = null;
+    const { data: firstTry, error: eventErr } = await supabase
       .from('events')
-      .insert({
-        claim_id: eventData.claimId,
-        event_type: eventData.eventType || 'Initial Inspection',
-        status: finalStatus,
-        coordination_stage: finalStage,
-        location: eventData.location,
-        lockbox_code: eventData.lockboxCode || null,
-        gate_code: eventData.gateCode || null,
-        access_instructions: eventData.accessInstructions || null,
-        notes: combinedNotes,
-        final_date: isDirectConfirm ? eventData.finalDate || null : null,
-        final_start_time: isDirectConfirm ? eventData.finalStartTime || null : null,
-        final_end_time: isDirectConfirm ? (eventData.finalEndTime || '12:00:00') : null,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
-    if (eventErr) throw eventErr;
+    if (eventErr) {
+      if (insertPayload.public_adjuster_id && (eventErr.code === '42703' || eventErr.message?.includes('public_adjuster_id'))) {
+        delete insertPayload.public_adjuster_id;
+        const { data: retryData, error: retryErr } = await supabase
+          .from('events')
+          .insert(insertPayload)
+          .select()
+          .single();
+        if (retryErr) throw retryErr;
+        newEvent = retryData;
+      } else {
+        throw eventErr;
+      }
+    } else {
+      newEvent = firstTry;
+    }
 
-    if (eventData.participants && eventData.participants.length > 0) {
-      const payload = eventData.participants.map(p => ({
+    // Participants handling: ensure assigned PA participant is preserved
+    let finalParticipants = eventData.participants ? [...eventData.participants] : [];
+    if (eventData.publicAdjusterId && !finalParticipants.some(p => p.participantType === 'public_adjuster' && (!p.roleType || p.roleType === 'actor'))) {
+      finalParticipants.push({
+        participantType: 'public_adjuster',
+        roleType: 'actor',
+        publicAdjusterId: eventData.publicAdjusterId
+      });
+    }
+
+    if (finalParticipants.length > 0) {
+      const payload = finalParticipants.map(p => ({
         event_id: newEvent.id,
         participant_type: p.participantType,
         role_type: p.roleType || 'actor',
@@ -1759,6 +1832,7 @@ export const schedulingService = {
   // 14.1 Actualizar Evento / Inspección existente
   async updateEvent(eventId: string, eventData: {
     eventType?: string;
+    publicAdjusterId?: string | null;
     status?: EventStatus;
     coordinationStage?: CoordinationStage;
     location?: string;
@@ -1818,15 +1892,35 @@ export const schedulingService = {
     if (eventData.finalDate !== undefined) updatePayload.final_date = eventData.finalDate || null;
     if (eventData.finalStartTime !== undefined) updatePayload.final_start_time = eventData.finalStartTime || null;
     if (eventData.finalEndTime !== undefined) updatePayload.final_end_time = eventData.finalEndTime || null;
+    if (eventData.publicAdjusterId !== undefined) {
+      updatePayload.public_adjuster_id = eventData.publicAdjusterId || null;
+    }
 
-    const { data: updatedEvent, error: eventErr } = await supabase
+    let updatedEvent: any = null;
+    const { data: firstTry, error: eventErr } = await supabase
       .from('events')
       .update(updatePayload)
       .eq('id', eventId)
       .select()
       .single();
 
-    if (eventErr) throw eventErr;
+    if (eventErr) {
+      if (updatePayload.public_adjuster_id !== undefined && (eventErr.code === '42703' || eventErr.message?.includes('public_adjuster_id'))) {
+        delete updatePayload.public_adjuster_id;
+        const { data: retryData, error: retryErr } = await supabase
+          .from('events')
+          .update(updatePayload)
+          .eq('id', eventId)
+          .select()
+          .single();
+        if (retryErr) throw retryErr;
+        updatedEvent = retryData;
+      } else {
+        throw eventErr;
+      }
+    } else {
+      updatedEvent = firstTry;
+    }
 
     // Actualizar participantes si se proveen
     if (eventData.participants !== undefined) {
@@ -1849,9 +1943,117 @@ export const schedulingService = {
         const { error: partErr } = await supabase.from('event_participants').insert(payload);
         if (partErr) console.warn('Error re-inserting participants:', partErr);
       }
+    } else if (eventData.publicAdjusterId !== undefined) {
+      // Si sólo se cambió el publicAdjusterId pero no se pasaron participants completos
+      try {
+        const { data: existingParts } = await supabase
+          .from('event_participants')
+          .select('*')
+          .eq('event_id', eventId)
+          .eq('participant_type', 'public_adjuster');
+
+        const primary = (existingParts || []).find(p => !p.role_type || p.role_type === 'actor');
+        if (eventData.publicAdjusterId) {
+          if (primary) {
+            await supabase
+              .from('event_participants')
+              .update({ public_adjuster_id: eventData.publicAdjusterId })
+              .eq('id', primary.id);
+          } else {
+            await supabase
+              .from('event_participants')
+              .insert({
+                event_id: eventId,
+                participant_type: 'public_adjuster',
+                role_type: 'actor',
+                public_adjuster_id: eventData.publicAdjusterId,
+              });
+          }
+        } else if (primary) {
+          await supabase
+            .from('event_participants')
+            .delete()
+            .eq('id', primary.id);
+        }
+      } catch (pErr) {
+        console.warn('Error syncing event participant for PA update:', pErr);
+      }
     }
 
     return updatedEvent;
+  },
+
+  // 14.2 Actualizar exclusivamente el Public Adjuster (PA) asignado a una cita / evento
+  async updateEventPa(eventId: string, publicAdjusterId: string | null): Promise<void> {
+    if (!isSupabaseConfigured) return;
+
+    // 1. Intentar actualizar en tabla events
+    try {
+      const { error: evtErr } = await supabase
+        .from('events')
+        .update({ public_adjuster_id: publicAdjusterId || null })
+        .eq('id', eventId);
+      if (evtErr && !evtErr.message?.includes('column')) {
+        console.warn('Warning updating events.public_adjuster_id:', evtErr.message);
+      }
+    } catch (err) {
+      console.warn('Column public_adjuster_id may not exist yet in events table:', err);
+    }
+
+    // 2. Sincronizar en event_participants
+    try {
+      const { data: existingParts } = await supabase
+        .from('event_participants')
+        .select('*')
+        .eq('event_id', eventId)
+        .eq('participant_type', 'public_adjuster');
+
+      const primary = (existingParts || []).find(p => !p.role_type || p.role_type === 'actor');
+
+      if (publicAdjusterId) {
+        if (primary) {
+          await supabase
+            .from('event_participants')
+            .update({ public_adjuster_id: publicAdjusterId })
+            .eq('id', primary.id);
+        } else {
+          await supabase
+            .from('event_participants')
+            .insert({
+              event_id: eventId,
+              participant_type: 'public_adjuster',
+              role_type: 'actor',
+              public_adjuster_id: publicAdjusterId,
+            });
+        }
+      } else if (primary) {
+        await supabase
+          .from('event_participants')
+          .delete()
+          .eq('id', primary.id);
+      }
+
+      // 3. Registrar en coordination_logs
+      let paName = 'Unassigned';
+      if (publicAdjusterId) {
+        const { data: paData } = await supabase
+          .from('public_adjusters')
+          .select('name')
+          .eq('id', publicAdjusterId)
+          .maybeSingle();
+        if (paData?.name) paName = paData.name;
+      }
+
+      await supabase.from('coordination_logs').insert({
+        event_id: eventId,
+        contact_target: 'pa',
+        contact_target_name: paName,
+        channel: 'system_reset',
+        notes: `🎯 Inspection assigned PA updated to: ${paName}`,
+      });
+    } catch (partErr: any) {
+      console.warn('Error syncing event_participants for PA assignment:', partErr?.message);
+    }
   },
 
   // 13.9 Eliminar Evento de Coordinación

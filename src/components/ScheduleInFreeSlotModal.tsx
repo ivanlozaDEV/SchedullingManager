@@ -201,6 +201,7 @@ export function ScheduleInFreeSlotModal({
           const newEvt = await schedulingService.createEvent({
             claimId: selectedClaim.id,
             eventType,
+            publicAdjusterId: selectedPaId || undefined,
             location: selectedClaim.propertyAddress,
             coordinationStage: '1_awaiting_carrier_slots',
             status: 'coordinating',
@@ -232,6 +233,7 @@ export function ScheduleInFreeSlotModal({
         await schedulingService.createEvent({
           claimId: selectedClaim.id,
           eventType,
+          publicAdjusterId: selectedPaId || undefined,
           location: selectedClaim.propertyAddress,
           finalDate: slotDate,
           finalStartTime: `${startTime}:00`,

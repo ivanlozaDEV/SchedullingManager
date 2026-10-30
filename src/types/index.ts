@@ -141,6 +141,8 @@ export interface CoordinationLog {
 export interface CoordinationEvent {
   id: string;
   claimId: string;
+  publicAdjusterId?: string;
+  publicAdjuster?: PublicAdjuster;
   eventType: string; // 'Initial Inspection', 'Carrier Re-Inspection', 'Appraisal Meeting', etc.
   status: EventStatus;
   coordinationStage: CoordinationStage;

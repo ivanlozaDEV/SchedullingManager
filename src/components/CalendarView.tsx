@@ -53,6 +53,8 @@ import {
   type TransitLegInfo, 
   calculateLegTransit 
 } from '../lib/transitTravelUtils';
+import { isPublicAdjusterRole, formatPaRole } from '../lib/appSettingsService';
+import { schedulingService } from '../lib/schedulingService';
 
 interface FreeTimeWindow {
   type: 'free';
@@ -249,7 +251,46 @@ export function CalendarView({
   // Selected item for popover / modal detail
   const [activeItem, setActiveItem] = useState<CalendarEventItem | null>(null);
   const [isDeletingSlot, setIsDeletingSlot] = useState(false);
+  const [isChangingPa, setIsChangingPa] = useState(false);
+  const [isSavingPa, setIsSavingPa] = useState(false);
   const { success, error } = useToast();
+
+  // Filtrar exclusivamente los PAs que tienen rol de Public Adjuster en la tabla de actores
+  const eligiblePas = useMemo(() => {
+    return pas.filter(p => p.isActive !== false && isPublicAdjusterRole(p.role));
+  }, [pas]);
+
+  useEffect(() => {
+    setIsChangingPa(false);
+  }, [activeItem]);
+
+  const handleQuickUpdatePa = async (newPa: PublicAdjuster) => {
+    if (!activeItem) return;
+    setIsSavingPa(true);
+    try {
+      await schedulingService.updateEventPa(activeItem.eventId, newPa.id);
+      success('PA de la Cita Actualizado', `${newPa.name} asignado a esta inspección.`);
+      setActiveItem(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          pa: newPa,
+          event: {
+            ...prev.event,
+            publicAdjusterId: newPa.id,
+            publicAdjuster: newPa,
+          }
+        };
+      });
+      setIsChangingPa(false);
+      if (onDataRefresh) onDataRefresh();
+    } catch (err: any) {
+      console.error('Error actualizando PA asignado:', err);
+      error('Error al actualizar', err.message || 'No se pudo actualizar el PA del evento');
+    } finally {
+      setIsSavingPa(false);
+    }
+  };
 
   const handleDeleteTentativeSlot = async (item: CalendarEventItem) => {
     if (!item.isTentativeSlot) return;
@@ -302,9 +343,13 @@ export function CalendarView({
     for (const evt of events) {
       const claim = evt.claim || claimsMap.get(evt.claimId);
       
-      // Resolve PA: first from event participants, then from claim
-      const paParticipant = evt.participants?.find(p => p.participantType === 'public_adjuster')?.publicAdjuster;
-      const pa = paParticipant || claim?.publicAdjuster || null;
+      // Resolve PA: first from event direct PA / publicAdjusterId, then participants, then claim
+      const paParticipant = evt.participants?.find(p => p.participantType === 'public_adjuster' && (!p.roleType || p.roleType === 'actor'))?.publicAdjuster;
+      const pa = evt.publicAdjuster 
+        || (evt.publicAdjusterId ? pas.find(p => p.id === evt.publicAdjusterId) : null)
+        || paParticipant 
+        || claim?.publicAdjuster 
+        || null;
 
       const propTz: FloridaTimezone = evt.timezone 
         || (claim ? detectPropertyTimezone(claim.propertyAddress, claim.timezone) : 'ET');
@@ -1798,40 +1843,126 @@ export function CalendarView({
                 })()
               )}
 
-              {/* Assigned PA Card with Color Accent */}
+              {/* Assigned PA Card with Color Accent & Quick Reassign */}
               <div 
-                className="p-3 rounded-xl border border-slate-200 bg-white space-y-1"
+                className="p-3 rounded-xl border border-slate-200 bg-white space-y-1.5 transition-all shadow-xs"
                 style={{
                   borderLeftWidth: '5px',
                   borderLeftColor: getPaColor(activeItem.pa)
                 }}
               >
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Assigned Public Adjuster (PA)
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>Assigned Public Adjuster (PA)</span>
+                    {activeItem.claim?.publicAdjuster && activeItem.pa?.id && activeItem.pa.id !== activeItem.claim.publicAdjuster.id && (
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                        Solo este Evento
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsChangingPa(prev => !prev)}
+                    className="text-[11px] font-bold text-maroon-800 hover:text-maroon-900 underline flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>{isChangingPa ? 'Cancelar' : 'Cambiar PA'}</span>
+                  </button>
                 </div>
-                {activeItem.pa ? (
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex items-center gap-2">
-                      <span 
-                        className="w-3.5 h-3.5 rounded-full shadow-2xs" 
-                        style={{ backgroundColor: activeItem.pa.colorCode || '#0284c7' }}
-                      />
-                      <span className="text-sm font-bold text-slate-900">{activeItem.pa.name}</span>
+
+                {isChangingPa ? (
+                  <div className="pt-2 space-y-2">
+                    <p className="text-[11px] text-slate-600 font-medium">
+                      Selecciona el PA libre para atender esta inspección:
+                    </p>
+                    <div className="space-y-1 max-h-52 overflow-y-auto divide-y divide-slate-100 bg-slate-50 rounded-lg p-1.5 border border-slate-200">
+                      {eligiblePas.map((pa) => {
+                        const isCurrent = activeItem.pa?.id === pa.id;
+                        const isClaimGeneralPa = activeItem.claim?.publicAdjusterId === pa.id;
+                        return (
+                          <button
+                            key={pa.id}
+                            type="button"
+                            disabled={isSavingPa}
+                            onClick={() => handleQuickUpdatePa(pa)}
+                            className={`w-full text-left p-2 rounded-md text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                              isCurrent
+                                ? 'bg-white shadow-xs font-bold text-maroon-900 border border-maroon-300 ring-1 ring-maroon-200'
+                                : 'hover:bg-white text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span 
+                                className="w-3 h-3 rounded-full shrink-0 shadow-2xs" 
+                                style={{ backgroundColor: pa.colorCode || '#0284c7' }} 
+                              />
+                              <div className="truncate">
+                                <span className="font-semibold block truncate">{pa.name}</span>
+                                <span className="text-[10px] text-slate-500 font-normal block">
+                                  {formatPaRole(pa.role)} {isClaimGeneralPa ? '· (PA General del Claim)' : ''}
+                                </span>
+                              </div>
+                            </div>
+                            {isCurrent && (
+                              <span className="text-[10px] text-maroon-800 font-bold shrink-0 ml-2">
+                                ✓ Asignado
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                    {activeItem.pa.phone && (
-                      <a 
-                        href={getNextivaTelUri(activeItem.pa.phone) || `tel:${activeItem.pa.phone}`}
-                        className="text-xs font-semibold text-tealBrand-700 hover:text-tealBrand-900 flex items-center gap-1 font-mono"
-                      >
-                        <Phone className="w-3 h-3" />
-                        {formatPhoneNumber(activeItem.pa.phone)}
-                      </a>
+                    {isSavingPa && (
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5 pt-1">
+                        <Loader2 className="w-3 h-3 animate-spin text-maroon-800" />
+                        <span>Guardando nuevo PA en la cita...</span>
+                      </div>
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs text-slate-400 italic py-1">
-                    No PA assigned to this inspection yet.
-                  </div>
+                  <>
+                    {activeItem.pa ? (
+                      <div className="flex items-center justify-between pt-0.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span 
+                            className="w-3.5 h-3.5 rounded-full shadow-2xs shrink-0" 
+                            style={{ backgroundColor: activeItem.pa.colorCode || '#0284c7' }}
+                          />
+                          <div className="truncate">
+                            <span className="text-sm font-bold text-slate-900 block truncate">{activeItem.pa.name}</span>
+                            <span className="text-[10px] text-slate-500 block truncate">
+                              {formatPaRole(activeItem.pa.role)}
+                              {activeItem.claim?.publicAdjuster && activeItem.pa.id !== activeItem.claim.publicAdjuster.id && (
+                                <span className="text-amber-700 font-semibold ml-1.5">
+                                  · PA General del Claim: {activeItem.claim.publicAdjuster.name}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                        {activeItem.pa.phone && (
+                          <a 
+                            href={getNextivaTelUri(activeItem.pa.phone) || `tel:${activeItem.pa.phone}`}
+                            className="text-xs font-semibold text-tealBrand-700 hover:text-tealBrand-900 flex items-center gap-1 font-mono shrink-0 ml-2"
+                          >
+                            <Phone className="w-3 h-3" />
+                            {formatPhoneNumber(activeItem.pa.phone)}
+                          </a>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 italic py-1 flex items-center justify-between">
+                        <span>Sin PA asignado a esta inspección.</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsChangingPa(true)}
+                          className="text-tealBrand-700 font-bold text-xs underline cursor-pointer"
+                        >
+                          Asignar ahora
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
