@@ -129,7 +129,17 @@ serve(async (req) => {
       if (isTest && testEmail) {
         uniqueRecipients = [{ email: testEmail, name: 'Iván Loza (Test Preview)' }]
       } else {
-        uniqueRecipients = Array.from(new Map(recipients.filter(r => r.email).map(item => [item.email, item])).values())
+        // Always include company accounts for calendar cancellations and tracking
+        const mandatoryAccounts = [
+          { email: 'scheduling@ipadjustinggroup.com', name: 'IP Scheduling' },
+          { email: 'admin@ipadjustinggroup.com', name: 'IP Admin' }
+        ];
+        for (const acc of mandatoryAccounts) {
+          if (!recipients.some(r => r.email.toLowerCase() === acc.email.toLowerCase())) {
+            recipients.push(acc);
+          }
+        }
+        uniqueRecipients = Array.from(new Map(recipients.filter(r => r.email).map(item => [item.email.toLowerCase(), item])).values())
       }
     }
 
@@ -159,11 +169,12 @@ serve(async (req) => {
       const icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//IP Scheduling Manager//EN',
+        'PRODID:-//IP Adjusting Group//IP Scheduling Manager//EN',
         'METHOD:CANCEL',
         'BEGIN:VEVENT',
-        `UID:${event?.id || 'test-cancellation-event'}@ipscheduling.com`,
+        `UID:${event?.id || 'test-cancellation-event'}@ipadjustinggroup.com`,
         `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'}`,
+        `ORGANIZER;CN="IP Scheduling":mailto:scheduling@ipadjustinggroup.com`,
         `STATUS:CANCELLED`,
         `DTSTART:${dtStart}`,
         `DTEND:${dtEnd}`,

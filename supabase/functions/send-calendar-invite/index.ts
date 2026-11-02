@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { eventId, isTest, testEmail, isUpdate } = await req.json()
+    const { eventId, isTest, testEmail, isUpdate, onlyRecipients } = await req.json()
     if (!eventId && !isTest) throw new Error("eventId is required")
 
     const supabaseAdmin = createClient(
@@ -86,7 +86,17 @@ serve(async (req) => {
       if (isTest && testEmail) {
         uniqueRecipients = [{ email: testEmail, name: 'Iván Loza (Test Preview)' }]
       } else {
-        uniqueRecipients = Array.from(new Map(emailRecipients.filter(r => r.email).map(item => [item.email, item])).values())
+        // Always include company accounts for automated calendar syncing and coordination
+        const mandatoryAccounts = [
+          { email: 'scheduling@ipadjustinggroup.com', name: 'IP Scheduling' },
+          { email: 'admin@ipadjustinggroup.com', name: 'IP Admin' }
+        ];
+        for (const acc of mandatoryAccounts) {
+          if (!emailRecipients.some(r => r.email.toLowerCase() === acc.email.toLowerCase())) {
+            emailRecipients.push(acc);
+          }
+        }
+        uniqueRecipients = Array.from(new Map(emailRecipients.filter(r => r.email).map(item => [item.email.toLowerCase(), item])).values())
       }
     }
 
@@ -359,15 +369,35 @@ serve(async (req) => {
     const smtpUser = Deno.env.get('GMAIL_SMTP_USER') || 'scheduling@ipadjustinggroup.com'
     const smtpPass = Deno.env.get('GMAIL_SMTP_PASSWORD')
 
-    // Ensure the scheduling office/organizer also receives the invite to update their calendar
-    if (smtpUser && !isTest && !uniqueRecipients.some(r => r.email.toLowerCase() === smtpUser.toLowerCase())) {
-      uniqueRecipients.push({ email: smtpUser, name: 'IP Scheduling Coordinator' })
+    // Ensure company accounts (scheduling & admin) and smtpUser are included so their calendars sync automatically
+    if (!isTest) {
+      const coreAccounts = [
+        { email: 'scheduling@ipadjustinggroup.com', name: 'IP Scheduling' },
+        { email: 'admin@ipadjustinggroup.com', name: 'IP Admin' },
+      ];
+      if (smtpUser && !coreAccounts.some(c => c.email.toLowerCase() === smtpUser.toLowerCase())) {
+        coreAccounts.push({ email: smtpUser, name: 'IP Scheduling Coordinator' });
+      }
+      for (const core of coreAccounts) {
+        if (!uniqueRecipients.some(r => r.email.toLowerCase() === core.email.toLowerCase())) {
+          uniqueRecipients.push(core);
+        }
+      }
     }
 
+    const autoAcceptedEmails = [
+      (smtpUser || 'scheduling@ipadjustinggroup.com').toLowerCase(),
+      'admin@ipadjustinggroup.com'
+    ];
 
-    const attendeesIcs = uniqueRecipients.map(r => 
-      `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN="${(r.name || r.email).replace(/[;:,"]/g, '')}":mailto:${r.email}`
-    ).join('\r\n')
+    const attendeesIcs = uniqueRecipients.map(r => {
+      const emailLower = r.email.toLowerCase();
+      const isOrganizer = emailLower === (smtpUser || 'scheduling@ipadjustinggroup.com').toLowerCase();
+      const isAutoAccepted = autoAcceptedEmails.includes(emailLower);
+      const partStat = isAutoAccepted ? 'ACCEPTED' : 'NEEDS-ACTION';
+      const role = isOrganizer ? 'CHAIR' : 'REQ-PARTICIPANT';
+      return `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=${role};PARTSTAT=${partStat};RSVP=TRUE;CN="${(r.name || r.email).replace(/[;:,"]/g, '')}":mailto:${r.email}`;
+    }).join('\r\n')
 
     const icsContent = [
       'BEGIN:VCALENDAR',
@@ -624,9 +654,13 @@ serve(async (req) => {
 </body>
 </html>`;
 
+    const finalRecipients = (Array.isArray(onlyRecipients) && onlyRecipients.length > 0)
+      ? onlyRecipients
+      : uniqueRecipients.map(r => r.email);
+
     const mailOptions = {
       from: `"IP Scheduling" <${smtpUser}>`,
-      to: uniqueRecipients.map(r => r.email).join(', '),
+      to: finalRecipients.join(', '),
       subject: emailSubject,
       html: htmlBody,
       icalEvent: {
@@ -655,7 +689,7 @@ serve(async (req) => {
         success: true, 
         messageId: info.messageId,
         googleCalendarUrl,
-        sentTo: uniqueRecipients.map(r => r.email)
+        sentTo: finalRecipients
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,

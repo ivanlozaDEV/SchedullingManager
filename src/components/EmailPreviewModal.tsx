@@ -71,7 +71,15 @@ export function EmailPreviewModal({
   const otherEmails = participants
     .map((p) => p.customEmail || p.publicAdjuster?.email || p.carrierRep?.email || p.externalActor?.email)
     .filter((em): em is string => Boolean(em && em.trim()));
-  const calendarRecipients = Array.from(new Set([insuredEmail, pa?.email, ...otherEmails].filter(Boolean))) as string[];
+  const calendarRecipients = Array.from(
+    new Set([
+      insuredEmail,
+      pa?.email,
+      ...otherEmails,
+      'scheduling@ipadjustinggroup.com',
+      'admin@ipadjustinggroup.com'
+    ].filter(Boolean))
+  ) as string[];
 
   // Timezone and City dynamic resolution
   const propertyTz = detectPropertyTimezone(
