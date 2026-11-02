@@ -388,11 +388,11 @@ export function EmailPreviewModal({
                     <p>
                       {isCalendarUpdate ? (
                         <>
-                          Your upcoming <strong>{eventType}</strong> for Claim <strong>#{claimNumber}</strong> has been officially <strong>updated</strong>. Below are the complete appointment and access details:
+                          Your upcoming <strong>{eventType}</strong> for Claim <strong>#{claimNumber}</strong> has been <strong>updated</strong>. Below are the complete appointment and access details:
                         </>
                       ) : (
                         <>
-                          Your upcoming <strong>{eventType}</strong> for Claim <strong>#{claimNumber}</strong> has been officially <strong>confirmed and scheduled</strong>. Below are the complete appointment and access details:
+                          Your upcoming <strong>{eventType}</strong> for Claim <strong>#{claimNumber}</strong> has been <strong>confirmed and scheduled</strong>. Below are the complete appointment and access details:
                         </>
                       )}
                     </p>
@@ -634,7 +634,7 @@ To: ${recipientDisplay}
 
 Dear ${insuredName},
 
-Your upcoming ${eventType} for Claim #${claimNumber} has been officially ${isCalendarUpdate ? 'updated' : 'confirmed and scheduled'}. Below are the complete appointment and access details:
+Your upcoming ${eventType} for Claim #${claimNumber} has been ${isCalendarUpdate ? 'updated' : 'confirmed and scheduled'}. Below are the complete appointment and access details:
 
 ✓ ${actionLabel} Appointment Details:
 📅 Date: ${formatUsDate(event.finalDate)}

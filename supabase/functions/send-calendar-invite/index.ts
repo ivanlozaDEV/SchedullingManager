@@ -468,7 +468,7 @@ serve(async (req) => {
               <p style="margin:0 0 14px 0; font-size:16px;">Dear <strong>${insuredName}</strong>,</p>
               
               <p style="margin:0 0 16px 0;">
-                Your upcoming <strong>${eventType}</strong> for Claim <strong>#${claimNumber}</strong> has been officially ${isUpdateEvent ? 'updated' : 'confirmed and scheduled'}. Below are the complete appointment and access details:
+                Your upcoming <strong>${eventType}</strong> for Claim <strong>#${claimNumber}</strong> has been ${isUpdateEvent ? 'updated' : 'confirmed and scheduled'}. Below are the complete appointment and access details:
               </p>
 
               <!-- APPOINTMENT DETAILS CARD -->
