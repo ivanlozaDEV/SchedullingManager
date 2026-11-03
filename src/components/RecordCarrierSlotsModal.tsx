@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, Calendar, Plus, Trash2, AlertCircle, CheckCircle2, User, Sparkles, Layers, Check } from 'lucide-react';
+import { X, Calendar, Plus, Trash2, AlertCircle, CheckCircle2, User, Sparkles, Layers, Check, Palmtree } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { formatTimeRangeWithDualTimezone } from '../lib/timezoneUtils';
-import type { CoordinationEvent, Claim, CoordinationStage } from '../types';
+import type { CoordinationEvent, Claim, CoordinationStage, PaUnavailability } from '../types';
 
 interface RecordCarrierSlotsModalProps {
   isOpen: boolean;
@@ -40,6 +40,17 @@ export function RecordCarrierSlotsModal({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // PA Absences & Conflicts
+  const paId = event.publicAdjusterId || claim.publicAdjusterId;
+  const paName = claim.publicAdjuster?.name || 'El Public Adjuster';
+  const [unavailabilities, setUnavailabilities] = useState<PaUnavailability[]>([]);
+
+  useEffect(() => {
+    if (paId) {
+      schedulingService.getPaUnavailabilities(paId).then(setUnavailabilities).catch(console.warn);
+    }
+  }, [paId, isOpen]);
 
   const isEditing = Boolean(event?.slots && event.slots.length > 0);
 
@@ -418,27 +429,42 @@ export function RecordCarrierSlotsModal({
             </div>
 
             <div className="space-y-2.5">
-              {slots.map((slot, idx) => (
-                <div 
-                  key={idx} 
-                  className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 relative"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-maroon-800" />
-                      Option #{idx + 1}
-                    </span>
-                    {slots.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveSlot(idx)}
-                        title="Remove this option"
-                        className="text-slate-400 hover:text-red-600 p-1 rounded-md transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+              {slots.map((slot, idx) => {
+                const slotConflict = schedulingService.checkPaConflict(paId, slot.slotDate, unavailabilities);
+
+                return (
+                  <div 
+                    key={idx} 
+                    className={`border rounded-xl p-3 space-y-2 relative transition-all ${
+                      slotConflict 
+                        ? 'bg-amber-50/80 border-amber-300 ring-1 ring-amber-400/40' 
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-maroon-800" />
+                          Option #{idx + 1}
+                        </span>
+                        {slotConflict && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                            <Palmtree className="w-3 h-3 text-amber-700" />
+                            <span>⚠️ {paName} de {slotConflict.reason}</span>
+                          </span>
+                        )}
+                      </div>
+                      {slots.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSlot(idx)}
+                          title="Remove this option"
+                          className="text-slate-400 hover:text-red-600 p-1 rounded-md transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
@@ -482,8 +508,9 @@ export function RecordCarrierSlotsModal({
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
             <div className="flex items-center justify-between pt-1">
               <button

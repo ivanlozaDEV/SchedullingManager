@@ -11,7 +11,8 @@ import type {
   SlotStatus,
   CoordinationStage,
   EventStatus,
-  ParticipantRole
+  ParticipantRole,
+  PaUnavailability
 } from '../types';
 
 async function parseEdgeFunctionError(error: any): Promise<string> {
@@ -2097,6 +2098,101 @@ export const schedulingService = {
       console.warn('Error fetching unique event types:', e);
       return [];
     }
+  },
+
+  // 16. PA Unavailabilities (Ausencias / Vacaciones de PAs)
+  async getPaUnavailabilities(paId?: string): Promise<PaUnavailability[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      let query = supabase
+        .from('pa_unavailabilities')
+        .select('*')
+        .order('start_date', { ascending: true });
+
+      if (paId) {
+        query = query.eq('public_adjuster_id', paId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.warn('Error fetching pa_unavailabilities:', error.message);
+        return [];
+      }
+
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        publicAdjusterId: row.public_adjuster_id,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        reason: row.reason || 'Vacaciones',
+        notes: row.notes,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }));
+    } catch (e) {
+      console.warn('Error fetching pa_unavailabilities:', e);
+      return [];
+    }
+  },
+
+  async createPaUnavailability(data: {
+    publicAdjusterId: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+    notes?: string;
+  }): Promise<PaUnavailability> {
+    if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
+
+    const { data: row, error } = await supabase
+      .from('pa_unavailabilities')
+      .insert({
+        public_adjuster_id: data.publicAdjusterId,
+        start_date: data.startDate,
+        end_date: data.endDate,
+        reason: data.reason || 'Vacaciones',
+        notes: data.notes || null
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: row.id,
+      publicAdjusterId: row.public_adjuster_id,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      reason: row.reason,
+      notes: row.notes,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  },
+
+  async deletePaUnavailability(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    const { error } = await supabase.from('pa_unavailabilities').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting pa_unavailability:', error.message);
+      return false;
+    }
+    return true;
+  },
+
+  checkPaConflict(
+    paId: string | null | undefined,
+    dateStr: string | null | undefined,
+    unavailabilities: PaUnavailability[]
+  ): PaUnavailability | null {
+    if (!paId || !dateStr || !unavailabilities || unavailabilities.length === 0) return null;
+    const dateFormatted = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.trim();
+    if (!dateFormatted) return null;
+
+    const conflict = unavailabilities.find(
+      (u) => u.publicAdjusterId === paId && dateFormatted >= u.startDate && dateFormatted <= u.endDate
+    );
+    return conflict || null;
   }
 };
 

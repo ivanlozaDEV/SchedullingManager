@@ -43,6 +43,17 @@ export interface PublicAdjuster {
   isActive: boolean;
 }
 
+export interface PaUnavailability {
+  id: string;
+  publicAdjusterId: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  reason: 'Vacaciones' | 'Médico' | 'Personal / Día Libre' | 'Viaje' | 'Otro' | string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface CarrierRepresentative {
   id: string;
   carrierName: string;

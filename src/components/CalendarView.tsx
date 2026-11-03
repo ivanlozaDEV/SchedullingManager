@@ -33,9 +33,10 @@ import {
   Car,
   Save,
   Loader2,
-  Kanban
+  Kanban,
+  Palmtree
 } from 'lucide-react';
-import type { CoordinationEvent, Claim, PublicAdjuster } from '../types';
+import type { CoordinationEvent, Claim, PublicAdjuster, PaUnavailability } from '../types';
 import { 
   format12Hour, 
   formatTimeRangeWithDualTimezone, 
@@ -248,6 +249,13 @@ export function CalendarView({
     paId?: string;
   } | null>(null);
 
+  // PA Absences / Unavailabilities State
+  const [paUnavailabilities, setPaUnavailabilities] = useState<PaUnavailability[]>([]);
+
+  useEffect(() => {
+    schedulingService.getPaUnavailabilities().then(setPaUnavailabilities).catch(console.warn);
+  }, [onDataRefresh]);
+
   // Selected item for popover / modal detail
   const [activeItem, setActiveItem] = useState<CalendarEventItem | null>(null);
   const [isDeletingSlot, setIsDeletingSlot] = useState(false);
@@ -266,6 +274,16 @@ export function CalendarView({
 
   const handleQuickUpdatePa = async (newPa: PublicAdjuster) => {
     if (!activeItem) return;
+
+    // Check if new PA has an absence on this appointment date
+    const conflict = schedulingService.checkPaConflict(newPa.id, activeItem.dateStr, paUnavailabilities);
+    if (conflict) {
+      const confirmForce = window.confirm(
+        `⚠️ ALERTA DE AUSENCIA:\n\n${newPa.name} tiene ausencia registrada por "${conflict.reason}" del ${conflict.startDate} al ${conflict.endDate}.\n\n¿Deseas forzar la asignación de este PA a pesar de su ausencia?`
+      );
+      if (!confirmForce) return;
+    }
+
     setIsSavingPa(true);
     try {
       await schedulingService.updateEventPa(activeItem.eventId, newPa.id);
@@ -971,11 +989,21 @@ export function CalendarView({
               const maxDisplay = 3;
               const hasOverflow = dayItems.length > maxDisplay;
 
+              // Check if selected PA has an absence on this day (only when a specific PA is filtered!)
+              const isSpecificPa = selectedPaId !== 'all' && selectedPaId !== 'unassigned';
+              const selectedPaAbsence = isSpecificPa 
+                ? paUnavailabilities.find(u => u.publicAdjusterId === selectedPaId && dateStr >= u.startDate && dateStr <= u.endDate)
+                : null;
+
               return (
                 <div
                   key={dateStr}
                   className={`min-h-[125px] p-1.5 flex flex-col transition-colors ${
-                    isCurrentMonth ? 'bg-white' : 'bg-slate-50/60'
+                    selectedPaAbsence
+                      ? 'bg-amber-50/70 border-amber-300 ring-1 ring-inset ring-amber-300/60'
+                      : isCurrentMonth 
+                      ? 'bg-white' 
+                      : 'bg-slate-50/60'
                   } ${isCurrentDay ? 'bg-tealBrand-50/30 ring-1 ring-inset ring-tealBrand-300' : ''}`}
                 >
                   {/* Day header */}
@@ -998,6 +1026,17 @@ export function CalendarView({
                       </span>
                     )}
                   </div>
+
+                  {/* PA Absence Banner in Month View */}
+                  {selectedPaAbsence && (
+                    <div 
+                      className="mb-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs"
+                      title={`Ausencia de PA: ${selectedPaAbsence.reason}${selectedPaAbsence.notes ? ` (${selectedPaAbsence.notes})` : ''}`}
+                    >
+                      <Palmtree className="w-3 h-3 text-amber-600 shrink-0" />
+                      <span className="truncate">Ausente: {selectedPaAbsence.reason}</span>
+                    </div>
+                  )}
 
                   {/* Day Events Stack */}
                   <div className="space-y-1 flex-1 overflow-hidden">
@@ -1140,13 +1179,40 @@ export function CalendarView({
               const isSpecificPa = selectedPaId !== 'all' && selectedPaId !== 'unassigned';
               const scheduleItems = getDayScheduleWithGaps(dayItems, showFreeWindows && isSpecificPa);
 
+              const selectedPaAbsence = isSpecificPa
+                ? paUnavailabilities.find(u => u.publicAdjusterId === selectedPaId && dateStr >= u.startDate && dateStr <= u.endDate)
+                : null;
+
               return (
                 <div 
                   key={dateStr} 
                   className={`p-2 space-y-2 flex flex-col ${
-                    isCurrentDay ? 'bg-tealBrand-50/20' : 'bg-white'
+                    selectedPaAbsence
+                      ? 'bg-amber-50/40 ring-1 ring-inset ring-amber-200'
+                      : isCurrentDay 
+                      ? 'bg-tealBrand-50/20' 
+                      : 'bg-white'
                   }`}
                 >
+                  {/* PA Absence Banner in Week View */}
+                  {selectedPaAbsence && (
+                    <div 
+                      className="p-2 rounded-lg bg-amber-100/95 border border-amber-300 text-amber-900 shadow-2xs flex items-start gap-1.5"
+                      title={selectedPaAbsence.notes || selectedPaAbsence.reason}
+                    >
+                      <Palmtree className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800">PA No Disponible</span>
+                        </div>
+                        <p className="text-xs font-bold truncate">{selectedPaAbsence.reason}</p>
+                        {selectedPaAbsence.notes && (
+                          <p className="text-[10px] text-amber-800/80 italic truncate">"{selectedPaAbsence.notes}"</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {scheduleItems.length === 0 && (
                     <div className="h-full flex items-center justify-center text-slate-300 text-xs italic py-10">
                       No events
@@ -2115,6 +2181,7 @@ export function CalendarView({
           claims={claims}
           events={events}
           pas={pas}
+          unavailabilities={paUnavailabilities}
           onEventCreated={() => {
             setBookingSlotTarget(null);
             if (onDataRefresh) onDataRefresh();

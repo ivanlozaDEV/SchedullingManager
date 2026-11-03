@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, Calendar, Clock, CheckCircle2, AlertCircle, Mail, User } from 'lucide-react';
+import { X, Calendar, Clock, CheckCircle2, AlertCircle, Mail, User, AlertTriangle } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { formatTimeRangeWithDualTimezone, formatUsDate } from '../lib/timezoneUtils';
 import { useToast } from '../context/ToastContext';
-import type { CoordinationEvent, Claim } from '../types';
+import type { CoordinationEvent, Claim, PaUnavailability } from '../types';
 
 interface DirectConfirmModalProps {
   isOpen: boolean;
@@ -29,6 +29,24 @@ export function DirectConfirmModal({
   const [sendCalendarInvite, setSendCalendarInvite] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // PA Absences & Conflict
+  const paId = event.publicAdjusterId || claim.publicAdjusterId;
+  const paName = claim.publicAdjuster?.name || 'El Public Adjuster';
+  const [unavailabilities, setUnavailabilities] = useState<PaUnavailability[]>([]);
+  const [forceAbsenceConfirm, setForceAbsenceConfirm] = useState(false);
+
+  useEffect(() => {
+    if (paId) {
+      schedulingService.getPaUnavailabilities(paId).then(setUnavailabilities).catch(console.warn);
+    }
+  }, [paId, isOpen]);
+
+  useEffect(() => {
+    setForceAbsenceConfirm(false);
+  }, [finalDate]);
+
+  const paAbsence = schedulingService.checkPaConflict(paId, finalDate, unavailabilities);
 
   useEffect(() => {
     if (isOpen && event) {
@@ -60,6 +78,11 @@ export function DirectConfirmModal({
     }
     if (finalStartTime >= finalEndTime) {
       setError('End time must be later than start time.');
+      return;
+    }
+
+    if (paAbsence && !forceAbsenceConfirm) {
+      setError(`Atención: ${paName} tiene ausencia registrada por "${paAbsence.reason}" en esta fecha. Activa la casilla de confirmación para forzar.`);
       return;
     }
 
@@ -192,6 +215,27 @@ export function DirectConfirmModal({
               onChange={(e) => setFinalDate(e.target.value)}
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-maroon-800 font-medium"
             />
+            {paAbsence && (
+              <div className="mt-2.5 p-3 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-900 space-y-1.5 shadow-xs">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>⚠️ Alerta: {paName} está de {paAbsence.reason}</span>
+                </div>
+                <p className="text-amber-800 text-[11px]">
+                  Ausencia del <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.
+                  {paAbsence.notes && <span className="italic block mt-0.5 text-amber-900/80">"{paAbsence.notes}"</span>}
+                </p>
+                <label className="flex items-center gap-2 pt-1 font-bold cursor-pointer text-amber-950 bg-amber-100/70 p-2 rounded-lg border border-amber-300/80">
+                  <input 
+                    type="checkbox" 
+                    checked={forceAbsenceConfirm} 
+                    onChange={(e) => setForceAbsenceConfirm(e.target.checked)}
+                    className="w-4 h-4 rounded border-amber-400 text-amber-600 focus:ring-amber-500 cursor-pointer" 
+                  />
+                  <span>Entiendo que el PA está ausente, forzar confirmación</span>
+                </label>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

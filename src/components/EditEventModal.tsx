@@ -11,7 +11,8 @@ import {
   AlertCircle, 
   CheckCircle2, 
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { useToast } from '../context/ToastContext';
@@ -25,7 +26,8 @@ import type {
   ExternalActor, 
   CoordinationStage, 
   CoordinationParty,
-  EventStatus
+  EventStatus,
+  PaUnavailability
 } from '../types';
 
 interface EditEventModalProps {
@@ -108,6 +110,24 @@ export function EditEventModal({
   // Status
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // PA Absences & Conflict
+  const [unavailabilities, setUnavailabilities] = useState<PaUnavailability[]>([]);
+  const [forceAbsenceConfirmed, setForceAbsenceConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      schedulingService.getPaUnavailabilities().then(setUnavailabilities).catch(console.warn);
+      setForceAbsenceConfirmed(false);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    setForceAbsenceConfirmed(false);
+  }, [finalDate, eventPaId]);
+
+  const paAbsence = schedulingService.checkPaConflict(eventPaId, finalDate, unavailabilities);
+  const assignedPaObj = pas.find(p => p.id === eventPaId);
 
   useEffect(() => {
     if (externalActors.length > 0) {
@@ -249,6 +269,11 @@ export function EditEventModal({
         setError('Please enter start and end time for the appointment.');
         return;
       }
+    }
+
+    if (paAbsence && !forceAbsenceConfirmed) {
+      setError(`Atención: ${assignedPaObj?.name || 'El PA'} tiene ausencia registrada por "${paAbsence.reason}" en esta fecha (${paAbsence.startDate} al ${paAbsence.endDate}). Activa la casilla de confirmación para forzar.`);
+      return;
     }
 
     setSaving(true);
@@ -637,6 +662,29 @@ export function EditEventModal({
                     />
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* PA Absence Warning Alert Banner in EditEventModal */}
+            {paAbsence && (
+              <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-900 space-y-1.5 shadow-xs">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>⚠️ Alerta de Ausencia: {assignedPaObj?.name || 'PA'} está de {paAbsence.reason}</span>
+                </div>
+                <p className="text-amber-800 text-[11px]">
+                  Ausencia registrada del <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.
+                  {paAbsence.notes && <span className="italic block mt-0.5 text-amber-900/80">"{paAbsence.notes}"</span>}
+                </p>
+                <label className="flex items-center gap-2 pt-1 font-bold cursor-pointer text-amber-950 bg-amber-100/70 p-2 rounded-lg border border-amber-300/80">
+                  <input 
+                    type="checkbox" 
+                    checked={forceAbsenceConfirmed} 
+                    onChange={(e) => setForceAbsenceConfirmed(e.target.checked)}
+                    className="w-4 h-4 rounded border-amber-400 text-amber-600 focus:ring-amber-500 cursor-pointer" 
+                  />
+                  <span>Entiendo que el PA está ausente en esta fecha, forzar asignación</span>
+                </label>
               </div>
             )}
           </div>

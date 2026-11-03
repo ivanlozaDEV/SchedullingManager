@@ -8,9 +8,11 @@ import {
   Search, 
   ExternalLink, 
   Car, 
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Palmtree
 } from 'lucide-react';
-import type { Claim, CoordinationEvent, PublicAdjuster } from '../types';
+import type { Claim, CoordinationEvent, PublicAdjuster, PaUnavailability } from '../types';
 import { formatUsDate, format12Hour, cleanAddress } from '../lib/timezoneUtils';
 import { schedulingService } from '../lib/schedulingService';
 import { supabase } from '../lib/supabase';
@@ -30,6 +32,7 @@ interface ScheduleInFreeSlotModalProps {
   claims: Claim[];
   events: CoordinationEvent[];
   pas: PublicAdjuster[];
+  unavailabilities?: PaUnavailability[];
   onEventCreated: () => void;
 }
 
@@ -43,6 +46,7 @@ export function ScheduleInFreeSlotModal({
   claims,
   events,
   pas,
+  unavailabilities,
   onEventCreated
 }: ScheduleInFreeSlotModalProps) {
   const { success, error } = useToast();
@@ -53,6 +57,28 @@ export function ScheduleInFreeSlotModal({
     }
     return pas[0]?.id || '';
   });
+
+  // PA Unavailabilities / Absences & Conflict Detection
+  const [unavailabilitiesList, setUnavailabilitiesList] = useState<PaUnavailability[]>(unavailabilities || []);
+  const [forceAbsenceBooking, setForceAbsenceBooking] = useState(false);
+
+  useEffect(() => {
+    if (unavailabilities && unavailabilities.length > 0) {
+      setUnavailabilitiesList(unavailabilities);
+    } else {
+      schedulingService.getPaUnavailabilities().then(setUnavailabilitiesList).catch(console.warn);
+    }
+  }, [unavailabilities]);
+
+  useEffect(() => {
+    setForceAbsenceBooking(false);
+  }, [selectedPaId, slotDate]);
+
+  const currentPa = useMemo(() => pas.find(p => p.id === selectedPaId), [pas, selectedPaId]);
+
+  const paAbsence = useMemo(() => {
+    return schedulingService.checkPaConflict(selectedPaId, slotDate, unavailabilitiesList);
+  }, [selectedPaId, slotDate, unavailabilitiesList]);
 
   const [selectedClaimId, setSelectedClaimId] = useState<string>('');
   const [claimSearch, setClaimSearch] = useState('');
@@ -156,12 +182,19 @@ export function ScheduleInFreeSlotModal({
 
   if (!isOpen) return null;
 
-  const currentPa = pas.find(p => p.id === selectedPaId);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClaim) {
       error('Reclamo requerido', 'Por favor selecciona un reclamo (Claim) para agendar');
+      return;
+    }
+
+    // Check PA absence conflict
+    if (paAbsence && !forceAbsenceBooking) {
+      error(
+        'PA No Disponible',
+        `${currentPa?.name || 'El PA'} tiene ausencia por "${paAbsence.reason}". Por favor marca la casilla de confirmación para forzar la asignación.`
+      );
       return;
     }
 
@@ -326,6 +359,32 @@ export function ScheduleInFreeSlotModal({
                 ))}
               </select>
             </div>
+
+            {/* PA Absence Warning Alert Banner */}
+            {paAbsence && (
+              <div className="mt-2.5 p-3 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-start gap-2.5 shadow-xs">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1 text-xs">
+                  <p className="font-bold text-amber-900 flex items-center gap-1.5">
+                    <Palmtree className="w-3.5 h-3.5 text-amber-700" />
+                    <span>⚠️ Alerta: {currentPa?.name} está de {paAbsence.reason}</span>
+                  </p>
+                  <p className="text-amber-800 mt-0.5">
+                    Período de ausencia: <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.
+                    {paAbsence.notes && <span className="italic block mt-0.5 text-amber-900/80">"{paAbsence.notes}"</span>}
+                  </p>
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer font-bold text-amber-950 bg-amber-100/70 p-2 rounded-lg border border-amber-300/80">
+                    <input 
+                      type="checkbox" 
+                      checked={forceAbsenceBooking} 
+                      onChange={(e) => setForceAbsenceBooking(e.target.checked)}
+                      className="w-4 h-4 rounded border-amber-400 text-amber-600 focus:ring-amber-500 cursor-pointer" 
+                    />
+                    <span>Entiendo que el PA está ausente, forzar asignación en esta fecha</span>
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Step 2: Claim Selection */}

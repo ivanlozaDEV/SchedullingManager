@@ -17,17 +17,20 @@ import {
   Mail,
   RefreshCw,
   SlidersHorizontal,
-  Award
+  Award,
+  Palmtree
 } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { appSettingsService } from '../lib/appSettingsService';
+import { PaAbsenceModal } from './PaAbsenceModal';
 import type {
   PublicAdjuster,
   CarrierRepresentative,
   ExternalActor,
   Insured,
   Claim,
-  CoordinationEvent
+  CoordinationEvent,
+  PaUnavailability
 } from '../types';
 
 export type CatalogCategory =
@@ -90,6 +93,11 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
   const [actorRoles, setActorRoles] = useState<string[]>([]);
   const [activeRoleSubTab, setActiveRoleSubTab] = useState<'pa' | 'carrier_rep' | 'actor'>('pa');
 
+  // PA Unavailabilities / Absences State
+  const [paUnavailabilities, setPaUnavailabilities] = useState<PaUnavailability[]>([]);
+  const [selectedPaForAbsence, setSelectedPaForAbsence] = useState<PublicAdjuster | null>(null);
+  const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
+
   // Modals & Editing State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
@@ -114,6 +122,7 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
         fetchedPaRoles,
         fetchedRepRoles,
         fetchedActorRoles,
+        fetchedUnavailabilities,
       ] = await Promise.all([
         schedulingService.getPublicAdjusters(true),
         schedulingService.getCarrierReps(),
@@ -124,12 +133,14 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
         appSettingsService.getCustomPaRoles(),
         appSettingsService.getCustomCarrierRepRoles(),
         appSettingsService.getCustomActorRoles(),
+        schedulingService.getPaUnavailabilities(),
       ]);
 
       setPas(fetchedPas);
       setCarrierReps(fetchedReps);
       setExternalActors(fetchedActors);
       setInsureds(fetchedInsureds);
+      setPaUnavailabilities(fetchedUnavailabilities);
 
       // Merge with any distinct values found in claims or events to ensure 100% visibility
       const claimsCarriers = claims.map(c => c.carrier?.trim()).filter(Boolean);
@@ -1142,6 +1153,46 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
                         <span className="font-semibold text-slate-800">Availability / Zone:</span> {pa.generalAvailability}
                       </div>
                     )}
+
+                    {/* Active or Upcoming Absence Badge */}
+                    {(() => {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      const currentAbs = paUnavailabilities.find(
+                        (u) => u.publicAdjusterId === pa.id && u.startDate <= todayStr && u.endDate >= todayStr
+                      );
+                      const upcomingAbs = paUnavailabilities.find(
+                        (u) => u.publicAdjusterId === pa.id && u.startDate > todayStr
+                      );
+
+                      if (currentAbs) {
+                        return (
+                          <div className="mt-2 text-[11px] bg-amber-50 text-amber-800 border border-amber-300 p-2 rounded-lg flex items-center justify-between gap-1.5 font-semibold">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Palmtree className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span className="truncate">
+                                <strong>Ausente hoy:</strong> {currentAbs.reason} ({currentAbs.startDate} &rarr; {currentAbs.endDate})
+                              </span>
+                            </div>
+                            <span className="text-[9px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full uppercase shrink-0 font-extrabold">
+                              En Curso
+                            </span>
+                          </div>
+                        );
+                      }
+
+                      if (upcomingAbs) {
+                        return (
+                          <div className="mt-2 text-[11px] bg-sky-50 text-sky-800 border border-sky-200 p-2 rounded-lg flex items-center gap-1.5">
+                            <Palmtree className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                            <span className="truncate">
+                              <strong>Próxima ausencia:</strong> {upcomingAbs.startDate} &rarr; {upcomingAbs.endDate}
+                            </span>
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
                   </div>
                 </div>
 
@@ -1150,6 +1201,18 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
                     Assigned to <strong>{usageCount}</strong> claim{usageCount === 1 ? '' : 's'}
                   </span>
                   <div className="flex items-center gap-1.5">
+                    {/* Time Off / Absence Management Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPaForAbsence(pa);
+                        setIsAbsenceModalOpen(true);
+                      }}
+                      className="p-1.5 text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors"
+                      title="Gestionar Ausencias / Bloqueos de Fechas"
+                    >
+                      <Palmtree className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => openEditModal(pa)}
@@ -2314,6 +2377,17 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
           </div>
         </div>
       )}
+
+      {/* PA Absence & Time Off Modal */}
+      <PaAbsenceModal
+        isOpen={isAbsenceModalOpen}
+        onClose={() => {
+          setIsAbsenceModalOpen(false);
+          setSelectedPaForAbsence(null);
+        }}
+        pa={selectedPaForAbsence}
+        onChanged={loadCatalogs}
+      />
     </div>
   );
 }
