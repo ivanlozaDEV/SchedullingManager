@@ -178,28 +178,31 @@ serve(async (req) => {
       });
     }
 
-    // 2. Insured: Find or create
+    // 2. Insured: Find or create (strictly respecting the Client name from the Master List)
     let insuredId = null;
     const clientName = client ? String(client).trim() : 'Unnamed Client';
     const clientPhone = phone ? String(phone).trim() : null;
     const clientEmail = email ? String(email).trim() : null;
 
-    if (clientEmail || clientName) {
-      let query = supabaseAdmin.from('insureds').select('id, name');
-      if (clientEmail) {
-        query = query.eq('email', clientEmail);
-      } else {
-        query = query.eq('name', clientName);
-      }
-      const { data: existingInsured } = await query.maybeSingle();
+    if (clientName) {
+      // Always look up by NAME to respect what comes from the Master List
+      const { data: existingInsured } = await supabaseAdmin
+        .from('insureds')
+        .select('id, name, phone, email')
+        .ilike('name', clientName)
+        .maybeSingle();
 
       if (existingInsured) {
         insuredId = existingInsured.id;
-        // Optionally update phone if missing
-        if (clientPhone) {
-          await supabaseAdmin.from('insureds').update({ phone: clientPhone }).eq('id', insuredId);
+        // Keep phone / email up to date if they were missing
+        const updates: Record<string, string> = {};
+        if (clientPhone && !existingInsured.phone) updates.phone = clientPhone;
+        if (clientEmail && !existingInsured.email) updates.email = clientEmail;
+        if (Object.keys(updates).length > 0) {
+          await supabaseAdmin.from('insureds').update(updates).eq('id', insuredId);
         }
       } else {
+        // Create new insured with exact name, phone, and email from the sheet
         const { data: newInsured, error: insuredErr } = await supabaseAdmin
           .from('insureds')
           .insert({
