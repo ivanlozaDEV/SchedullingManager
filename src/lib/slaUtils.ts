@@ -320,6 +320,17 @@ export function getEventSlaStatus(event: CoordinationEvent, customConfig?: SlaCo
   };
 }
 
+export function formatPaWillDo(paName?: string | null): string {
+  if (!paName) return '';
+  const trimmed = paName.trim();
+  if (!trimmed) return '';
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return ` (${parts[0]} Will Do)`;
+  const first = parts[0];
+  const lastInitial = parts[parts.length - 1].charAt(0).toUpperCase();
+  return ` (${first} ${lastInitial}. Will Do)`;
+}
+
 export function getGoogleCalendarUrl(event: CoordinationEvent): string | null {
   if (!event.finalDate) return null;
   const cleanDate = event.finalDate.replace(/-/g, '');
@@ -336,9 +347,99 @@ export function getGoogleCalendarUrl(event: CoordinationEvent): string | null {
   const insuredName = event.claim?.insured?.name || 'Insured Client';
   const claimNumber = event.claim?.claimNumber || 'N/A';
   const eventType = event.eventType || 'Inspection';
-  const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}`;
+  const assignedPa = event.publicAdjuster || 
+    (event.participants || []).find((p: any) => p.publicAdjuster && (!p.roleType || p.roleType === 'actor'))?.publicAdjuster || 
+    event.claim?.publicAdjuster;
+  const paWillDo = formatPaWillDo(assignedPa?.name);
+  const title = `${eventType} Confirmed | ${insuredName} - Claim #${claimNumber}${paWillDo}`;
   const location = event.location || event.claim?.propertyAddress || '';
-  const desc = `Address: ${event.claim?.propertyAddress || ''}\nTimezone: ${tzLabel}\nClaim Number: ${claimNumber}\nCarrier: ${event.claim?.carrier || ''}\nInsured: ${insuredName}`;
 
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStart}/${dtEnd}&ctz=${ianaTz}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(location)}`;
+  // Compile full in-person attendees & coordination team
+  const attendeeList: string[] = [];
+  const guestEmails: string[] = [];
+
+  if (event.claim?.insured?.name) {
+    const contact = event.claim.insured.phone || event.claim.insured.email || '';
+    attendeeList.push(`• ${event.claim.insured.name} (Insured Policyholder)${contact ? ` - ${contact}` : ''}`);
+    if (event.claim.insured.email) guestEmails.push(event.claim.insured.email);
+  }
+
+  if (assignedPa?.name) {
+    const contact = [assignedPa.phone, assignedPa.email].filter(Boolean).join(' | ');
+    attendeeList.push(`• ${assignedPa.name} (Public Adjuster)${contact ? ` - ${contact}` : ''}`);
+    if (assignedPa.email) guestEmails.push(assignedPa.email);
+  }
+
+  for (const p of (event.participants || [])) {
+    if (p.publicAdjuster && p.publicAdjuster.id !== assignedPa?.id) {
+      const contact = [p.publicAdjuster.phone, p.publicAdjuster.email].filter(Boolean).join(' | ');
+      attendeeList.push(`• ${p.publicAdjuster.name} (Support PA)${contact ? ` - ${contact}` : ''}`);
+      if (p.publicAdjuster.email) guestEmails.push(p.publicAdjuster.email);
+    }
+    if (p.carrierRep) {
+      const contact = [p.carrierRep.phone, p.carrierRep.email].filter(Boolean).join(' | ');
+      attendeeList.push(`• ${p.carrierRep.name} (Carrier Rep / ${p.carrierRep.company || event.claim?.carrier || 'Carrier'})${contact ? ` - ${contact}` : ''}`);
+      if (p.carrierRep.email) guestEmails.push(p.carrierRep.email);
+    }
+    if (p.externalActor) {
+      const contact = [p.externalActor.phone, p.externalActor.email].filter(Boolean).join(' | ');
+      attendeeList.push(`• ${p.externalActor.name} (${p.externalActor.typeOfActor || 'Specialist'})${contact ? ` - ${contact}` : ''}`);
+      if (p.externalActor.email) guestEmails.push(p.externalActor.email);
+    }
+    if (p.customName && !p.publicAdjuster && !p.carrierRep && !p.externalActor) {
+      const contact = [p.customPhone, p.customEmail].filter(Boolean).join(' | ');
+      attendeeList.push(`• ${p.customName} (Participant)${contact ? ` - ${contact}` : ''}`);
+      if (p.customEmail) guestEmails.push(p.customEmail);
+    }
+  }
+
+  // Include core company emails in guests
+  guestEmails.push('scheduling@ipadjustinggroup.com', 'admin@ipadjustinggroup.com');
+  const uniqueGuests = Array.from(new Set(guestEmails.filter(Boolean)));
+
+  const descParts: string[] = [
+    `Claim Number: ${claimNumber}`,
+    `Carrier: ${event.claim?.carrier || 'Carrier'}`,
+    `Insured: ${insuredName}`,
+    `Address: ${event.claim?.propertyAddress || location || 'N/A'}`
+  ];
+
+  if (location && location !== event.claim?.propertyAddress) {
+    descParts.push(`Event Location: ${location}`);
+  }
+
+  descParts.push(`Timezone: ${tzLabel}`);
+
+  if (event.accessInstructions) {
+    descParts.push(`Access Instructions: ${event.accessInstructions}`);
+  }
+  if (event.gateCode) {
+    descParts.push(`Gate / Community Code: ${event.gateCode}`);
+  }
+  if (event.lockboxCode) {
+    descParts.push(`Lockbox / Key Code: ${event.lockboxCode}`);
+  }
+
+  // Clean internal tracking bracket tags from notes
+  const cleanNotes = (event.notes || '')
+    .replace(/\[CoordinationOrder:[^\]]*\]/gi, '')
+    .replace(/\[CoordinationSequence:[^\]]*\]/gi, '')
+    .replace(/\[SlotsOriginator:[^\]]*\]/gi, '')
+    .replace(/\[Timezone:[^\]]*\]/gi, '')
+    .replace(/\[Stage:[^\]]*\]/gi, '')
+    .replace(/\[Status:[^\]]*\]/gi, '')
+    .trim();
+
+  if (cleanNotes) {
+    descParts.push(`Appointment Notes: ${cleanNotes}`);
+  }
+
+  if (attendeeList.length > 0) {
+    descParts.push(`Attendees & Team:\n${attendeeList.join('\n')}`);
+  }
+
+  const desc = descParts.join('\n\n');
+  const addParam = uniqueGuests.length > 0 ? `&add=${encodeURIComponent(uniqueGuests.join(','))}` : '';
+
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dtStart}/${dtEnd}&ctz=${ianaTz}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(location)}${addParam}`;
 }

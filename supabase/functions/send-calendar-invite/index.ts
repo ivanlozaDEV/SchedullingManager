@@ -55,7 +55,7 @@ serve(async (req) => {
       // 1. Fetch Event and Claim details
       const { data: dbEvent, error: eventErr } = await supabaseAdmin
         .from('events')
-        .select(`*, claim:claims (*, insured:insureds (*), public_adjuster:public_adjusters (*))`)
+        .select(`*, public_adjuster:public_adjusters(*), claim:claims (*, insured:insureds (*), public_adjuster:public_adjusters (*))`)
         .eq('id', eventId)
         .single()
 
@@ -75,6 +75,7 @@ serve(async (req) => {
       const emailRecipients: { email: string, name: string }[] = []
       if (event.claim?.insured?.email) emailRecipients.push({ email: event.claim.insured.email, name: event.claim.insured.name })
       if (event.claim?.public_adjuster?.email) emailRecipients.push({ email: event.claim.public_adjuster.email, name: event.claim.public_adjuster.name })
+      if (event.public_adjuster?.email) emailRecipients.push({ email: event.public_adjuster.email, name: event.public_adjuster.name })
       
       for (const p of (participants || [])) {
         if (p.custom_email) emailRecipients.push({ email: p.custom_email, name: p.custom_name || 'Participant' })
@@ -335,11 +336,23 @@ serve(async (req) => {
     const dtStartIcs = `${cleanDate}T${cleanStartTime}`
     const dtEndIcs = `${cleanDate}T${cleanEndTime}`
 
+    const formatPaWillDo = (paName?: string | null): string => {
+      if (!paName) return '';
+      const trimmed = paName.trim();
+      if (!trimmed) return '';
+      const parts = trimmed.split(/\s+/);
+      if (parts.length === 1) return ` (${parts[0]} Will Do)`;
+      const first = parts[0];
+      const lastInitial = parts[parts.length - 1].charAt(0).toUpperCase();
+      return ` (${first} ${lastInitial}. Will Do)`;
+    };
+
     const insuredName = event.claim?.insured?.name || 'Insured Client'
     const claimNumber = event.claim?.claim_number || 'N/A'
     const eventType = event.event_type || 'Inspection'
-    const title = `${eventType} ${actionLabel} | ${insuredName} - Claim #${claimNumber}`
-    const assignedEventPa = (participants || []).find((p: any) => p.public_adjuster && (!p.role_type || p.role_type === 'actor'))?.public_adjuster || event.claim?.public_adjuster
+    const assignedEventPa = event.public_adjuster || (participants || []).find((p: any) => p.public_adjuster && (!p.role_type || p.role_type === 'actor'))?.public_adjuster || event.claim?.public_adjuster
+    const paWillDo = formatPaWillDo(assignedEventPa?.name)
+    const title = `${eventType} ${actionLabel} | ${insuredName} - Claim #${claimNumber}${paWillDo}`
     const paFirstName = assignedEventPa?.name ? assignedEventPa.name.trim().split(/\s+/)[0] : ''
     const tzCode = isCt ? 'CT' : 'ET'
     const shortTimeStr = event.final_start_time ? ` - ${formatShortTime12(event.final_start_time)} ${tzCode}` : ''
