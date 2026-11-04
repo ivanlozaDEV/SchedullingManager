@@ -46,6 +46,7 @@ serve(async (req) => {
         .from('events')
         .select(`
           *,
+          public_adjuster:public_adjusters (*),
           claim:claims (
             *,
             insured:insureds (*),
@@ -70,7 +71,8 @@ serve(async (req) => {
       const claimNumber = claim?.claim_number || 'N/A'
       const carrier = claim?.carrier || 'Carrier'
       const propertyAddress = claim?.property_address || event.location || 'N/A'
-      const paName = claim?.public_adjuster?.name || 'Public Adjuster'
+      const pa = event.public_adjuster || claim?.public_adjuster
+      const paName = pa?.name || 'Public Adjuster'
       const rawSlots = event.slots || []
       const sortedSlots = [...rawSlots].sort((a, b) => (a.slot_date > b.slot_date ? 1 : -1))
 
@@ -203,6 +205,7 @@ serve(async (req) => {
         .from('events')
         .select(`
           *,
+          public_adjuster:public_adjusters (*),
           claim:claims (
             *,
             insured:insureds (*),
@@ -217,7 +220,7 @@ serve(async (req) => {
         throw eventErr || new Error("Event not found")
       }
       event = dbEvent
-      const pa = event.claim?.public_adjuster
+      const pa = event.public_adjuster || event.claim?.public_adjuster
       paEmail = isTest && testEmail ? testEmail : pa?.email
       paName = pa?.name || 'Public Adjuster'
 

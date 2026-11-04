@@ -9,8 +9,8 @@ interface HomeHubProps {
 export function HomeHub({ onOpenScheduling, onLogout, authRole }: HomeHubProps) {
   return (
     <div className="min-h-screen bg-[#F5F9FA] text-[#383F41] flex flex-col font-sans relative">
-      {/* Top Navbar */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-30 shadow-xs">
+      {/* Top Glassmorphic Navbar */}
+      <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-30 shadow-xs">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
           {/* Official Brand Logo */}
@@ -18,7 +18,7 @@ export function HomeHub({ onOpenScheduling, onLogout, authRole }: HomeHubProps) 
             <img 
               src="/ip-adjusting-logo.svg" 
               alt="IP Adjusting Group Logo" 
-              className="h-10 w-auto object-contain"
+              className="h-11 sm:h-12 w-auto object-contain transition-all"
             />
             <div className="hidden sm:block border-l border-slate-200 pl-3">
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e7f3f7] text-[#1187aa] border border-[#419fbb]/30 uppercase tracking-wider font-['Montserrat',sans-serif]">
@@ -37,10 +37,10 @@ export function HomeHub({ onOpenScheduling, onLogout, authRole }: HomeHubProps) 
               <button
                 onClick={onLogout}
                 title="Lock session"
-                className="p-2 rounded-lg bg-slate-100 hover:bg-sky-50 border border-slate-300 hover:border-sky-300 text-slate-600 hover:text-[#1187aa] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                aria-label="Lock session"
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-300 text-slate-600 hover:text-[#1187aa] transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Lock</span>
+                <LogOut className="w-4 h-4" />
               </button>
             </div>
           ) : (

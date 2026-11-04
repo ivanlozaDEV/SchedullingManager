@@ -9,7 +9,7 @@ interface EmailPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: CoordinationEvent;
-  type?: 'selection_options' | 'calendar_update' | 'calendar_confirmation';
+  type?: 'selection_options' | 'calendar_update' | 'calendar_confirmation' | 'pa_options';
   isUpdate?: boolean;
   onConfirmSend: () => Promise<void>;
   isSending?: boolean;
@@ -60,10 +60,14 @@ export function EmailPreviewModal({
     .replace(/\[Status:[^\]]*\]/gi, '')
     .trim();
 
-  // Available slots for Stage 3 (selection_options)
+  // Available slots for Stage 2 (pa_options) or Stage 3 (selection_options)
   const rawSlots = event.slots || [];
   const approvedSlots = rawSlots.filter((s) => s.status === 'pa_accepted');
-  const availableSlots = approvedSlots.length > 0 ? approvedSlots : rawSlots.filter((s) => s.status === 'proposed');
+  const availableSlots = type === 'pa_options'
+    ? (rawSlots.length > 0 ? rawSlots : [])
+    : approvedSlots.length > 0 
+    ? approvedSlots 
+    : rawSlots.filter((s) => s.status === 'proposed');
   const sortedSlots = [...availableSlots].sort((a, b) => (a.slotDate > b.slotDate ? 1 : -1));
 
   // Calendar update recipients
@@ -99,7 +103,9 @@ export function EmailPreviewModal({
     ? `${formatTime12(event.finalStartTime)}${event.finalEndTime ? ` to ${formatTime12(event.finalEndTime)}` : ''}`
     : '';
 
-  const subject = type === 'selection_options'
+  const subject = type === 'pa_options'
+    ? `Carrier Proposed Dates: ${eventType} - ${insuredName}`
+    : type === 'selection_options'
     ? `Action Required: Choose your ${eventType} Date - ${insuredName}`
     : buildCalendarSubject({
         actionPrefix,
@@ -112,17 +118,25 @@ export function EmailPreviewModal({
         paName: pa?.name,
       });
 
-  const badgeText = type === 'selection_options'
+  const badgeText = type === 'pa_options'
+    ? '1-Click PA Slot Review'
+    : type === 'selection_options'
     ? '1-Click Date Selection'
     : isCalendarUpdate
       ? 'Calendar Update'
       : 'Calendar Confirmation';
 
-  const recipientDisplay = type === 'selection_options'
+  const recipientDisplay = type === 'pa_options'
+    ? (pa?.email ? `${paName} <${pa.email}>` : '⚠️ No email registered for Public Adjuster')
+    : type === 'selection_options'
     ? (insuredEmail ? `${insuredName} <${insuredEmail}>` : '⚠️ No email registered for Insured')
     : (calendarRecipients.length > 0 ? calendarRecipients.join(', ') : '⚠️ No recipient emails registered');
 
-  const hasRecipient = type === 'selection_options' ? Boolean(insuredEmail) : calendarRecipients.length > 0;
+  const hasRecipient = type === 'pa_options'
+    ? Boolean(pa?.email)
+    : type === 'selection_options'
+    ? Boolean(insuredEmail)
+    : calendarRecipients.length > 0;
 
   // Build complete In-Person Attendees / Coordination Team list
   const attendeeList: { name: string; role?: string; contact?: string }[] = [];
@@ -306,10 +320,91 @@ export function EmailPreviewModal({
               {/* CONTENT AREA */}
               <div className="p-6 sm:p-8 space-y-4 text-[14px] text-[#004E91] leading-relaxed">
                 <p className="font-semibold text-[15px] text-[#004E91]">
-                  Dear <span className="font-bold">{insuredName}</span>,
+                  Dear <span className="font-bold">{type === 'pa_options' ? paName : insuredName}</span>,
                 </p>
 
-                {type === 'selection_options' ? (
+                {type === 'pa_options' ? (
+                  <>
+                    <p>
+                      The insurance company (<strong>{carrier}</strong>) has proposed date options for the upcoming <strong>{eventType}</strong> for Claim <strong>#{claimNumber}</strong> ({insuredName}). Please review these options and confirm the <strong>2 dates</strong> that work best:
+                    </p>
+
+                    {/* CLAIM SUMMARY CARD */}
+                    <div className="bg-white rounded-md border-l-4 border-[#0071bc] p-4 text-xs text-slate-800 space-y-1.5 shadow-xs">
+                      <div className="text-[11px] font-bold text-[#0071bc] uppercase tracking-wider mb-1">
+                        Claim & Property Information
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Building className="w-3.5 h-3.5 text-slate-400" />
+                        <span><strong>Carrier:</strong> {carrier}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-slate-400" />
+                        <span><strong>Claim #:</strong> {claimNumber}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="truncate"><strong>Property:</strong> {propertyAddress}</span>
+                      </div>
+                      {event.accessInstructions && (
+                        <div className="pt-1 text-slate-700">
+                          <span className="font-bold text-slate-500">📝 Access Instructions: </span>
+                          <em>{event.accessInstructions}</em>
+                        </div>
+                      )}
+                      {cleanNotes && (
+                        <div className="pt-1 text-slate-700">
+                          <span className="font-bold text-slate-500">📋 Notes: </span>
+                          <span>{cleanNotes}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SLOTS LIST FOR PA */}
+                    <div className="space-y-2.5 pt-2">
+                      <div className="text-xs font-bold text-[#004E91] uppercase tracking-wider border-b border-[#0071bc]/30 pb-1">
+                        Proposed Carrier Options ({sortedSlots.length}):
+                      </div>
+
+                      {sortedSlots.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-amber-700 bg-amber-50 rounded-lg border border-amber-200">
+                          No hay fechas propuestas en este evento todavía.
+                        </div>
+                      ) : (
+                        sortedSlots.map((slot, idx) => (
+                          <div
+                            key={slot.id}
+                            className="bg-white rounded-lg border border-slate-200 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs hover:border-[#0071bc] transition-colors"
+                          >
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-[#0071bc] border border-blue-200">
+                                Option #{idx + 1}
+                              </span>
+                              <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5 pt-1">
+                                <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
+                                <span>{formatUsDate(slot.slotDate)}</span>
+                              </div>
+                              <div className="text-xs font-semibold text-slate-600">
+                                ⏰ {formatTime12(slot.startTime)} - {formatTime12(slot.endTime)}
+                              </div>
+                            </div>
+
+                            <div className="self-end sm:self-center flex items-center gap-2">
+                              <button
+                                type="button"
+                                disabled
+                                className="bg-[#0071bc] text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-xs opacity-95 cursor-default flex items-center gap-1.5"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Select Option</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                ) : type === 'selection_options' ? (
                   <>
                     <p>
                       The insurance company (<strong>{carrier}</strong>) has scheduled an upcoming <strong>{eventType}</strong> for your claim. Your Public Adjuster, <strong>{paName}</strong>, has coordinated and pre-approved the following <strong>{sortedSlots.length} available dates</strong> for you:
@@ -697,7 +792,9 @@ Website: https://www.ipadjustinggroup.com`
               <>
                 <Send className="w-3.5 h-3.5" />
                 <span>
-                  {type === 'selection_options'
+                  {type === 'pa_options'
+                    ? 'Enviar Opciones al PA por Correo ✉️'
+                    : type === 'selection_options'
                     ? 'Enviar Opciones por Correo ✉️'
                     : isCalendarUpdate
                       ? 'Confirmar y Enviar Actualización ✉️'

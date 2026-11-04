@@ -924,6 +924,22 @@ export const schedulingService = {
     // Note: Automatic email sending disabled. Manual review popup required.
   },
 
+  // Enviar / Reenviar correo con las opciones al Public Adjuster (Etapa 2)
+  async notifyPaSlots(eventId: string) {
+    if (!isSupabaseConfigured) return;
+    const { data, error } = await supabase.functions.invoke('notify-pa-slots', {
+      body: { eventId }
+    });
+    if (error) {
+      const detail = await parseEdgeFunctionError(error);
+      throw new Error(detail);
+    }
+    if (data && data.success === false) {
+      throw new Error(data.message || 'No se pudo enviar el correo al Public Adjuster.');
+    }
+    return data;
+  },
+
   // Enviar / Reenviar correo con las opciones al cliente asegurado
   async notifyInsuredSlots(eventId: string) {
     if (!isSupabaseConfigured) return;
@@ -2205,6 +2221,30 @@ export function hasEventSentCalendarNotice(event?: CoordinationEvent | null): bo
     return (
       l.channel === 'email' &&
       (notes.includes('calendar') || notes.includes('.ics') || notes.includes('invitation'))
+    );
+  });
+}
+
+export function hasEventSentPaSlotsNotice(event?: CoordinationEvent | null): boolean {
+  if (!event) return false;
+  const logs = event.logs || [];
+  return logs.some((l) => {
+    const notes = (l.notes || '').toLowerCase();
+    return (
+      l.channel === 'email' &&
+      (l.contactTarget === 'pa' || notes.includes('pa') || notes.includes('public adjuster'))
+    );
+  });
+}
+
+export function hasEventSentInsuredSlotsNotice(event?: CoordinationEvent | null): boolean {
+  if (!event) return false;
+  const logs = event.logs || [];
+  return logs.some((l) => {
+    const notes = (l.notes || '').toLowerCase();
+    return (
+      l.channel === 'email' &&
+      (l.contactTarget === 'insured' || notes.includes('insured') || notes.includes('asegurado'))
     );
   });
 }

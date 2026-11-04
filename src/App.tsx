@@ -31,7 +31,12 @@ import {
   MoreVertical
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { schedulingService, hasEventSentCalendarNotice } from './lib/schedulingService';
+import { 
+  schedulingService, 
+  hasEventSentCalendarNotice,
+  hasEventSentPaSlotsNotice,
+  hasEventSentInsuredSlotsNotice 
+} from './lib/schedulingService';
 import { LoginGate } from './components/LoginGate';
 import { HomeHub } from './components/HomeHub';
 import { ConfirmationPortal } from './components/ConfirmationPortal';
@@ -230,15 +235,25 @@ export function App() {
   const [paConfirmingEventId, setPaConfirmingEventId] = useState<string | null>(null);
   const [insuredConfirmingSlotId, setInsuredConfirmingSlotId] = useState<string | null>(null);
   const [emailPreviewEvent, setEmailPreviewEvent] = useState<CoordinationEvent | null>(null);
-  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update' | 'calendar_confirmation'>('selection_options');
+  const [emailPreviewType, setEmailPreviewType] = useState<'selection_options' | 'calendar_update' | 'calendar_confirmation' | 'pa_options'>('selection_options');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
 
   const handleOpenEmailPreview = (
     evt: CoordinationEvent, 
-    type: 'selection_options' | 'calendar_update' | 'calendar_confirmation' = 'selection_options'
+    type: 'selection_options' | 'calendar_update' | 'calendar_confirmation' | 'pa_options' = 'selection_options'
   ) => {
-    if (type === 'selection_options') {
+    if (type === 'pa_options') {
+      const paEmail = evt.publicAdjuster?.email || evt.claim?.publicAdjuster?.email;
+      const paName = evt.publicAdjuster?.name || evt.claim?.publicAdjuster?.name || 'Public Adjuster';
+      if (!paEmail || !paEmail.trim()) {
+        toast.warning(
+          'Falta correo del Public Adjuster',
+          `El PA ${paName} no tiene un correo electrónico registrado. Por favor ingrésalo en los datos del PA.`
+        );
+        return;
+      }
+    } else if (type === 'selection_options') {
       const insuredEmail = evt.claim?.insured?.email;
       const insuredName = evt.claim?.insured?.name || 'Asegurado';
       if (!insuredEmail || !insuredEmail.trim()) {
@@ -270,7 +285,19 @@ export function App() {
     if (!emailPreviewEvent) return;
     setIsSendingEmail(true);
     try {
-      if (emailPreviewType === 'selection_options') {
+      if (emailPreviewType === 'pa_options') {
+        const res = await schedulingService.notifyPaSlots(emailPreviewEvent.id);
+        if (res && res.success === false) {
+          toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
+        } else {
+          const paName = emailPreviewEvent.publicAdjuster?.name || emailPreviewEvent.claim?.publicAdjuster?.name || 'Public Adjuster';
+          const paEmail = emailPreviewEvent.publicAdjuster?.email || emailPreviewEvent.claim?.publicAdjuster?.email || '';
+          toast.success(
+            '¡Correo enviado al Public Adjuster!',
+            `Se enviaron las opciones de fechas a ${paName} (${paEmail})`
+          );
+        }
+      } else if (emailPreviewType === 'selection_options') {
         const res = await schedulingService.notifyInsuredSlots(emailPreviewEvent.id);
         if (res && res.success === false) {
           toast.error('No se pudo enviar el correo', res.message || 'Error desconocido');
@@ -707,22 +734,21 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
-      {/* Clean Light Header */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-30 shadow-xs">
-        <div className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 h-18 flex items-center justify-between">
+      {/* Clean Glassmorphic Header */}
+      <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-30 shadow-xs">
+        <div className="w-full px-4 sm:px-6 lg:px-8 2xl:px-12 h-20 flex items-center justify-between">
           
           {/* Brand Logo & Name */}
           <div className="flex items-center space-x-3.5">
             <img 
               src="/ip-adjusting-logo.svg" 
               alt="IP Adjusting Group Logo" 
-              className="h-10 w-auto object-contain"
+              className="h-11 sm:h-12 w-auto object-contain transition-all"
             />
-            <div className="hidden sm:block border-l border-slate-200 pl-3">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e7f3f7] text-[#1187aa] border border-[#419fbb]/30 uppercase tracking-wider font-['Montserrat',sans-serif]">
+            <div className="hidden sm:flex items-center border-l border-slate-200 pl-3.5 h-8">
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#e7f3f7] text-[#1187aa] border border-[#419fbb]/30 uppercase tracking-wider font-['Montserrat',sans-serif]">
                 Scheduling System
               </span>
-              <p className="text-[11px] text-slate-500 font-medium mt-0.5">Inspection Coordination</p>
             </div>
           </div>
 
@@ -747,35 +773,35 @@ export function App() {
             </div>
           </div>
 
-          {/* Action buttons & View Switcher */}
-          <div className="flex items-center space-x-2.5">
+          {/* Action buttons (Icon-only for a clean, compact aesthetic) */}
+          <div className="flex items-center space-x-2">
             <button
               onClick={() => navigateToView('hub')}
-              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-2xs cursor-pointer"
-              title="Return to IP Operations Hub"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+              title="Operations Hub (Return to main portal)"
+              aria-label="Operations Hub"
             >
-              <LayoutGrid className="w-3.5 h-3.5 text-blue-700" />
-              <span>Operations Hub</span>
+              <LayoutGrid className="w-4 h-4" />
             </button>
 
             {/* Prominent Dashboard Refresh Button */}
             <button
               onClick={loadData}
               disabled={loading}
-              title="Refresh pipeline and claims data from database"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-[#F5F9FA] border border-slate-300 hover:border-[#1187aa] text-slate-700 hover:text-[#1187aa] text-xs font-bold transition-all shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
+              title="Refresh pipeline and claims data"
+              aria-label="Refresh data"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-white hover:bg-[#F5F9FA] border border-slate-200 hover:border-[#1187aa] text-slate-700 hover:text-[#1187aa] transition-all shadow-2xs hover:shadow-xs active:scale-95 disabled:opacity-50 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-[#1187aa] ${loading ? 'animate-spin' : ''}`} />
-              <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+              <RefreshCw className={`w-4 h-4 text-[#1187aa] ${loading ? 'animate-spin' : ''}`} />
             </button>
 
             <button
               onClick={() => setIsSlaSettingsOpen(true)}
-              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-2xs"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-white hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
               title="Configure SLA warning and critical bottleneck hours"
+              aria-label="SLA Settings"
             >
-              <Settings className="w-3.5 h-3.5 text-slate-600" />
-              <span>SLA Settings</span>
+              <Settings className="w-4 h-4" />
             </button>
 
             <button 
@@ -783,21 +809,23 @@ export function App() {
                 setClaimToEdit(null);
                 setIsNewClaimOpen(true);
               }}
-              className="flex items-center gap-2 bg-maroon-800 hover:bg-maroon-900 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-xs transition-colors"
+              title="Create New Claim"
+              aria-label="New Claim"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-maroon-800 hover:bg-maroon-900 text-white shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>New Claim</span>
+              <Plus className="w-5 h-5" />
             </button>
 
             {/* Role Badge & Logout */}
             <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
-              <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider">
+              <span className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200 uppercase tracking-wider font-mono">
                 {authRole}
               </span>
               <button
                 onClick={handleLogout}
                 title="Log out of Scheduling Manager"
-                className="p-2 rounded-lg bg-slate-100 hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700 transition-colors"
+                aria-label="Log out"
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-slate-600 hover:text-rose-700 transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -1644,13 +1672,20 @@ export function App() {
                                         <span className="font-bold text-slate-700">
                                           {isHistorical ? `${p2Name} Selected 2 Options:` : `${p2Name}: Select 2 options`}
                                         </span>
-                                        <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
-                                          isHistorical 
-                                            ? 'text-slate-600 bg-slate-100 border-slate-300' 
-                                            : 'text-tealBrand-800 bg-tealBrand-50 border-tealBrand-200'
-                                        }`}>
-                                          {isHistorical ? '✓ 2 / 2' : `${(paSelectedSlotIds[evt.id] || []).length} / 2`}
-                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                          {hasEventSentPaSlotsNotice(evt) && (
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1" title={`Email con opciones de fechas ya enviado a ${p2Name}`}>
+                                              <span>✉️ Email Sent</span>
+                                            </span>
+                                          )}
+                                          <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                                            isHistorical 
+                                              ? 'text-slate-600 bg-slate-100 border-slate-300' 
+                                              : 'text-tealBrand-800 bg-tealBrand-50 border-tealBrand-200'
+                                          }`}>
+                                            {isHistorical ? '✓ 2 / 2' : `${(paSelectedSlotIds[evt.id] || []).length} / 2`}
+                                          </span>
+                                        </div>
                                       </div>
 
                                       <div className="space-y-1.5">
@@ -1855,6 +1890,41 @@ export function App() {
                                         )}
                                       </div>
 
+                                      {/* Preview & Send Options to PA */}
+                                      {(() => {
+                                        const hasPaSent = hasEventSentPaSlotsNotice(evt);
+                                        const paTargetEmail = evt.publicAdjuster?.email || evt.claim?.publicAdjuster?.email;
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenEmailPreview(evt, 'pa_options')}
+                                            className={`w-full h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer ${
+                                              !paTargetEmail
+                                                ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
+                                                : hasPaSent
+                                                ? 'bg-white hover:bg-tealBrand-50 border-tealBrand-300 text-tealBrand-900 shadow-2xs'
+                                                : 'bg-tealBrand-50 hover:bg-tealBrand-100 border-tealBrand-300 text-tealBrand-800 shadow-2xs'
+                                            }`}
+                                            title={
+                                              !paTargetEmail
+                                                ? `Sin correo registrado para ${p2Name}.`
+                                                : hasPaSent
+                                                ? `Reenviar opciones de fechas por correo a ${p2Name} (${paTargetEmail})`
+                                                : `Previsualizar y enviar opciones de fechas por correo a ${p2Name} (${paTargetEmail})`
+                                            }
+                                          >
+                                            <Mail className={`w-3.5 h-3.5 ${!paTargetEmail ? 'text-amber-600' : 'text-tealBrand-700'}`} />
+                                            <span>
+                                              {!paTargetEmail
+                                                ? `Sin Email de ${p2Name}`
+                                                : hasPaSent
+                                                ? `Preview & Resend to ${p2Name} ✉️`
+                                                : `Preview & Send to ${p2Name} ✉️`}
+                                            </span>
+                                          </button>
+                                        );
+                                      })()}
+
                                       {!isHistorical && (
                                         <button
                                           type="button"
@@ -1886,13 +1956,20 @@ export function App() {
                                         <span className="font-bold text-slate-700">
                                           {isHistorical ? `${p3Name} Selected Option:` : `${p3Name} must choose 1 option:`}
                                         </span>
-                                        <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
-                                          isHistorical 
-                                            ? 'text-emerald-800 bg-emerald-50 border-emerald-200' 
-                                            : 'text-purple-800 bg-purple-50 border-purple-200'
-                                        }`}>
-                                          {isHistorical ? '✓ Confirmed' : '1 of 2'}
-                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                          {hasEventSentInsuredSlotsNotice(evt) && (
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1" title={`Email con opciones de fechas ya enviado a ${p3Name}`}>
+                                              <span>✉️ Email Sent</span>
+                                            </span>
+                                          )}
+                                          <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                                            isHistorical 
+                                              ? 'text-emerald-800 bg-emerald-50 border-emerald-200' 
+                                              : 'text-purple-800 bg-purple-50 border-purple-200'
+                                          }`}>
+                                            {isHistorical ? '✓ Confirmed' : '1 of 2'}
+                                          </span>
+                                        </div>
                                       </div>
 
                                       <div className="space-y-1.5">
@@ -2101,27 +2178,38 @@ export function App() {
                                               <Send className="w-3.5 h-3.5 text-tealBrand-700" />
                                             </button>
 
-                                            <button
-                                              type="button"
-                                              onClick={() => handleOpenEmailPreview(evt, 'selection_options')}
-                                              className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold cursor-pointer ${
-                                                !evt.claim?.insured?.email
-                                                  ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
-                                                  : 'bg-tealBrand-50 hover:bg-tealBrand-100 border-tealBrand-300 text-tealBrand-800'
-                                              }`}
-                                              title={
-                                                !evt.claim?.insured?.email
-                                                  ? 'Sin correo registrado para el asegurado. Clic para ver detalles.'
-                                                  : `Previsualizar y enviar invitación por correo a ${evt.claim.insured.email}`
-                                              }
-                                            >
-                                              <Mail className={`w-3.5 h-3.5 ${!evt.claim?.insured?.email ? 'text-amber-600' : 'text-tealBrand-700'}`} />
-                                              <span>
-                                                {!evt.claim?.insured?.email
-                                                  ? 'Sin Email'
-                                                  : 'Preview & Send Email'}
-                                              </span>
-                                            </button>
+                                            {(() => {
+                                              const hasInsuredSent = hasEventSentInsuredSlotsNotice(evt);
+                                              return (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleOpenEmailPreview(evt, 'selection_options')}
+                                                  className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold cursor-pointer ${
+                                                    !evt.claim?.insured?.email
+                                                      ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
+                                                      : hasInsuredSent
+                                                      ? 'bg-white hover:bg-tealBrand-50 border-tealBrand-300 text-tealBrand-900 shadow-2xs'
+                                                      : 'bg-tealBrand-50 hover:bg-tealBrand-100 border-tealBrand-300 text-tealBrand-800'
+                                                  }`}
+                                                  title={
+                                                    !evt.claim?.insured?.email
+                                                      ? 'Sin correo registrado para el asegurado. Clic para ver detalles.'
+                                                      : hasInsuredSent
+                                                      ? `Reenviar opciones por correo a ${evt.claim.insured.email}`
+                                                      : `Previsualizar y enviar opciones por correo a ${evt.claim.insured.email}`
+                                                  }
+                                                >
+                                                  <Mail className={`w-3.5 h-3.5 ${!evt.claim?.insured?.email ? 'text-amber-600' : 'text-tealBrand-700'}`} />
+                                                  <span>
+                                                    {!evt.claim?.insured?.email
+                                                      ? 'Sin Email'
+                                                      : hasInsuredSent
+                                                      ? 'Preview & Resend Email ✉️'
+                                                      : 'Preview & Send Email'}
+                                                  </span>
+                                                </button>
+                                              );
+                                            })()}
                                           </>
                                         )}
                                       </div>
@@ -2160,9 +2248,16 @@ export function App() {
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                         <span className="font-bold text-emerald-800">Inspection Scheduled</span>
-                                        <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                          ✓ Scheduled
-                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                          {hasEventSentCalendarNotice(evt) && (
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1" title="Invitaciones de calendario ya enviadas a los participantes">
+                                              <span>✉️ Calendar Sent</span>
+                                            </span>
+                                          )}
+                                          <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                            ✓ Scheduled
+                                          </span>
+                                        </div>
                                       </div>
 
                                       {(() => {
