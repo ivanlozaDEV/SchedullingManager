@@ -6,7 +6,6 @@ import {
   Copy, 
   Check, 
   CheckCircle2,
-  Send, 
   Plus,
   Kanban,
   FolderOpen,
@@ -1601,26 +1600,6 @@ export function App() {
 
                                         {/* Action Buttons in Delimited Card Footer */}
                                         <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
-                                          <button
-                                            type="button"
-                                            onClick={() => setRecordingSlotsEvent(evt)}
-                                            className="w-full bg-maroon-800 hover:bg-maroon-900 text-white py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-98"
-                                            title="Propose date options or register availability"
-                                          >
-                                            <Calendar className="w-3.5 h-3.5" />
-                                            <span>+ Propose Dates / Availability</span>
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => setDirectConfirmingEvent(evt)}
-                                            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-98"
-                                            title="Directly confirm appointment without funnel"
-                                          >
-                                            <CheckCircle2 className="w-3.5 h-3.5" />
-                                            <span>⚡ Direct Confirm Appointment</span>
-                                          </button>
-
                                           {/* Dynamic Contact Calling Button */}
                                           {(() => {
                                             const originator = evt.slotsOriginator || 'carrier';
@@ -1633,7 +1612,7 @@ export function App() {
 
                                             if (!targetPhone) {
                                               return (
-                                                <div className="text-[11px] text-slate-400 text-center italic py-0.5">
+                                                <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
                                                   No phone registered for {originator === 'pa' ? 'PA' : originator === 'insured' ? 'Client' : 'Adjuster'}
                                                 </div>
                                               );
@@ -1642,7 +1621,7 @@ export function App() {
                                             return (
                                               <a
                                                 href={getNextivaTelUri(targetPhone) || '#'}
-                                                className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-2xs group"
+                                                className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs group"
                                                 title={`Call via Nextiva: ${formatPhoneNumber(targetPhone)}`}
                                               >
                                                 <Phone className="w-3.5 h-3.5 text-tealBrand-700 group-hover:scale-110 transition-transform shrink-0" />
@@ -1650,6 +1629,29 @@ export function App() {
                                               </a>
                                             );
                                           })()}
+
+                                          {/* Actions Row */}
+                                          <div className="flex items-center gap-1.5 h-8">
+                                            <button
+                                              type="button"
+                                              onClick={() => setRecordingSlotsEvent(evt)}
+                                              className="flex-1 h-8 bg-maroon-800 hover:bg-maroon-900 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-98"
+                                              title="Propose date options or register availability"
+                                            >
+                                              <Calendar className="w-3.5 h-3.5" />
+                                              <span>+ Propose Dates</span>
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => setDirectConfirmingEvent(evt)}
+                                              className="h-8 px-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-98"
+                                              title="Directly confirm appointment without funnel"
+                                            >
+                                              <CheckCircle2 className="w-3.5 h-3.5" />
+                                              <span>⚡ Direct Confirm</span>
+                                            </button>
+                                          </div>
                                         </div>
                                       </>
                                     )}
@@ -1672,20 +1674,13 @@ export function App() {
                                         <span className="font-bold text-slate-700">
                                           {isHistorical ? `${p2Name} Selected 2 Options:` : `${p2Name}: Select 2 options`}
                                         </span>
-                                        <div className="flex items-center gap-1.5">
-                                          {hasEventSentPaSlotsNotice(evt) && (
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1" title={`Email con opciones de fechas ya enviado a ${p2Name}`}>
-                                              <span>✉️ Email Sent</span>
-                                            </span>
-                                          )}
-                                          <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                                        <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                             isHistorical 
                                               ? 'text-slate-600 bg-slate-100 border-slate-300' 
                                               : 'text-tealBrand-800 bg-tealBrand-50 border-tealBrand-200'
                                           }`}>
                                             {isHistorical ? '✓ 2 / 2' : `${(paSelectedSlotIds[evt.id] || []).length} / 2`}
                                           </span>
-                                        </div>
                                       </div>
 
                                       <div className="space-y-1.5">
@@ -1842,99 +1837,114 @@ export function App() {
                                         </div>
                                       ) : (
                                         <>
-                                        <button
-                                          type="button"
-                                          disabled={(paSelectedSlotIds[evt.id] || []).length !== 2 || paConfirmingEventId === evt.id}
-                                          onClick={() => handlePaConfirmSlots(evt)}
-                                          className="w-full bg-tealBrand-800 hover:bg-tealBrand-900 disabled:opacity-40 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition-colors shadow-xs h-8.5 flex items-center justify-center gap-1.5 cursor-pointer"
-                                        >
-                                          <span>{paConfirmingEventId === evt.id ? 'Saving...' : `Confirm 2 & Send to ${p3Name} ➔`}</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          disabled={skippingStage2EventId === evt.id || paConfirmingEventId === evt.id}
-                                          onClick={() => handleSkipToStage3(evt)}
-                                          className="w-full bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 py-1.5 px-3 rounded-lg text-xs font-bold transition-colors shadow-2xs h-8.5 flex items-center justify-center gap-1.5 cursor-pointer"
-                                          title={`Carrier y ${p2Name} ya están de acuerdo. Saltar revisión intermedia y enviar todas las opciones directo a elección de ${p3Name}.`}
-                                        >
-                                          <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
-                                          <span>{skippingStage2EventId === evt.id ? 'Saltando...' : `⚡ Fechas Acordadas / Saltar a ${p3Name} ➔`}</span>
-                                        </button>
-                                        </>
-                                      )}
+                                          {/* Row 1: Direct Contact / Call button */}
+                                          {paPhone ? (
+                                            <a
+                                              href={getNextivaTelUri(paPhone) || '#'}
+                                              className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                              title={`Call ${p2Name} ${formatPhoneNumber(paPhone)} via Nextiva`}
+                                            >
+                                              <Phone className="w-3.5 h-3.5 text-tealBrand-700 shrink-0" />
+                                              <span className="truncate">Call {p2Name}: <strong className="font-mono text-slate-900">{formatPhoneNumber(paPhone)}</strong></span>
+                                            </a>
+                                          ) : (
+                                            <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
+                                              No phone registered for {p2Name}
+                                            </div>
+                                          )}
 
-                                      <div className="flex items-center gap-1.5 h-8">
-                                        <button
-                                          type="button"
-                                          onClick={() => setRecordingSlotsEvent(evt)}
-                                          className="flex-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
-                                          title="Modify or update the dates offered"
-                                        >
-                                          <Pencil className="w-3.5 h-3.5 text-slate-500" />
-                                          <span>Modify Dates</span>
-                                        </button>
+                                          {/* Row 2: Primary & Tool Actions (h-8 unified row) */}
+                                          <div className="flex items-center gap-1.5 h-8">
+                                            <button
+                                              type="button"
+                                              disabled={(paSelectedSlotIds[evt.id] || []).length !== 2 || paConfirmingEventId === evt.id}
+                                              onClick={() => handlePaConfirmSlots(evt)}
+                                              className="flex-1 h-8 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white px-2.5 rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap min-w-0"
+                                              title={
+                                                (paSelectedSlotIds[evt.id] || []).length !== 2
+                                                  ? `Selecciona 2 opciones de fechas arriba para avanzar al Paso 3 (${(paSelectedSlotIds[evt.id] || []).length}/2)`
+                                                  : `Avanzar al Paso 3 (Elección final de ${p3Name}) ➔`
+                                              }
+                                            >
+                                              <span className="truncate">{paConfirmingEventId === evt.id ? 'Moving...' : 'Go to Step 3 ➔'}</span>
+                                            </button>
 
-                                        {paPhone ? (
-                                          <a
-                                            href={getNextivaTelUri(paPhone) || '#'}
-                                            className="flex-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs h-8"
-                                            title={`Call ${p2Name} ${formatPhoneNumber(paPhone)} via Nextiva`}
-                                          >
-                                            <Phone className="w-3.5 h-3.5 text-tealBrand-700" />
-                                            <span>Call {p2Name}</span>
-                                          </a>
-                                        ) : (
-                                          <div className="flex-1 h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
-                                            No phone
+                                            <button
+                                              type="button"
+                                              onClick={() => setRecordingSlotsEvent(evt)}
+                                              className="h-8 w-8 shrink-0 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                                              title="Modify or update the dates offered"
+                                            >
+                                              <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                                            </button>
+
+                                            {(() => {
+                                              const hasPaSent = hasEventSentPaSlotsNotice(evt);
+                                              const paTargetEmail = evt.publicAdjuster?.email || evt.claim?.publicAdjuster?.email;
+                                              return (
+                                                <div className="relative shrink-0 flex items-center">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEmailPreview(evt, 'pa_options')}
+                                                    className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1.5 text-[11px] font-semibold cursor-pointer shadow-2xs whitespace-nowrap ${
+                                                      !paTargetEmail
+                                                        ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
+                                                        : hasPaSent
+                                                        ? 'bg-white hover:bg-tealBrand-50 border-tealBrand-300 text-tealBrand-900'
+                                                        : 'bg-amber-50 hover:bg-amber-100 border-amber-400 text-amber-950 font-bold ring-1 ring-amber-300/80'
+                                                    }`}
+                                                    title={
+                                                      !paTargetEmail
+                                                        ? `Sin correo registrado para ${p2Name}.`
+                                                        : hasPaSent
+                                                        ? `Reenviar opciones de fechas por correo a ${p2Name} (${paTargetEmail})`
+                                                        : `⚠️ ALERTA: Email pendiente por enviar. Previsualizar y enviar opciones a ${p2Name} (${paTargetEmail})`
+                                                    }
+                                                  >
+                                                    <Mail className={`w-3.5 h-3.5 shrink-0 ${!paTargetEmail ? 'text-amber-600' : !hasPaSent ? 'text-amber-700' : 'text-tealBrand-700'}`} />
+                                                    <span>
+                                                      {!paTargetEmail
+                                                        ? 'Sin Email'
+                                                        : hasPaSent
+                                                        ? 'Preview & Resend ✉️'
+                                                        : 'Preview & Send ✉️'}
+                                                    </span>
+                                                  </button>
+                                                  {!hasPaSent && paTargetEmail && (
+                                                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 pointer-events-none z-10" title="Alerta: Email pendiente de enviar">
+                                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
+                                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-white shadow-xs"></span>
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              );
+                                            })()}
                                           </div>
-                                        )}
-                                      </div>
 
-                                      {/* Preview & Send Options to PA */}
-                                      {(() => {
-                                        const hasPaSent = hasEventSentPaSlotsNotice(evt);
-                                        const paTargetEmail = evt.publicAdjuster?.email || evt.claim?.publicAdjuster?.email;
-                                        return (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleOpenEmailPreview(evt, 'pa_options')}
-                                            className={`w-full h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer ${
-                                              !paTargetEmail
-                                                ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
-                                                : hasPaSent
-                                                ? 'bg-white hover:bg-tealBrand-50 border-tealBrand-300 text-tealBrand-900 shadow-2xs'
-                                                : 'bg-tealBrand-50 hover:bg-tealBrand-100 border-tealBrand-300 text-tealBrand-800 shadow-2xs'
-                                            }`}
-                                            title={
-                                              !paTargetEmail
-                                                ? `Sin correo registrado para ${p2Name}.`
-                                                : hasPaSent
-                                                ? `Reenviar opciones de fechas por correo a ${p2Name} (${paTargetEmail})`
-                                                : `Previsualizar y enviar opciones de fechas por correo a ${p2Name} (${paTargetEmail})`
-                                            }
-                                          >
-                                            <Mail className={`w-3.5 h-3.5 ${!paTargetEmail ? 'text-amber-600' : 'text-tealBrand-700'}`} />
-                                            <span>
-                                              {!paTargetEmail
-                                                ? `Sin Email de ${p2Name}`
-                                                : hasPaSent
-                                                ? `Preview & Resend to ${p2Name} ✉️`
-                                                : `Preview & Send to ${p2Name} ✉️`}
-                                            </span>
-                                          </button>
-                                        );
-                                      })()}
+                                          {/* Row 3: Secondary Flow / Reversal Row */}
+                                          <div className="flex items-center gap-1.5 mt-1">
+                                            <button
+                                              type="button"
+                                              disabled={skippingStage2EventId === evt.id || paConfirmingEventId === evt.id}
+                                              onClick={() => handleSkipToStage3(evt)}
+                                              className="flex-1 h-7 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                              title={`Carrier y ${p2Name} ya están de acuerdo. Saltar revisión intermedia y enviar todas las opciones directo a elección de ${p3Name}.`}
+                                            >
+                                              <Zap className="w-3 h-3 text-amber-600 fill-amber-500 shrink-0" />
+                                              <span className="truncate">{skippingStage2EventId === evt.id ? 'Saltando...' : `⚡ Fechas Acordadas`}</span>
+                                            </button>
 
-                                      {!isHistorical && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setEventToReset(evt)}
-                                          className="w-full h-7 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs mt-1"
-                                          title="Cancel coordination and reset flow back to Stage 1"
-                                        >
-                                          <RotateCcw className="w-3 h-3 text-rose-600" />
-                                          <span>Cancel & Reset Flow</span>
-                                        </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setEventToReset(evt)}
+                                              className="flex-1 h-7 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                              title="Cancel coordination and reset flow back to Stage 1"
+                                            >
+                                              <RotateCcw className="w-3 h-3 text-rose-600" />
+                                              <span className="truncate">Cancel & Reset Flow</span>
+                                            </button>
+                                          </div>
+                                        </>
                                       )}
                                     </div>
                                   </div>
@@ -1957,10 +1967,16 @@ export function App() {
                                           {isHistorical ? `${p3Name} Selected Option:` : `${p3Name} must choose 1 option:`}
                                         </span>
                                         <div className="flex items-center gap-1.5">
-                                          {hasEventSentInsuredSlotsNotice(evt) && (
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1" title={`Email con opciones de fechas ya enviado a ${p3Name}`}>
-                                              <span>✉️ Email Sent</span>
-                                            </span>
+                                          {!isHistorical && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setRecordingSlotsEvent(evt)}
+                                              className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-tealBrand-800 flex items-center gap-1 shadow-2xs cursor-pointer transition-colors"
+                                              title="Agregar o modificar opciones de fechas disponibles para el cliente"
+                                            >
+                                              <Plus className="w-3 h-3 text-tealBrand-700" />
+                                              <span>+ Fechas</span>
+                                            </button>
                                           )}
                                           <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
                                             isHistorical 
@@ -2161,53 +2177,60 @@ export function App() {
                                           <>
                                             <button
                                               onClick={() => copyToClipboard(messageText, evt.id)}
-                                              className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 py-1 px-2 rounded-lg transition-colors h-8"
+                                              className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 py-1 px-2 rounded-lg transition-colors h-8 whitespace-nowrap min-w-0"
                                             >
-                                              {copiedId === evt.id ? <Check className="w-3.5 h-3.5 text-tealBrand-700" /> : <Copy className="w-3.5 h-3.5" />}
-                                              <span>{copiedId === evt.id ? 'Copied!' : 'Copy'}</span>
+                                              {copiedId === evt.id ? <Check className="w-3.5 h-3.5 text-tealBrand-700 shrink-0" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
+                                              <span className="truncate">{copiedId === evt.id ? 'Copied!' : 'Copy'}</span>
                                             </button>
 
                                             <button
-                                              onClick={() => {
-                                                const phone = evt.claim?.insured?.phone?.replace(/\D/g, '');
-                                                if (phone) window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(messageText)}`, '_blank');
-                                              }}
-                                              className="h-8 px-2.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 transition-colors flex items-center justify-center"
-                                              title="Open WhatsApp directly"
+                                              type="button"
+                                              onClick={() => setRecordingSlotsEvent(evt)}
+                                              className="h-8 w-8 shrink-0 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                                              title="Modificar o agregar opciones de fechas"
                                             >
-                                              <Send className="w-3.5 h-3.5 text-tealBrand-700" />
+                                              <Pencil className="w-3.5 h-3.5 text-slate-500" />
                                             </button>
 
                                             {(() => {
                                               const hasInsuredSent = hasEventSentInsuredSlotsNotice(evt);
+                                              const insuredEmail = evt.claim?.insured?.email;
                                               return (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenEmailPreview(evt, 'selection_options')}
-                                                  className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1 text-[11px] font-semibold cursor-pointer ${
-                                                    !evt.claim?.insured?.email
-                                                      ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
-                                                      : hasInsuredSent
-                                                      ? 'bg-white hover:bg-tealBrand-50 border-tealBrand-300 text-tealBrand-900 shadow-2xs'
-                                                      : 'bg-tealBrand-50 hover:bg-tealBrand-100 border-tealBrand-300 text-tealBrand-800'
-                                                  }`}
-                                                  title={
-                                                    !evt.claim?.insured?.email
-                                                      ? 'Sin correo registrado para el asegurado. Clic para ver detalles.'
-                                                      : hasInsuredSent
-                                                      ? `Reenviar opciones por correo a ${evt.claim.insured.email}`
-                                                      : `Previsualizar y enviar opciones por correo a ${evt.claim.insured.email}`
-                                                  }
-                                                >
-                                                  <Mail className={`w-3.5 h-3.5 ${!evt.claim?.insured?.email ? 'text-amber-600' : 'text-tealBrand-700'}`} />
-                                                  <span>
-                                                    {!evt.claim?.insured?.email
-                                                      ? 'Sin Email'
-                                                      : hasInsuredSent
-                                                      ? 'Preview & Resend Email ✉️'
-                                                      : 'Preview & Send Email'}
-                                                  </span>
-                                                </button>
+                                                <div className="relative shrink-0 flex items-center">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEmailPreview(evt, 'selection_options')}
+                                                    className={`h-8 px-2.5 rounded-lg border transition-colors flex items-center justify-center gap-1.5 text-[11px] font-semibold cursor-pointer shadow-2xs whitespace-nowrap ${
+                                                      !insuredEmail
+                                                        ? 'bg-slate-100 hover:bg-amber-50 border-amber-300 text-amber-800'
+                                                        : hasInsuredSent
+                                                        ? 'bg-white hover:bg-tealBrand-50 border-tealBrand-300 text-tealBrand-900 shadow-2xs'
+                                                        : 'bg-amber-50 hover:bg-amber-100 border-amber-400 text-amber-950 font-bold ring-1 ring-amber-300/80'
+                                                    }`}
+                                                    title={
+                                                      !insuredEmail
+                                                        ? 'Sin correo registrado para el asegurado. Clic para ver detalles.'
+                                                        : hasInsuredSent
+                                                        ? `Reenviar opciones por correo a ${insuredEmail}`
+                                                        : `⚠️ ALERTA: Email pendiente por enviar. Previsualizar y enviar opciones por correo a ${insuredEmail}`
+                                                    }
+                                                  >
+                                                    <Mail className={`w-3.5 h-3.5 shrink-0 ${!insuredEmail ? 'text-amber-600' : !hasInsuredSent ? 'text-amber-700' : 'text-tealBrand-700'}`} />
+                                                    <span>
+                                                      {!insuredEmail
+                                                        ? 'Sin Email'
+                                                        : hasInsuredSent
+                                                        ? 'Preview & Resend Email ✉️'
+                                                        : 'Preview & Send Email'}
+                                                    </span>
+                                                  </button>
+                                                  {!hasInsuredSent && insuredEmail && (
+                                                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 pointer-events-none z-10" title="Alerta: Email pendiente de enviar">
+                                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
+                                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-white shadow-xs"></span>
+                                                    </span>
+                                                  )}
+                                                </div>
                                               );
                                             })()}
                                           </>
@@ -2248,16 +2271,9 @@ export function App() {
                                     <div className="space-y-2">
                                       <div className="flex items-center justify-between text-[11px] min-h-[22px]">
                                         <span className="font-bold text-emerald-800">Inspection Scheduled</span>
-                                        <div className="flex items-center gap-1.5">
-                                          {hasEventSentCalendarNotice(evt) && (
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1" title="Invitaciones de calendario ya enviadas a los participantes">
-                                              <span>✉️ Calendar Sent</span>
-                                            </span>
-                                          )}
-                                          <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                        <span className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                             ✓ Scheduled
                                           </span>
-                                        </div>
                                       </div>
 
                                       {(() => {
@@ -2352,62 +2368,99 @@ export function App() {
 
                                     {/* Action Buttons in Delimited Card Footer */}
                                     <div className="mt-3 pt-2.5 border-t border-slate-200 bg-slate-50/90 -mx-3.5 -mb-3.5 px-3.5 py-2.5 rounded-b-2xl space-y-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setDirectConfirmingEvent(evt)}
-                                        className="w-full h-8.5 bg-tealBrand-800 hover:bg-tealBrand-900 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 shadow-xs cursor-pointer transition-colors"
-                                        title="Modify confirmed inspection date or time"
-                                      >
-                                        <Clock className="w-3.5 h-3.5 text-tealBrand-200" />
-                                        <span>Update Date / Time 🕒</span>
-                                      </button>
-                                      {(() => {
-                                        const hasSent = hasEventSentCalendarNotice(evt);
-                                        return (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleOpenEmailPreview(evt, hasSent ? 'calendar_update' : 'calendar_confirmation')}
-                                            className="w-full h-8 bg-white hover:bg-tealBrand-50 border border-tealBrand-300 text-tealBrand-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                                            title={hasSent 
-                                              ? "Previsualizar y enviar invitaciones de calendario actualizadas (.ics) a todos los participantes"
-                                              : "Previsualizar y enviar invitaciones de calendario iniciales (.ics) a todos los participantes"}
-                                          >
-                                            <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                                            <span>{hasSent ? 'Preview & Send Update ✉️' : 'Preview & Send Confirmation ✉️'}</span>
-                                          </button>
-                                        );
-                                      })()}
-                                      {getGoogleCalendarUrl(evt) && (
+                                      {/* Row 1: Direct Contact / Call button */}
+                                      {insuredPhone ? (
                                         <a
-                                          href={getGoogleCalendarUrl(evt)!}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="w-full h-8 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
-                                          title="Abrir o actualizar esta cita directamente en tu Google Calendar con 1 clic"
+                                          href={getNextivaTelUri(insuredPhone) || '#'}
+                                          className="w-full bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                          title={`Call client via Nextiva: ${formatPhoneNumber(insuredPhone)}`}
                                         >
-                                          <Calendar className="w-3.5 h-3.5 text-blue-700" />
-                                          <span>Abrir en mi Google Calendar 📅</span>
+                                          <Phone className="w-3.5 h-3.5 text-tealBrand-700 shrink-0" />
+                                          <span className="truncate">Call Client: <strong className="font-mono text-slate-900">{formatPhoneNumber(insuredPhone)}</strong></span>
                                         </a>
+                                      ) : (
+                                        <div className="h-8 flex items-center justify-center text-[10px] text-slate-400 italic bg-white border border-slate-200 rounded-lg">
+                                          No client phone registered
+                                        </div>
                                       )}
-                                      <button
-                                        type="button"
-                                        onClick={() => handleReturnToInsuredSelection(evt)}
-                                        disabled={revertingStageEventId === evt.id}
-                                        className="w-full h-8 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                                        title="Release appointment and return to Stage 3 for the client to choose another date"
-                                      >
-                                        <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                                        <span>{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to ${p3Name} Choice (Stage 3)`}</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEventToReset(evt)}
-                                        className="w-full h-8 bg-white hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                                        title="Cancel appointment and return event to first stage"
-                                      >
-                                        <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
-                                        <span>Cancel / Reset Flow</span>
-                                      </button>
+
+                                      {/* Row 2: Primary & Tool Actions (h-8 unified row) */}
+                                      <div className="flex items-center gap-1.5 h-8">
+                                        <button
+                                          type="button"
+                                          onClick={() => setDirectConfirmingEvent(evt)}
+                                          className="flex-1 h-8 bg-tealBrand-800 hover:bg-tealBrand-900 text-white rounded-lg flex items-center justify-center text-xs font-bold gap-1.5 px-2.5 shadow-xs cursor-pointer transition-colors whitespace-nowrap min-w-0"
+                                          title="Modify confirmed inspection date or time"
+                                        >
+                                          <Clock className="w-3.5 h-3.5 text-tealBrand-200 shrink-0" />
+                                          <span className="truncate">Update Date 🕒</span>
+                                        </button>
+
+                                        {getGoogleCalendarUrl(evt) && (
+                                          <a
+                                            href={getGoogleCalendarUrl(evt)!}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="h-8 w-8 shrink-0 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 rounded-lg flex items-center justify-center transition-colors shadow-2xs"
+                                            title="Abrir o actualizar esta cita directamente en tu Google Calendar 📅"
+                                          >
+                                            <Calendar className="w-3.5 h-3.5" />
+                                          </a>
+                                        )}
+
+                                        {(() => {
+                                          const hasSent = hasEventSentCalendarNotice(evt);
+                                          return (
+                                            <div className="relative flex-1 min-w-0">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleOpenEmailPreview(evt, hasSent ? 'calendar_update' : 'calendar_confirmation')}
+                                                className={`w-full h-8 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer whitespace-nowrap min-w-0 ${
+                                                  hasSent
+                                                    ? 'bg-white hover:bg-tealBrand-50 border-tealBrand-300 text-tealBrand-900'
+                                                    : 'bg-amber-50 hover:bg-amber-100 border-amber-400 text-amber-950 font-bold ring-1 ring-amber-300/80 shadow-xs'
+                                                }`}
+                                                title={hasSent 
+                                                  ? "Previsualizar y enviar invitaciones de calendario actualizadas (.ics) a todos los participantes"
+                                                  : "⚠️ ALERTA: Invitaciones de calendario pendientes. Previsualizar y enviar invitaciones (.ics) a todos los participantes"}
+                                              >
+                                                <Mail className={`w-3.5 h-3.5 shrink-0 ${!hasSent ? 'text-amber-700' : 'text-tealBrand-700'}`} />
+                                                <span className="truncate">{hasSent ? 'Preview Update ✉️' : 'Preview Invite ✉️'}</span>
+                                              </button>
+                                              {!hasSent && (
+                                                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 pointer-events-none z-10" title="Alerta: Invitación de calendario pendiente de enviar">
+                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
+                                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-white shadow-xs"></span>
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+
+                                      {/* Row 3: Secondary Flow / Reversal Row */}
+                                      <div className="flex items-center gap-1.5 mt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReturnToInsuredSelection(evt)}
+                                          disabled={revertingStageEventId === evt.id}
+                                          className="flex-1 h-7 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                                          title="Release appointment and return to Stage 3 for the client to choose another date"
+                                        >
+                                          <RotateCcw className="w-3 h-3 text-slate-500" />
+                                          <span className="truncate">{revertingStageEventId === evt.id ? 'Returning...' : `↩️ Step Back to Stage 3`}</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => setEventToReset(evt)}
+                                          className="flex-1 h-7 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                                          title="Cancel appointment and return event to first stage"
+                                        >
+                                          <RotateCcw className="w-3 h-3 text-rose-600" />
+                                          <span className="truncate">Cancel / Reset Flow</span>
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 )}

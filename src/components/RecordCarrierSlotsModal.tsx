@@ -94,6 +94,10 @@ export function RecordCarrierSlotsModal({
 
   // Dynamically adapt suggested target stage when proposedBy changes
   useEffect(() => {
+    if (event?.coordinationStage === '3_insured_selection' || event?.coordinationStage === '4_confirmed') {
+      setTargetStage(event.coordinationStage);
+      return;
+    }
     if (proposedBy === 'insured') {
       setTargetStage('2_pa_review'); // PA reviews insured dates or passes to carrier
     } else if (proposedBy === 'pa') {
@@ -101,7 +105,7 @@ export function RecordCarrierSlotsModal({
     } else {
       setTargetStage('2_pa_review'); // Carrier gave dates -> goes to PA
     }
-  }, [proposedBy]);
+  }, [proposedBy, event?.coordinationStage]);
 
   const seq = event?.coordinationSequence || (
     event?.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
