@@ -2140,6 +2140,9 @@ export const schedulingService = {
         publicAdjusterId: row.public_adjuster_id,
         startDate: row.start_date,
         endDate: row.end_date,
+        isAllDay: row.is_all_day !== false,
+        startTime: row.start_time ? row.start_time.slice(0, 5) : null,
+        endTime: row.end_time ? row.end_time.slice(0, 5) : null,
         reason: row.reason || 'Vacaciones',
         notes: row.notes,
         createdAt: row.created_at,
@@ -2155,10 +2158,17 @@ export const schedulingService = {
     publicAdjusterId: string;
     startDate: string;
     endDate: string;
+    isAllDay?: boolean;
+    startTime?: string | null;
+    endTime?: string | null;
     reason?: string;
     notes?: string;
   }): Promise<PaUnavailability> {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
+
+    const isAllDay = data.isAllDay !== false;
+    const startTime = !isAllDay && data.startTime ? data.startTime : null;
+    const endTime = !isAllDay && data.endTime ? data.endTime : null;
 
     const { data: row, error } = await supabase
       .from('pa_unavailabilities')
@@ -2166,6 +2176,9 @@ export const schedulingService = {
         public_adjuster_id: data.publicAdjusterId,
         start_date: data.startDate,
         end_date: data.endDate,
+        is_all_day: isAllDay,
+        start_time: startTime,
+        end_time: endTime,
         reason: data.reason || 'Vacaciones',
         notes: data.notes || null
       })
@@ -2179,6 +2192,9 @@ export const schedulingService = {
       publicAdjusterId: row.public_adjuster_id,
       startDate: row.start_date,
       endDate: row.end_date,
+      isAllDay: row.is_all_day !== false,
+      startTime: row.start_time ? row.start_time.slice(0, 5) : null,
+      endTime: row.end_time ? row.end_time.slice(0, 5) : null,
       reason: row.reason,
       notes: row.notes,
       createdAt: row.created_at,
@@ -2199,15 +2215,39 @@ export const schedulingService = {
   checkPaConflict(
     paId: string | null | undefined,
     dateStr: string | null | undefined,
-    unavailabilities: PaUnavailability[]
+    unavailabilities: PaUnavailability[],
+    startTime?: string | null,
+    endTime?: string | null
   ): PaUnavailability | null {
     if (!paId || !dateStr || !unavailabilities || unavailabilities.length === 0) return null;
     const dateFormatted = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.trim();
     if (!dateFormatted) return null;
 
-    const conflict = unavailabilities.find(
-      (u) => u.publicAdjusterId === paId && dateFormatted >= u.startDate && dateFormatted <= u.endDate
-    );
+    const normTime = (t?: string | null) => (t ? t.slice(0, 5) : '');
+    const reqStart = normTime(startTime);
+    const reqEnd = normTime(endTime);
+
+    const conflict = unavailabilities.find((u) => {
+      if (u.publicAdjusterId !== paId) return false;
+      if (dateFormatted < u.startDate || dateFormatted > u.endDate) return false;
+
+      // Full-day absence (or absence without specific time bounds)
+      if (u.isAllDay !== false || !u.startTime || !u.endTime) {
+        return true;
+      }
+
+      // Hourly / partial day absence:
+      // If appointment start & end times are provided, check for temporal overlap
+      if (reqStart && reqEnd) {
+        const uStart = normTime(u.startTime);
+        const uEnd = normTime(u.endTime);
+        return reqStart < uEnd && reqEnd > uStart;
+      }
+
+      // If no appointment time is specified, treat as potential conflict for that day
+      return true;
+    });
+
     return conflict || null;
   }
 };

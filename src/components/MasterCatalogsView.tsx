@@ -23,6 +23,7 @@ import {
 import { schedulingService } from '../lib/schedulingService';
 import { appSettingsService } from '../lib/appSettingsService';
 import { PaAbsenceModal } from './PaAbsenceModal';
+import { format12Hour } from '../lib/timezoneUtils';
 import type {
   PublicAdjuster,
   CarrierRepresentative,
@@ -1165,27 +1166,42 @@ export function MasterCatalogsView({ claims, events, onDataRefresh }: MasterCata
                       );
 
                       if (currentAbs) {
+                        const isHourly = currentAbs.isAllDay === false && currentAbs.startTime && currentAbs.endTime;
                         return (
                           <div className="mt-2 text-[11px] bg-amber-50 text-amber-800 border border-amber-300 p-2 rounded-lg flex items-center justify-between gap-1.5 font-semibold">
                             <div className="flex items-center gap-1.5 truncate">
                               <Palmtree className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                               <span className="truncate">
-                                <strong>Ausente hoy:</strong> {currentAbs.reason} ({currentAbs.startDate} &rarr; {currentAbs.endDate})
+                                <strong>Ausente hoy:</strong> {currentAbs.reason}
+                                {isHourly ? (
+                                  <span className="ml-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-1 py-0.2 rounded">
+                                    ({format12Hour(currentAbs.startTime!)} - {format12Hour(currentAbs.endTime!)})
+                                  </span>
+                                ) : (
+                                  ` (${currentAbs.startDate} → ${currentAbs.endDate})`
+                                )}
                               </span>
                             </div>
                             <span className="text-[9px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full uppercase shrink-0 font-extrabold">
-                              En Curso
+                              {isHourly ? 'Horas' : 'En Curso'}
                             </span>
                           </div>
                         );
                       }
 
                       if (upcomingAbs) {
+                        const isHourly = upcomingAbs.isAllDay === false && upcomingAbs.startTime && upcomingAbs.endTime;
                         return (
                           <div className="mt-2 text-[11px] bg-sky-50 text-sky-800 border border-sky-200 p-2 rounded-lg flex items-center gap-1.5">
                             <Palmtree className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                             <span className="truncate">
-                              <strong>Próxima ausencia:</strong> {upcomingAbs.startDate} &rarr; {upcomingAbs.endDate}
+                              <strong>Próxima ausencia:</strong> {upcomingAbs.startDate}
+                              {isHourly ? (
+                                ` (${format12Hour(upcomingAbs.startTime!)} - ${format12Hour(upcomingAbs.endTime!)})`
+                              ) : (
+                                ` → ${upcomingAbs.endDate}`
+                              )}{' '}
+                              - {upcomingAbs.reason}
                             </span>
                           </div>
                         );

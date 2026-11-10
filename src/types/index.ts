@@ -48,6 +48,9 @@ export interface PaUnavailability {
   publicAdjusterId: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
+  isAllDay?: boolean;
+  startTime?: string | null; // HH:mm
+  endTime?: string | null;   // HH:mm
   reason: 'Vacaciones' | 'Médico' | 'Personal / Día Libre' | 'Viaje' | 'Otro' | string;
   notes?: string;
   createdAt?: string;

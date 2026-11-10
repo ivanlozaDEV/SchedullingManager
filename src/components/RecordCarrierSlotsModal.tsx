@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, Plus, Trash2, AlertCircle, CheckCircle2, User, Sparkles, Layers, Check, Palmtree } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
-import { formatTimeRangeWithDualTimezone } from '../lib/timezoneUtils';
+import { formatTimeRangeWithDualTimezone, format12Hour } from '../lib/timezoneUtils';
 import type { CoordinationEvent, Claim, CoordinationStage, PaUnavailability } from '../types';
 
 interface RecordCarrierSlotsModalProps {
@@ -434,7 +434,7 @@ export function RecordCarrierSlotsModal({
 
             <div className="space-y-2.5">
               {slots.map((slot, idx) => {
-                const slotConflict = schedulingService.checkPaConflict(paId, slot.slotDate, unavailabilities);
+                const slotConflict = schedulingService.checkPaConflict(paId, slot.slotDate, unavailabilities, slot.startTime, slot.endTime);
 
                 return (
                   <div 
@@ -454,7 +454,14 @@ export function RecordCarrierSlotsModal({
                         {slotConflict && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
                             <Palmtree className="w-3 h-3 text-amber-700" />
-                            <span>⚠️ {paName} de {slotConflict.reason}</span>
+                            <span>
+                              ⚠️ {paName} de {slotConflict.reason}
+                              {slotConflict.isAllDay === false && slotConflict.startTime && slotConflict.endTime && (
+                                <span className="ml-1 text-[9px] font-extrabold opacity-95">
+                                  ({format12Hour(slotConflict.startTime)}-{format12Hour(slotConflict.endTime)})
+                                </span>
+                              )}
+                            </span>
                           </span>
                         )}
                       </div>

@@ -76,10 +76,6 @@ export function ScheduleInFreeSlotModal({
 
   const currentPa = useMemo(() => pas.find(p => p.id === selectedPaId), [pas, selectedPaId]);
 
-  const paAbsence = useMemo(() => {
-    return schedulingService.checkPaConflict(selectedPaId, slotDate, unavailabilitiesList);
-  }, [selectedPaId, slotDate, unavailabilitiesList]);
-
   const [selectedClaimId, setSelectedClaimId] = useState<string>('');
   const [claimSearch, setClaimSearch] = useState('');
   const [eventType, setEventType] = useState('Initial Inspection');
@@ -88,6 +84,10 @@ export function ScheduleInFreeSlotModal({
   const [accessNotes, setAccessNotes] = useState('');
   const [bookingMode, setBookingMode] = useState<'tentative' | 'confirmed'>('tentative');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const paAbsence = useMemo(() => {
+    return schedulingService.checkPaConflict(selectedPaId, slotDate, unavailabilitiesList, startTime, endTime);
+  }, [selectedPaId, slotDate, unavailabilitiesList, startTime, endTime]);
 
   // Transit Analysis State
   const [isAnalyzingTransit, setIsAnalyzingTransit] = useState(false);
@@ -191,9 +191,12 @@ export function ScheduleInFreeSlotModal({
 
     // Check PA absence conflict
     if (paAbsence && !forceAbsenceBooking) {
+      const timeDetail = paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime
+        ? ` (${format12Hour(paAbsence.startTime)} a ${format12Hour(paAbsence.endTime)})`
+        : '';
       error(
         'PA No Disponible',
-        `${currentPa?.name || 'El PA'} tiene ausencia por "${paAbsence.reason}". Por favor marca la casilla de confirmación para forzar la asignación.`
+        `${currentPa?.name || 'El PA'} tiene ausencia por "${paAbsence.reason}"${timeDetail}. Por favor marca la casilla de confirmación para forzar la asignación.`
       );
       return;
     }
@@ -367,10 +370,21 @@ export function ScheduleInFreeSlotModal({
                 <div className="flex-1 text-xs">
                   <p className="font-bold text-amber-900 flex items-center gap-1.5">
                     <Palmtree className="w-3.5 h-3.5 text-amber-700" />
-                    <span>⚠️ Alerta: {currentPa?.name} está de {paAbsence.reason}</span>
+                    <span>
+                      ⚠️ Alerta: {currentPa?.name} está de {paAbsence.reason}
+                      {paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime && (
+                        <span className="ml-1 text-[11px] font-extrabold text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded">
+                          ({format12Hour(paAbsence.startTime)} - {format12Hour(paAbsence.endTime)})
+                        </span>
+                      )}
+                    </span>
                   </p>
                   <p className="text-amber-800 mt-0.5">
-                    Período de ausencia: <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.
+                    {paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime ? (
+                      <>Bloqueo horario el <strong>{paAbsence.startDate}</strong> de <strong>{format12Hour(paAbsence.startTime)} a {format12Hour(paAbsence.endTime)}</strong>.</>
+                    ) : (
+                      <>Período de ausencia: <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.</>
+                    )}
                     {paAbsence.notes && <span className="italic block mt-0.5 text-amber-900/80">"{paAbsence.notes}"</span>}
                   </p>
                   <label className="flex items-center gap-2 mt-2 cursor-pointer font-bold text-amber-950 bg-amber-100/70 p-2 rounded-lg border border-amber-300/80">

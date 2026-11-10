@@ -18,6 +18,7 @@ import { schedulingService } from '../lib/schedulingService';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../lib/supabase';
 import { isPublicAdjusterRole, formatPaRole } from '../lib/appSettingsService';
+import { format12Hour } from '../lib/timezoneUtils';
 import type { 
   CoordinationEvent, 
   Claim, 
@@ -124,9 +125,9 @@ export function EditEventModal({
 
   useEffect(() => {
     setForceAbsenceConfirmed(false);
-  }, [finalDate, eventPaId]);
+  }, [finalDate, eventPaId, finalStartTime, finalEndTime]);
 
-  const paAbsence = schedulingService.checkPaConflict(eventPaId, finalDate, unavailabilities);
+  const paAbsence = schedulingService.checkPaConflict(eventPaId, finalDate, unavailabilities, finalStartTime, finalEndTime);
   const assignedPaObj = pas.find(p => p.id === eventPaId);
 
   useEffect(() => {
@@ -272,7 +273,10 @@ export function EditEventModal({
     }
 
     if (paAbsence && !forceAbsenceConfirmed) {
-      setError(`Atención: ${assignedPaObj?.name || 'El PA'} tiene ausencia registrada por "${paAbsence.reason}" en esta fecha (${paAbsence.startDate} al ${paAbsence.endDate}). Activa la casilla de confirmación para forzar.`);
+      const timeDetail = paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime
+        ? ` (${format12Hour(paAbsence.startTime)} al ${format12Hour(paAbsence.endTime)})`
+        : ` (${paAbsence.startDate} al ${paAbsence.endDate})`;
+      setError(`Atención: ${assignedPaObj?.name || 'El PA'} tiene ausencia registrada por "${paAbsence.reason}"${timeDetail}. Activa la casilla de confirmación para forzar.`);
       return;
     }
 
@@ -670,10 +674,21 @@ export function EditEventModal({
               <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-900 space-y-1.5 shadow-xs">
                 <div className="flex items-center gap-1.5 font-bold">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>⚠️ Alerta de Ausencia: {assignedPaObj?.name || 'PA'} está de {paAbsence.reason}</span>
+                  <span>
+                    ⚠️ Alerta de Ausencia: {assignedPaObj?.name || 'PA'} está de {paAbsence.reason}
+                    {paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime && (
+                      <span className="ml-1 text-[11px] font-extrabold text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded">
+                        ({format12Hour(paAbsence.startTime)} - {format12Hour(paAbsence.endTime)})
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <p className="text-amber-800 text-[11px]">
-                  Ausencia registrada del <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.
+                  {paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime ? (
+                    <>Bloqueo horario el <strong>{paAbsence.startDate}</strong> de <strong>{format12Hour(paAbsence.startTime)} a {format12Hour(paAbsence.endTime)}</strong>.</>
+                  ) : (
+                    <>Ausencia registrada del <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.</>
+                  )}
                   {paAbsence.notes && <span className="italic block mt-0.5 text-amber-900/80">"{paAbsence.notes}"</span>}
                 </p>
                 <label className="flex items-center gap-2 pt-1 font-bold cursor-pointer text-amber-950 bg-amber-100/70 p-2 rounded-lg border border-amber-300/80">

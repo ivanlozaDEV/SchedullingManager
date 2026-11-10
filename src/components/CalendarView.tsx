@@ -275,11 +275,15 @@ export function CalendarView({
   const handleQuickUpdatePa = async (newPa: PublicAdjuster) => {
     if (!activeItem) return;
 
-    // Check if new PA has an absence on this appointment date
-    const conflict = schedulingService.checkPaConflict(newPa.id, activeItem.dateStr, paUnavailabilities);
+    // Check if new PA has an absence on this appointment date/time
+    const conflict = schedulingService.checkPaConflict(newPa.id, activeItem.dateStr, paUnavailabilities, activeItem.startTime, activeItem.endTime);
     if (conflict) {
+      const isHourly = conflict.isAllDay === false && conflict.startTime && conflict.endTime;
+      const timeDetail = isHourly
+        ? `el ${conflict.startDate} de ${format12Hour(conflict.startTime!)} a ${format12Hour(conflict.endTime!)}`
+        : `del ${conflict.startDate} al ${conflict.endDate}`;
       const confirmForce = window.confirm(
-        `⚠️ ALERTA DE AUSENCIA:\n\n${newPa.name} tiene ausencia registrada por "${conflict.reason}" del ${conflict.startDate} al ${conflict.endDate}.\n\n¿Deseas forzar la asignación de este PA a pesar de su ausencia?`
+        `⚠️ ALERTA DE AUSENCIA:\n\n${newPa.name} tiene ausencia registrada por "${conflict.reason}" ${timeDetail}.\n\n¿Deseas forzar la asignación de este PA a pesar de su ausencia?`
       );
       if (!confirmForce) return;
     }
@@ -1031,10 +1035,16 @@ export function CalendarView({
                   {selectedPaAbsence && (
                     <div 
                       className="mb-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs"
-                      title={`Ausencia de PA: ${selectedPaAbsence.reason}${selectedPaAbsence.notes ? ` (${selectedPaAbsence.notes})` : ''}`}
+                      title={`Ausencia de PA: ${selectedPaAbsence.reason}${selectedPaAbsence.isAllDay === false && selectedPaAbsence.startTime && selectedPaAbsence.endTime ? ` (${format12Hour(selectedPaAbsence.startTime)} - ${format12Hour(selectedPaAbsence.endTime)})` : ''}${selectedPaAbsence.notes ? ` - ${selectedPaAbsence.notes}` : ''}`}
                     >
                       <Palmtree className="w-3 h-3 text-amber-600 shrink-0" />
-                      <span className="truncate">Ausente: {selectedPaAbsence.reason}</span>
+                      <span className="truncate">
+                        {selectedPaAbsence.isAllDay === false && selectedPaAbsence.startTime && selectedPaAbsence.endTime ? (
+                          <>Ausente ({format12Hour(selectedPaAbsence.startTime)}): {selectedPaAbsence.reason}</>
+                        ) : (
+                          <>Ausente: {selectedPaAbsence.reason}</>
+                        )}
+                      </span>
                     </div>
                   )}
 
@@ -1203,7 +1213,11 @@ export function CalendarView({
                       <Palmtree className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800">PA No Disponible</span>
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800">
+                            {selectedPaAbsence.isAllDay === false && selectedPaAbsence.startTime && selectedPaAbsence.endTime
+                              ? `PA No Disponible (${format12Hour(selectedPaAbsence.startTime)} - ${format12Hour(selectedPaAbsence.endTime)})`
+                              : 'PA No Disponible'}
+                          </span>
                         </div>
                         <p className="text-xs font-bold truncate">{selectedPaAbsence.reason}</p>
                         {selectedPaAbsence.notes && (

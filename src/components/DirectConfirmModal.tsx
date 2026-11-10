@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, Clock, CheckCircle2, AlertCircle, Mail, User, AlertTriangle } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
-import { formatTimeRangeWithDualTimezone, formatUsDate } from '../lib/timezoneUtils';
+import { formatTimeRangeWithDualTimezone, formatUsDate, format12Hour } from '../lib/timezoneUtils';
 import { useToast } from '../context/ToastContext';
 import type { CoordinationEvent, Claim, PaUnavailability } from '../types';
 
@@ -44,9 +44,9 @@ export function DirectConfirmModal({
 
   useEffect(() => {
     setForceAbsenceConfirm(false);
-  }, [finalDate]);
+  }, [finalDate, finalStartTime, finalEndTime]);
 
-  const paAbsence = schedulingService.checkPaConflict(paId, finalDate, unavailabilities);
+  const paAbsence = schedulingService.checkPaConflict(paId, finalDate, unavailabilities, finalStartTime, finalEndTime);
 
   useEffect(() => {
     if (isOpen && event) {
@@ -82,7 +82,10 @@ export function DirectConfirmModal({
     }
 
     if (paAbsence && !forceAbsenceConfirm) {
-      setError(`Atención: ${paName} tiene ausencia registrada por "${paAbsence.reason}" en esta fecha. Activa la casilla de confirmación para forzar.`);
+      const timeDetail = paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime
+        ? ` (${format12Hour(paAbsence.startTime)} a ${format12Hour(paAbsence.endTime)})`
+        : '';
+      setError(`Atención: ${paName} tiene ausencia registrada por "${paAbsence.reason}"${timeDetail} en esta fecha. Activa la casilla de confirmación para forzar.`);
       return;
     }
 
@@ -219,10 +222,21 @@ export function DirectConfirmModal({
               <div className="mt-2.5 p-3 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-900 space-y-1.5 shadow-xs">
                 <div className="flex items-center gap-1.5 font-bold">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>⚠️ Alerta: {paName} está de {paAbsence.reason}</span>
+                  <span>
+                    ⚠️ Alerta: {paName} está de {paAbsence.reason}
+                    {paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime && (
+                      <span className="ml-1 text-[11px] font-extrabold text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded">
+                        ({format12Hour(paAbsence.startTime)} - {format12Hour(paAbsence.endTime)})
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <p className="text-amber-800 text-[11px]">
-                  Ausencia del <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.
+                  {paAbsence.isAllDay === false && paAbsence.startTime && paAbsence.endTime ? (
+                    <>Bloqueo horario el <strong>{paAbsence.startDate}</strong> de <strong>{format12Hour(paAbsence.startTime)} a {format12Hour(paAbsence.endTime)}</strong>.</>
+                  ) : (
+                    <>Ausencia del <strong>{paAbsence.startDate}</strong> al <strong>{paAbsence.endDate}</strong>.</>
+                  )}
                   {paAbsence.notes && <span className="italic block mt-0.5 text-amber-900/80">"{paAbsence.notes}"</span>}
                 </p>
                 <label className="flex items-center gap-2 pt-1 font-bold cursor-pointer text-amber-950 bg-amber-100/70 p-2 rounded-lg border border-amber-300/80">
