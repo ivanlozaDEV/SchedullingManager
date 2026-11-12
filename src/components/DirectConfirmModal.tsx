@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Calendar, Clock, CheckCircle2, AlertCircle, Mail, User, AlertTriangle } from 'lucide-react';
+import { X, Calendar, Clock, CheckCircle2, AlertCircle, User, AlertTriangle } from 'lucide-react';
 import { schedulingService } from '../lib/schedulingService';
 import { formatTimeRangeWithDualTimezone, formatUsDate, format12Hour } from '../lib/timezoneUtils';
 import { useToast } from '../context/ToastContext';
@@ -26,7 +26,6 @@ export function DirectConfirmModal({
   const [finalEndTime, setFinalEndTime] = useState('11:00');
   const [confirmedByActor, setConfirmedByActor] = useState('Coordinator');
   const [notes, setNotes] = useState('');
-  const [sendCalendarInvite, setSendCalendarInvite] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +56,6 @@ export function DirectConfirmModal({
       setFinalEndTime(event.finalEndTime?.slice(0, 5) || proposedSlot?.endTime?.slice(0, 5) || '11:00');
       setNotes(event.notes || '');
       setConfirmedByActor('Coordinator');
-      setSendCalendarInvite(false);
       setError(null);
     }
   }, [isOpen, event]);
@@ -97,7 +95,6 @@ export function DirectConfirmModal({
         finalEndTime: finalEndTime.length === 5 ? `${finalEndTime}:00` : finalEndTime,
         confirmedByActor,
         notes: notes.trim() || undefined,
-        sendCalendarInvite,
       });
 
       toast.success(
@@ -321,23 +318,14 @@ export function DirectConfirmModal({
             />
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start gap-2.5">
-            <input
-              type="checkbox"
-              id="sendCalendarInvite"
-              checked={sendCalendarInvite}
-              onChange={(e) => setSendCalendarInvite(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-tealBrand-600 focus:ring-tealBrand-500 cursor-pointer"
-            />
-            <label htmlFor="sendCalendarInvite" className="text-xs text-slate-800 font-medium cursor-pointer">
-              <span className="font-bold flex items-center gap-1.5 text-slate-900">
-                <Mail className="w-3.5 h-3.5 text-tealBrand-700" />
-                <span>Send calendar invitations (.ics) immediately</span>
+          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 flex items-start gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-emerald-950">
+              <span className="font-bold block">Guardado Seguro en Embudo (Confirmada)</span>
+              <span className="text-[11px] text-emerald-800 leading-relaxed block mt-0.5">
+                La fecha se fijará directamente en la columna <strong>4. Cita Confirmada</strong> sin enviar correos automáticos. Para emitir las invitaciones oficiales (.ics), utiliza la opción manual <strong>Preview & Send</strong>.
               </span>
-              <span className="block text-[11px] text-slate-500 mt-0.5">
-                Unchecked by default so you can save schedule changes safely without sending automatic emails. You can also send the update manually whenever ready.
-              </span>
-            </label>
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">

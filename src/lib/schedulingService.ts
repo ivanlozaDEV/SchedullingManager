@@ -573,15 +573,8 @@ export const schedulingService = {
       notes: logNote,
     });
 
-    // Automatic email sending is strictly disabled. Email sending requires manual confirmation via EmailPreviewModal.
-    if (details.sendCalendarInvite === true) {
-      supabase.functions.invoke('send-calendar-invite', {
-        body: { eventId },
-      }).then(({ data, error }) => {
-        if (error) console.warn('⚠️ Calendar invite note:', error.message);
-        else if (data?.warning) console.warn('⚠️ Email send warning:', data.warning);
-      }).catch((err) => console.warn('Note: calendar edge function unavailable:', err));
-    }
+    // Automatic email sending is strictly disabled across all direct scheduling flows.
+    // Calendar invitations (.ics) MUST be sent manually by the user via EmailPreviewModal.
   },
 
   // 6.0b Registrar Disponibilidad Total / Abierta ("Puede Cualquier Día")
@@ -800,7 +793,6 @@ export const schedulingService = {
         finalEndTime: slots[0].endTime,
         confirmedByActor: proposedBy,
         notes: options?.notes,
-        sendCalendarInvite: true,
       });
       return;
     }
@@ -1253,15 +1245,6 @@ export const schedulingService = {
       channel: 'other',
       notes: `🔄 Stage updated to "${stageTitles[stage] || stage}".${options?.reason ? ` Reason: ${options.reason}` : ''}`,
     });
-
-    if (stage === '4_confirmed' && options?.sendCalendarInvite === true) {
-      supabase.functions.invoke('send-calendar-invite', {
-        body: { eventId },
-      }).then(({ data, error }) => {
-        if (error) console.warn('⚠️ Note on calendar invitation:', error.message);
-        else if (data?.warning) console.warn('⚠️ Email sending warning:', data.warning);
-      }).catch(err => console.warn("Note: calendar edge function:", err));
-    }
   },
 
   // 8. Agregar Registro a la Bitácora de Contacto
@@ -1824,15 +1807,6 @@ export const schedulingService = {
         channel: 'other',
         notes: `⚡ Event created directly as Confirmed for ${eventData.finalDate} (${eventData.finalStartTime?.slice(0, 5)} - ${eventData.finalEndTime ? eventData.finalEndTime.slice(0, 5) : 'End'}).`,
       });
-
-      if (eventData.sendCalendarInvite === true) {
-        supabase.functions.invoke('send-calendar-invite', {
-          body: { eventId: newEvent.id }
-        }).then(({ data, error }) => {
-          if (error) console.warn('⚠️ Calendar invite note:', error.message);
-          else if (data?.warning) console.warn('⚠️ Email send warning:', data.warning);
-        }).catch(err => console.warn("Note: calendar edge function:", err));
-      }
     } else {
       await supabase.from('coordination_logs').insert({
         event_id: newEvent.id,

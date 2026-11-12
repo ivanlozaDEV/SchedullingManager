@@ -862,6 +862,7 @@ export function App() {
                 handleScrollToEventCard(eventId, claimNumber);
               }, 250);
             }}
+            onOpenEmailPreview={handleOpenEmailPreview}
           />
         ) : (
           <>

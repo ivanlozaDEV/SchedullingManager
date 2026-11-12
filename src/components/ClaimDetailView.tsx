@@ -35,7 +35,7 @@ import { ResetCoordinationModal } from './ResetCoordinationModal';
 import { EventHistoryModal } from './EventHistoryModal';
 import { useToast } from '../context/ToastContext';
 import { getEventSlaStatus, getSlaConfig, type SlaConfig } from '../lib/slaUtils';
-import { appSettingsService } from '../lib/appSettingsService';
+import { appSettingsService, formatPaRole } from '../lib/appSettingsService';
 import { formatFullAddress, formatUsDate } from '../lib/timezoneUtils';
 import { 
   formatPhoneAsYouType, 
@@ -64,6 +64,7 @@ interface ClaimDetailViewProps {
   onClaimUpdated: () => Promise<void>;
   onViewInFunnel: (claimNumber: string, eventId?: string) => void;
   onClaimDeleted?: () => void;
+  onOpenEmailPreview?: (event: CoordinationEvent, type: 'calendar_confirmation' | 'calendar_update' | 'pa_options' | 'selection_options') => void;
 }
 
 const DEFAULT_EVENT_TYPES = [
@@ -100,6 +101,7 @@ export function ClaimDetailView({
   onClaimUpdated,
   onViewInFunnel,
   onClaimDeleted,
+  onOpenEmailPreview,
 }: ClaimDetailViewProps) {
   const [slaConfig, setSlaConfig] = useState<SlaConfig>(getSlaConfig());
 
@@ -122,11 +124,10 @@ export function ClaimDetailView({
   const [customEventType, setCustomEventType] = useState('');
   const [coordinationStage, setCoordinationStage] = useState<CoordinationStage>('1_awaiting_carrier_slots');
   const [coordinationSequence, setCoordinationSequence] = useState<CoordinationParty[]>(['carrier', 'pa', 'insured']);
-  const [isDirectScheduleMode, setIsDirectScheduleMode] = useState(false);
-  const [directFinalDate, setDirectFinalDate] = useState('');
-  const [directFinalStartTime, setDirectFinalStartTime] = useState('09:00');
-  const [directFinalEndTime, setDirectFinalEndTime] = useState('11:00');
-  const [directSendCalendarInvite, setDirectSendCalendarInvite] = useState(true);
+  const [confirmedDate, setConfirmedDate] = useState('');
+  const [confirmedStartTime, setConfirmedStartTime] = useState('09:00');
+  const [confirmedEndTime, setConfirmedEndTime] = useState('11:00');
+  const [eventPaId, setEventPaId] = useState<string>(claim.publicAdjusterId || '');
   const [directConfirmingEvent, setDirectConfirmingEvent] = useState<CoordinationEvent | null>(null);
   const [location, setLocation] = useState('');
   const [gateCode, setGateCode] = useState('');
@@ -391,12 +392,15 @@ export function ClaimDetailView({
   // Filter events belonging to this claim
   const claimEvents = events.filter((e) => e.claimId === claim.id);
 
-  // Assigned PA
+  // Assigned PA for the claim (default)
   const assignedPa = pas.find((p) => p.id === claim.publicAdjusterId) || claim.publicAdjuster;
+  // Selected PA for the event being created/edited
+  const selectedEventPa = pas.find((p) => p.id === eventPaId) || (claim.publicAdjusterId ? pas.find((p) => p.id === claim.publicAdjusterId) : null) || assignedPa;
 
   // Initialize event location and participant selections when opening form
   const handleOpenAddEvent = () => {
     setEditingEvent(null);
+    setEventPaId(claim.publicAdjusterId || '');
     setLocation(formatFullAddress(claim.propertyAddress, claim.city, claim.state, claim.zipCode));
     setGateCode('');
     setLockboxCode('');
@@ -406,6 +410,9 @@ export function ClaimDetailView({
     setEventType('');
     setCustomEventType('');
     setCoordinationStage('1_awaiting_carrier_slots');
+    setConfirmedDate('');
+    setConfirmedStartTime('09:00');
+    setConfirmedEndTime('11:00');
 
     // Default In-Person Attendees
     setAttendInsured(Boolean(claim.insuredId));
@@ -487,6 +494,9 @@ export function ClaimDetailView({
     }
 
     setCoordinationStage(evt.coordinationStage);
+    setConfirmedDate(evt.finalDate || '');
+    setConfirmedStartTime(evt.finalStartTime?.slice(0, 5) || '09:00');
+    setConfirmedEndTime(evt.finalEndTime?.slice(0, 5) || '11:00');
     const initialSeq = evt.coordinationSequence || (
       evt.slotsOriginator === 'insured' ? ['insured', 'pa', 'carrier'] :
       evt.slotsOriginator === 'pa' ? ['pa', 'insured', 'carrier'] :
@@ -504,11 +514,16 @@ export function ClaimDetailView({
 
     // In-person attendees (role_type === 'actor' or undefined)
     const actors = participants.filter((p) => !p.roleType || p.roleType === 'actor');
+    const initialEventPaId = evt.publicAdjusterId 
+      || actors.find(p => p.participantType === 'public_adjuster')?.publicAdjusterId
+      || claim.publicAdjusterId 
+      || '';
+    setEventPaId(initialEventPaId);
     setAttendInsured(actors.some((p) => p.participantType === 'insured'));
-    setAttendAssignedPa(actors.some((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId === claim.publicAdjusterId));
+    setAttendAssignedPa(initialEventPaId ? actors.some((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId === initialEventPaId) : true);
     setAttendRepIds(actors.filter((p) => p.participantType === 'carrier_representative' && p.carrierRepId).map((p) => p.carrierRepId!) );
     setAttendExtActorIds(actors.filter((p) => p.participantType === 'external_actor' && p.externalActorId && (claim.externalActors || []).some(a => a.id === p.externalActorId)).map((p) => p.externalActorId!) );
-    setSupportPaIds(actors.filter((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId && p.publicAdjusterId !== claim.publicAdjusterId).map((p) => p.publicAdjusterId!) );
+    setSupportPaIds(actors.filter((p) => p.participantType === 'public_adjuster' && p.publicAdjusterId && p.publicAdjusterId !== initialEventPaId).map((p) => p.publicAdjusterId!) );
     setAdditionalExtIds(actors.filter((p) => p.participantType === 'external_actor' && p.externalActorId && !(claim.externalActors || []).some(a => a.id === p.externalActorId)).map((p) => p.externalActorId!) );
 
     // Informed / Notify recipients (role_type === 'informed')
@@ -665,11 +680,11 @@ export function ClaimDetailView({
           insuredId: claim.insuredId,
         });
       }
-      if (attendAssignedPa && claim.publicAdjusterId) {
+      if (attendAssignedPa && eventPaId) {
         participants.push({
           participantType: 'public_adjuster',
           roleType: 'actor',
-          publicAdjusterId: claim.publicAdjusterId,
+          publicAdjusterId: eventPaId,
         });
       }
       attendRepIds.forEach((repId) => {
@@ -687,11 +702,13 @@ export function ClaimDetailView({
         });
       });
       supportPaIds.forEach((paId) => {
-        participants.push({
-          participantType: 'public_adjuster',
-          roleType: 'actor',
-          publicAdjusterId: paId,
-        });
+        if (paId !== eventPaId) {
+          participants.push({
+            participantType: 'public_adjuster',
+            roleType: 'actor',
+            publicAdjusterId: paId,
+          });
+        }
       });
       additionalExtIds.forEach((extId) => {
         participants.push({
@@ -726,14 +743,14 @@ export function ClaimDetailView({
         });
       });
 
-      if (isDirectScheduleMode) {
-        if (!directFinalDate) {
-          setEventError('Please enter the confirmed date for the direct appointment.');
+      if (coordinationStage === '4_confirmed') {
+        if (!confirmedDate) {
+          setEventError('Por favor ingresa la fecha confirmada para la cita.');
           setSubmittingEvent(false);
           return;
         }
-        if (!directFinalStartTime || !directFinalEndTime) {
-          setEventError('Please enter start and end time for the direct appointment.');
+        if (!confirmedStartTime || !confirmedEndTime) {
+          setEventError('Por favor especifica hora de inicio y fin para la cita confirmada.');
           setSubmittingEvent(false);
           return;
         }
@@ -742,48 +759,52 @@ export function ClaimDetailView({
       if (editingEvent) {
         await schedulingService.updateEvent(editingEvent.id, {
           eventType: finalEventType,
-          coordinationStage: isDirectScheduleMode ? '4_confirmed' : coordinationStage,
-          slotsOriginator: isDirectScheduleMode ? undefined : coordinationSequence[0],
-          coordinationSequence: isDirectScheduleMode ? undefined : coordinationSequence,
+          publicAdjusterId: eventPaId || null,
+          coordinationStage,
+          status: coordinationStage === '4_confirmed' ? 'scheduled' : editingEvent.status,
+          slotsOriginator: coordinationStage === '4_confirmed' ? undefined : coordinationSequence[0],
+          coordinationSequence: coordinationStage === '4_confirmed' ? undefined : coordinationSequence,
           location: location.trim(),
           gateCode: gateCode.trim() || undefined,
           lockboxCode: lockboxCode.trim() || undefined,
           accessInstructions: accessInstructions.trim() || undefined,
           notes: eventNotes.trim() || undefined,
-          finalDate: isDirectScheduleMode ? directFinalDate : undefined,
-          finalStartTime: isDirectScheduleMode ? directFinalStartTime : undefined,
-          finalEndTime: isDirectScheduleMode ? directFinalEndTime : undefined,
+          finalDate: coordinationStage === '4_confirmed' ? confirmedDate : undefined,
+          finalStartTime: coordinationStage === '4_confirmed' ? confirmedStartTime : undefined,
+          finalEndTime: coordinationStage === '4_confirmed' ? confirmedEndTime : undefined,
           participants,
         });
       } else {
         await schedulingService.createEvent({
           claimId: claim.id,
           eventType: finalEventType,
-          coordinationStage: isDirectScheduleMode ? '4_confirmed' : coordinationStage,
-          slotsOriginator: isDirectScheduleMode ? undefined : coordinationSequence[0],
-          coordinationSequence: isDirectScheduleMode ? undefined : coordinationSequence,
+          publicAdjusterId: eventPaId || undefined,
+          coordinationStage,
+          status: coordinationStage === '4_confirmed' ? 'scheduled' : 'coordinating',
+          slotsOriginator: coordinationStage === '4_confirmed' ? undefined : coordinationSequence[0],
+          coordinationSequence: coordinationStage === '4_confirmed' ? undefined : coordinationSequence,
           location: location.trim(),
           gateCode: gateCode.trim() || undefined,
           lockboxCode: lockboxCode.trim() || undefined,
           accessInstructions: accessInstructions.trim() || undefined,
           notes: eventNotes.trim() || undefined,
-          finalDate: isDirectScheduleMode ? directFinalDate : undefined,
-          finalStartTime: isDirectScheduleMode ? directFinalStartTime : undefined,
-          finalEndTime: isDirectScheduleMode ? directFinalEndTime : undefined,
-          sendCalendarInvite: isDirectScheduleMode ? directSendCalendarInvite : false,
+          finalDate: coordinationStage === '4_confirmed' ? confirmedDate : undefined,
+          finalStartTime: coordinationStage === '4_confirmed' ? confirmedStartTime : undefined,
+          finalEndTime: coordinationStage === '4_confirmed' ? confirmedEndTime : undefined,
           participants,
         });
       }
 
       setShowAddEvent(false);
       setEditingEvent(null);
-      setIsDirectScheduleMode(false);
-      setDirectFinalDate('');
 
       if (editingEvent) {
         toast.success('Evento actualizado', 'Los cambios en el evento se guardaron exitosamente.');
-      } else if (isDirectScheduleMode) {
-        toast.success('¡Cita Confirmada Agendada!', 'La cita ha sido fijada directamente en el calendario.');
+      } else if (coordinationStage === '4_confirmed') {
+        toast.success(
+          '¡Cita Agendada en Columna 4 (Confirmada)!',
+          'La cita está en la cuarta columna del Funnel lista para cualquier modificación o para hacer "Preview & Send".'
+        );
       } else {
         if (coordinationStage === '1_awaiting_carrier_slots') {
           toast.info(
@@ -1531,90 +1552,6 @@ export function ClaimDetailView({
                 )}
 
                 <form onSubmit={handleCreateEvent} className="space-y-3.5">
-                  {/* Mode Selector: Direct Scheduled vs Funnel */}
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200/60 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => { setIsDirectScheduleMode(false); setCoordinationStage('1_awaiting_carrier_slots'); }}
-                      className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        !isDirectScheduleMode
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <Calendar className="w-3.5 h-3.5 text-tealBrand-700" />
-                      <span>Por Coordinar (Funnel)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setIsDirectScheduleMode(true); setCoordinationStage('4_confirmed'); }}
-                      className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        isDirectScheduleMode
-                          ? 'bg-white text-emerald-900 shadow-xs'
-                          : 'text-slate-600 hover:text-emerald-800'
-                      }`}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>⚡ Cita Ya Confirmada (Directa)</span>
-                    </button>
-                  </div>
-
-                  {/* Direct Schedule Fields if active */}
-                  {isDirectScheduleMode && (
-                    <div className="p-3.5 bg-emerald-50/80 border border-emerald-300 rounded-xl space-y-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-emerald-950 flex items-center gap-1">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                          <span>Confirmed Appointment Details</span>
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Confirmed Date *</label>
-                          <input
-                            type="date"
-                            required={isDirectScheduleMode}
-                            value={directFinalDate}
-                            onChange={(e) => setDirectFinalDate(e.target.value)}
-                            className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Start Time *</label>
-                          <input
-                            type="time"
-                            required={isDirectScheduleMode}
-                            value={directFinalStartTime}
-                            onChange={(e) => setDirectFinalStartTime(e.target.value)}
-                            className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">End Time *</label>
-                          <input
-                            type="time"
-                            required={isDirectScheduleMode}
-                            value={directFinalEndTime}
-                            onChange={(e) => setDirectFinalEndTime(e.target.value)}
-                            className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <input
-                          type="checkbox"
-                          id="directSendCalendarInvite"
-                          checked={directSendCalendarInvite}
-                          onChange={(e) => setDirectSendCalendarInvite(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                        />
-                        <label htmlFor="directSendCalendarInvite" className="text-xs text-emerald-950 font-medium cursor-pointer">
-                          Send calendar invitations (.ics) immediately to participants
-                        </label>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -1649,47 +1586,93 @@ export function ClaimDetailView({
                       )}
                     </div>
 
-                    {!isDirectScheduleMode && (
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          Initial Funnel Stage
-                        </label>
-                        <select
-                          value={coordinationStage}
-                          onChange={(e) => {
-                            const newStage = e.target.value as CoordinationStage;
-                            setCoordinationStage(newStage);
-                            if (newStage === '4_confirmed') {
-                              setIsDirectScheduleMode(true);
-                            } else if (newStage === '3_insured_selection') {
-                              setIsDirectScheduleMode(false);
-                              handleStage3PartyChange(coordinationSequence[2] || 'insured');
-                            } else if (newStage === '2_pa_review') {
-                              setIsDirectScheduleMode(false);
-                              handleStage2PartyChange('review', coordinationSequence[1] || 'pa');
-                            } else {
-                              setIsDirectScheduleMode(false);
-                            }
-                          }}
-                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:border-maroon-800"
-                        >
-                          <option value="1_awaiting_carrier_slots">
-                            1. Initial Dates (Full 3-Step Coordination)
-                          </option>
-                          <option value="2_pa_review">
-                            2. Options Review (2 Steps Remaining - Dates Already Offered)
-                          </option>
-                          <option value="3_insured_selection">
-                            3. Final Selection (1 Step Remaining - Parties Agreed, Final Choice)
-                          </option>
-                          <option value="4_confirmed">4. Confirmed (Direct Schedule)</option>
-                        </select>
-                      </div>
-                    )}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Initial Funnel Stage
+                      </label>
+                      <select
+                        value={coordinationStage}
+                        onChange={(e) => {
+                          const newStage = e.target.value as CoordinationStage;
+                          setCoordinationStage(newStage);
+                          if (newStage === '3_insured_selection') {
+                            handleStage3PartyChange(coordinationSequence[2] || 'insured');
+                          } else if (newStage === '2_pa_review') {
+                            handleStage2PartyChange('review', coordinationSequence[1] || 'pa');
+                          }
+                        }}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:border-maroon-800"
+                      >
+                        <option value="1_awaiting_carrier_slots">
+                          1. Initial Dates (Full 3-Step Coordination)
+                        </option>
+                        <option value="2_pa_review">
+                          2. Options Review (2 Steps Remaining - Dates Already Offered)
+                        </option>
+                        <option value="3_insured_selection">
+                          3. Final Selection (1 Step Remaining - Parties Agreed, Final Choice)
+                        </option>
+                        <option value="4_confirmed">
+                          4. Cita Confirmada (Pasa a columna 4 listo para Preview & Send)
+                        </option>
+                      </select>
+                    </div>
                   </div>
 
-                  {/* Configurable Coordination Flow / Order of Dates */}
-                  {!isDirectScheduleMode && (
+                  {/* Configurable Coordination Flow / Order of Dates (Only for Stages 1, 2, 3) or Confirmed Details (Stage 4) */}
+                  {coordinationStage === '4_confirmed' ? (
+                    <div className="p-3.5 bg-emerald-50/80 border border-emerald-300 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                          <span>Detalles de Cita Confirmada (Columna 4 del Embudo)</span>
+                        </span>
+                        <span className="text-[11px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded">
+                          Sin envíos automáticos
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Confirmed Date *</label>
+                          <input
+                            type="date"
+                            required
+                            value={confirmedDate}
+                            onChange={(e) => setConfirmedDate(e.target.value)}
+                            className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Start Time *</label>
+                          <input
+                            type="time"
+                            required
+                            value={confirmedStartTime}
+                            onChange={(e) => setConfirmedStartTime(e.target.value)}
+                            className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">End Time *</label>
+                          <input
+                            type="time"
+                            required
+                            value={confirmedEndTime}
+                            onChange={(e) => setConfirmedEndTime(e.target.value)}
+                            className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-emerald-200 rounded-lg p-2.5 text-xs text-emerald-950 flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-emerald-800 leading-relaxed">
+                          El evento se creará directamente en la <strong>columna 4 (Cita Confirmada)</strong> sin enviar correos automáticos. Quedará listo en el Funnel para hacer cualquier modificación o enviar las invitaciones oficiales con <strong>Preview & Send</strong> cuando lo desees.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-slate-200">
                         <div>
@@ -1957,20 +1940,60 @@ export function ClaimDetailView({
                           </label>
                         )}
 
-                        {assignedPa && (
-                          <label className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100">
-                            <input
-                              type="checkbox"
-                              checked={attendAssignedPa}
-                              onChange={(e) => setAttendAssignedPa(e.target.checked)}
-                              className="rounded border-slate-300 text-maroon-800 focus:ring-maroon-800"
-                            />
-                            <div>
-                              <span className="font-bold text-slate-900">{assignedPa.name}</span>
-                              <p className="text-[10px] text-slate-500">Assigned Public Adjuster</p>
-                            </div>
-                          </label>
-                        )}
+                        {/* Event Assigned PA */}
+                        <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={attendAssignedPa}
+                                onChange={(e) => setAttendAssignedPa(e.target.checked)}
+                                className="rounded border-slate-300 text-maroon-800 focus:ring-maroon-800"
+                              />
+                              <div>
+                                <span className="font-bold text-slate-900">
+                                  {selectedEventPa?.name || 'Public Adjuster Asignado'}
+                                </span>
+                                <p className="text-[10px] text-slate-500">
+                                  {eventPaId === claim.publicAdjusterId ? 'PA asignado al claim (titular)' : 'PA asignado para este evento'}
+                                </p>
+                              </div>
+                            </label>
+                            {selectedEventPa?.colorCode && (
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: selectedEventPa.colorCode }} />
+                            )}
+                          </div>
+
+                          {/* Selector para cambiar al PA asignado a este evento */}
+                          <div className="pt-1.5 border-t border-slate-200/80">
+                            <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                              Cambiar PA que atiende este evento:
+                            </label>
+                            <select
+                              value={eventPaId}
+                              onChange={(e) => {
+                                setEventPaId(e.target.value);
+                                if (e.target.value) setAttendAssignedPa(true);
+                              }}
+                              className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 font-medium focus:outline-none focus:border-maroon-800"
+                            >
+                              <option value="">-- Sin PA asignado --</option>
+                              {pas.filter(p => p.isActive !== false).map((pa) => {
+                                const isClaimGeneral = claim.publicAdjusterId === pa.id;
+                                return (
+                                  <option key={pa.id} value={pa.id}>
+                                    {pa.name} ({formatPaRole(pa.role)}) {isClaimGeneral ? '★ [PA General del Claim]' : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            {claim.publicAdjuster && eventPaId && eventPaId !== claim.publicAdjusterId && (
+                              <p className="text-[10px] text-amber-700 font-medium mt-1">
+                                ℹ️ PA general del claim: <strong>{claim.publicAdjuster.name}</strong> (este evento lo atenderá {selectedEventPa?.name || 'otro PA'}).
+                              </p>
+                            )}
+                          </div>
+                        </div>
 
                         {(claim.carrierReps || []).map((rep) => {
                           const isChecked = attendRepIds.includes(rep.id);
@@ -2039,7 +2062,7 @@ export function ClaimDetailView({
                             <option value="">+ Add Support PA (PA de apoyo)...</option>
                             <option value="__NEW_PA__" className="font-bold text-maroon-800 bg-amber-50">✨ + Create & Register New PA...</option>
                             {directoryPas
-                              .filter((p) => p.id !== claim.publicAdjusterId && !supportPaIds.includes(p.id))
+                              .filter((p) => p.id !== eventPaId && !supportPaIds.includes(p.id))
                               .map((p) => (
                                 <option key={p.id} value={p.id}>PA: {p.name} ({p.role.replace('_', ' ')})</option>
                               ))}
@@ -2568,6 +2591,17 @@ export function ClaimDetailView({
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
+                            {onOpenEmailPreview && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenEmailPreview(evt, hasEventSentCalendarNotice(evt) ? 'calendar_update' : 'calendar_confirmation')}
+                                className="px-3.5 py-2 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                                title="Revisar y enviar invitaciones oficiales (.ics)"
+                              >
+                                <Mail className="w-3.5 h-3.5" />
+                                <span>Preview & Send</span>
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => onViewInFunnel(claim.claimNumber, evt.id)}
